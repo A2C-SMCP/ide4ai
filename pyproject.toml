@@ -162,3 +162,9 @@ cmd = "echo 'Documentation build not yet configured'"
 [tool.poe.tasks.pre-commit]
 help = "Run all pre-commit checks"
 sequence = ["format", "lint-fix", "typecheck", "test"]
+
+[dependency-groups]
+dev = [
+    "types-cachetools>=6.2.0.20251022",
+    "types-regex>=2025.10.23.20251023",
+]

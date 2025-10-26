@@ -42,17 +42,17 @@ class Position(NamedTuple):
     line: Annotated[int, Gt(0)]
     character: Annotated[int, Gt(0)]
 
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: "Position") -> bool:
         if self.line == other.line:
             return self.character < other.character
         return self.line < other.line
 
-    def __gt__(self, other: Any) -> bool:
+    def __gt__(self, other: "Position") -> bool:
         if self.line == other.line:
             return self.character > other.character
         return self.line > other.line
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: "Position") -> bool:
         if not isinstance(other, Position):
             return False  # pragma: no cover
         return self.line == other.line and self.character == other.character

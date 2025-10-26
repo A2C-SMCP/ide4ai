@@ -1,0 +1,9 @@
+{
+    "include": [
+        "**/*.py"
+    ],
+    "reportTypeshedErrors": true,
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": true,
+    "reportGeneralTypeIssues": true
+}

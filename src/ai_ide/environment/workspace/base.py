@@ -1,0 +1,956 @@
+# -*- coding: utf-8 -*-
+# filename: base.py
+# @Time    : 2024/4/18 10:48
+# @Author  : JQQ
+# @Email   : jqq1716@gmail.com
+# @Software: PyCharm
+import json
+import os.path
+import select
+import signal
+import subprocess
+import threading
+import time
+from abc import ABC, abstractmethod
+from collections import OrderedDict
+from json import JSONDecodeError
+from typing import Any, Callable, ClassVar, Literal, Optional, Sequence, cast
+
+import gymnasium as gym
+from cachetools import TTLCache
+from gymnasium.core import RenderFrame
+from loguru import logger
+from pydantic import AnyUrl
+from typing_extensions import SupportsFloat
+
+from ai_ide.dtos.base_protocol import LSPResponseMessage
+from ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
+from ai_ide.environment.workspace.model import TextModel
+from ai_ide.environment.workspace.schema import (
+    Position,
+    Range,
+    SearchResult,
+    SingleEditOperation,
+    TextEdit,
+)
+from ai_ide.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
+from ai_ide.utils import (
+    is_subdirectory,
+    list_directory_tree,
+    render_symbols,
+)
+
+
+class BaseWorkspace(gym.Env, ABC):
+    """
+    编辑工程文件的工作区
+
+    1. 逐步支持LSP（当前尚未完全支持）
+    2. 当前每个Workspace仅支持单一root_dir与project_name
+
+    Attributes:
+        name (str): The name of the environment.
+        metadata (dict[str, Any]): The metadata of the environment.
+        root_dir (str): The root directory of the workspace.
+        project_name (str): The name of the project.
+        models (list[Models]): The models of workspace. Models are at the heart of Monaco editor. It's what you interact
+            with when managing content. A model represents a file that has been opened. This could represent a file that
+            exists on a file system, but it doesn't have to. For example, the model holds the text content, determines
+            the language of the content, and tracks the edit history of the content.
+    """
+
+    name: ClassVar[str]
+    metadata: dict[str, Any] = {"render_modes": ["ansi"]}
+
+    def __init__(
+        self,
+        root_dir: str,
+        project_name: str,
+        render_with_symbols: bool = True,
+        max_active_models: int = 3,
+        enable_simple_view_mode: bool = False,
+        header_generators: Optional[dict[str, Callable[["BaseWorkspace", str], str]]] = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
+        super().__init__(*args, **kwargs)
+        if not os.path.exists(root_dir):
+            raise ValueError(f"项目根目录 {root_dir} 不存在")
+        if not os.path.realpath(root_dir):
+            raise ValueError("必须使用绝对路径作用项目根目录参数")
+        self.root_dir = root_dir
+        self.expand_folders: set[str] | Literal["all"] = set()
+        self.project_name = project_name
+        self.models: list[TextModel] = []
+        self._active_models: OrderedDict[str, TextModel] = OrderedDict()
+        self.lsp_stdout_mutex = threading.Lock()
+        self.lsp_stdin_mutex = threading.Lock()
+        self.lsp_mutex = threading.Lock()
+        self.lsp: Optional[subprocess.Popen] = None
+        self._lsp_msg_id = 1
+        self._max_active_models = max_active_models
+        self._render_with_symbols = render_with_symbols
+        self._enable_simple_view_mode = enable_simple_view_mode
+        self.lsp_output_monitor_thread: Optional[threading.Thread] = None
+        # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
+        # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，比如diagnostic。
+        self.lsp_server_notifications: TTLCache = TTLCache(maxsize=1000, ttl=300)
+        # 对于发起的request，我们需要等待response，因此需要缓存response，key值是request_id
+        self.lsp_server_response: TTLCache = TTLCache(maxsize=1000, ttl=300)
+        # 初始化动作空间与观察空间
+        self.action_space = gym.spaces.Dict(
+            {
+                "category": gym.spaces.Discrete(2),
+                "action_name": gym.spaces.Text(100),
+                "action_args": gym.spaces.Text(1000),
+            }
+        )
+        self._action_category_map = ACTION_CATEGORY_MAP
+        self.observation_space = gym.spaces.Dict(
+            {
+                "created_at": gym.spaces.Text(100),
+                "obs": gym.spaces.Text(100000),
+            }
+        )
+        self.launch_lsp()
+        self._initial_lsp()
+        self._is_closing = False
+        self._is_closed = False
+        self.header_generators: Optional[dict[str, Callable[["BaseWorkspace", str], str]]] = header_generators
+
+    def get_lsp_msg_id(self) -> int:
+        """
+        Get the next available message id for the Language Server Protocol (LSP) server.
+
+        Returns:
+            int: The next available message id.
+        """
+        if not self._lsp_msg_id:
+            self._lsp_msg_id = 1
+        self._lsp_msg_id += 1
+        return self._lsp_msg_id
+
+    def launch_lsp(self) -> None:
+        """
+        Launch the Language Server Protocol (LSP) server. Relaunch the LSP server if it is already running.
+
+        Returns:
+            None
+        """
+        with self.lsp_mutex:
+            if self.lsp:
+                self.kill_lsp()
+            self.lsp = self._launch_lsp()
+            self._start_lsp_monitor_thread()
+
+    def send_lsp_msg(
+        self,
+        method: str,
+        params: Optional[dict[str, Any]] = None,
+        message_id: Optional[int] = None,
+    ) -> Optional[str]:
+        """
+        Send a message to the Language Server Protocol (LSP) server.
+
+        通过stdin发送消息给LSP server
+
+        Raises:
+            ValueError: If the LSP server is not running.
+
+        Args:
+            method (str): The method of the message.
+            params (dict[str, Any]): The parameters of the message. This parameter is optional and defaults to None.
+            message_id (int): The message id. This parameter is optional and defaults to None. Request messages should
+                include a message id. Notification messages should not include a message id.
+
+        Returns:
+            Optional[str]: The response of the LSP server.
+        """
+        if not self.lsp:
+            raise ValueError("LSP server is not running.")
+        msg: dict = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+        }
+        if message_id is not None:
+            msg["id"] = message_id
+        # 转换为JSON字符串
+        msg_str = json.dumps(msg)
+        # 计算 content_length
+        content_length = len(msg_str.encode("utf-8"))
+        # 发送请求
+        with self.lsp_stdin_mutex:
+            full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
+            if self.lsp.stdin:
+                self.lsp.stdin.write(full_message.encode("utf-8"))  # LSP进程以bytes模式打开，因为LSP协议也是按照bytes进行传输的与长度计算
+                self.lsp.stdin.flush()
+        return self.read_response(message_id) if message_id else None
+
+    def _start_lsp_monitor_thread(self) -> None:
+        """
+        Start the thread to monitor the output of the Language Server Protocol (LSP) server.
+
+        Returns:
+            None
+        """
+        if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
+            return
+        self.lsp_output_monitor_thread = threading.Thread(target=self.__read_lsp_output, daemon=True)
+        self.lsp_output_monitor_thread.start()
+
+    @abstractmethod
+    def _initial_lsp(self) -> None:
+        """
+        初始化 LSP 服务
+
+        Returns:
+
+        """
+        ...
+
+    def __read_lsp_output(self) -> None:
+        """
+        Read the output of the Language Server Protocol (LSP) server.
+
+        注意要设置合理的退出机制，在self.lsp停止的情况下，退出循环
+        同时修改数据时需要使用self.lsp_mutex上锁
+
+        Returns:
+            None
+        """
+        while True:
+            if self.lsp and self.lsp.poll() is None and self.lsp.stdout:
+                with self.lsp_stdout_mutex:
+                    if not self.lsp or not self.lsp.stdout:
+                        break
+                        # 确保在获取锁之后，LSP和输出流仍然有效
+                    if self.lsp.poll() is not None or not self.lsp.stdout:
+                        break
+                    # 再次调用select，确保在获取锁的过程中不出现其它意外
+                    rlist, _, _ = select.select([self.lsp.stdout], [], [], 0.1)  # 100ms 防止CPU占用过高
+                    if not rlist:
+                        continue
+                    line_bytes = self.lsp.stdout.readline()
+                    if line_bytes:
+                        # 处理输出
+                        line = line_bytes.decode("utf-8")
+                        if "Content-Length:" in line:
+                            length = int(line.split(":")[1].strip())
+                            response_bytes = self.lsp.stdout.read(length + 2)  # 之所以+2，是因为还有一个换行符(\r\n)
+                            response = response_bytes.decode("utf-8")
+                            try:
+                                response_data = json.loads(response.strip())
+                                if "id" in response_data:
+                                    self.lsp_server_response[response_data["id"]] = response
+                                elif "method" in response_data:
+                                    self.lsp_server_notifications[
+                                        self.__construct_notification_key(
+                                            response_data["method"],
+                                            response_data.get("params", {}).get("uri"),
+                                        )
+                                    ] = response
+                            except JSONDecodeError:
+                                logger.error(
+                                    f"Failed to decode JSON: {response}\nCurrent LSP Head Line: {line}\nLength in line: {length}"
+                                )
+            else:
+                # lsp已经停止
+                break
+
+    @staticmethod
+    def __construct_notification_key(method: str, uri: str) -> str:
+        """
+        Construct a key for the notification cache.
+
+        Args:
+            method (str): The method of the notification.
+            uri (str): The URI of the notification.
+
+        Returns:
+            str: The constructed key.
+        """
+        return f"{method}:{uri}" if method == "textDocument/publishDiagnostics" else method
+
+    def read_response(self, request_id: int, timeout: float = 1) -> Optional[str]:
+        """
+        Read the response of the Language Server Protocol (LSP) server.
+
+        Args:
+            request_id (int): The request id.
+            timeout (int): The timeout value in seconds. This parameter is optional and defaults to 1.
+
+        Returns:
+            Optional[str]: The response of the LSP server.
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if request_id in self.lsp_server_response:
+                return self.lsp_server_response.pop(request_id)
+            time.sleep(0.1)
+        return None
+
+    def read_notification(self, method: str, uri: str, timeout: float = 0.05) -> Optional[str]:
+        """
+        Read the notification of the Language Server Protocol (LSP) server.
+
+        Args:
+            method (str): The method of the notification.
+            uri (str): The URI of the notification about resource.
+            timeout (float): The timeout value in seconds. This parameter is optional and defaults to 1.
+
+        Returns:
+            Optional[str]: The notification of the LSP server.
+        """
+        start_time = time.time()
+        notification_key = self.__construct_notification_key(method, uri)
+        while time.time() - start_time < timeout:
+            if notification_key in self.lsp_server_notifications:
+                return self.lsp_server_notifications.pop(notification_key)
+            time.sleep(0.1)
+        return None
+
+    def inspect_grammar_err(self, uris: list[str]) -> str:
+        """
+        检查语法错误
+
+        Args:
+            uris (list[str]): 文件URI列表
+
+        Returns:
+            str: 错误信息
+        """
+        errors = []
+        for uri in uris:
+            diagnostics = self.read_notification(method="textDocument/publishDiagnostics", uri=uri, timeout=0.05)
+            if diagnostics:
+                dig_dict = json.loads(diagnostics)
+                if dig_list := dig_dict.get("params", {}).get("diagnostics"):
+                    errors.append(f"文件{uri}有语法异常: {str(dig_list)}")
+        return "\n".join(errors)
+
+    @abstractmethod
+    def _launch_lsp(self) -> subprocess.Popen:
+        """
+        Launch the Language Server Protocol (LSP) server.
+
+        Returns:
+            subprocess.Popen: The process of the LSP server.
+        """
+        ...
+
+    def get_model(self, uri: str) -> Optional[TextModel]:
+        """
+        Get a model by URI.
+
+        Args:
+            uri (str): The URI of the model to be retrieved.
+
+        Returns:
+            Optional[TextModel]: The model instance.
+        """
+        return next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
+
+    @property
+    def active_models(self) -> list[TextModel]:
+        """
+        Get the active models.
+
+        Returns:
+            list[TextModel]: The active models.
+        """
+        return [m for m in self._active_models.values()]
+
+    def active_model(self, model_id: str) -> None:
+        """
+        激活一个Model
+
+        Args:
+            model_id (str): Model的ID
+
+        Returns:
+            None
+        """
+        if len(self._active_models) >= self._max_active_models:
+            self._active_models.popitem(last=False)  # Remove the oldest item
+        if not any(m.m_id == model_id for m in self.models):
+            raise ValueError(f"Model with ID {model_id} does not exist in models, open it first.")
+        self._active_models[model_id] = next(filter(lambda m: m.m_id == model_id, self.models))
+        self._active_models.move_to_end(model_id)  # Ensure the latest added/activated model is at the end
+
+    def deactivate_model(self, model_id: str) -> None:
+        """
+        取消激活一个Model
+
+        Args:
+            model_id (str): Model的ID
+
+        Returns:
+            None
+        """
+        if model_id in self._active_models:
+            del self._active_models[model_id]
+
+    def clear_active_models(self) -> None:
+        """
+        清空所有激活的Model
+
+        Returns:
+            None
+        """
+        self._active_models.clear()
+
+    def kill_lsp(self) -> None:
+        """
+        Kill the Language Server Protocol (LSP) server.
+
+        Returns:
+            None
+        """
+        # 关闭进程
+        if self.lsp:
+            if self.lsp.stdin:
+                self.lsp.stdin.close()
+            try:
+                self.lsp.send_signal(signal.SIGINT)
+                # 设置超时时间等待进程结束
+                self.lsp.wait(timeout=10)  # 至多等待10秒
+            except subprocess.TimeoutExpired:
+                self.lsp.terminate()
+            self.lsp = None
+
+    def __del__(self) -> None:
+        """
+
+        Method Name: __del__
+
+        Description:
+        This method is called when the object is about to be destroyed and deallocated from memory. It invokes the
+        `close()` method to perform any necessary cleanup operations.
+
+        Parameters:
+        self: The object instance on which the method is being called.
+
+        Return Type:
+        None
+
+        """
+        self.close()
+
+    @abstractmethod
+    def construct_action(self, action: dict) -> IDEAction:
+        """
+        Construct an instance of the IDEAction class from the provided action.
+
+        Args:
+            action (dict): A dictionary containing the action to be constructed.
+
+        Returns:
+            IDEAction: An instance of the IDEAction class representing the constructed action.
+        """
+        ...
+
+    @abstractmethod
+    def step(self, action: dict) -> tuple[dict, SupportsFloat, bool, bool, dict[str, Any]]:
+        """
+        执行一个动作
+
+        Args:
+            action (dict): An instance of the IDEAction class representing the action to be performed.
+
+        Returns:
+            A tuple containing the following elements:
+            - An instance of the IDEObs class representing the observation after performing the action.
+            - An instance of SupportsFloat representing the reward obtained after performing the action.
+            - A boolean value indicating whether the current episode is done or not.
+            - A boolean value indicating whether the action performed was successful or not.
+            - A dictionary containing additional information about the action performed.
+
+        """
+        # Format action to be compatible with the IDEAction class
+        ...
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[IDEObs, dict[str, Any]]:
+        """
+        重置环境
+        将打开的文件关闭
+        折叠所有展开的文件夹
+
+        Args:
+            seed: An integer value indicating the seed to be used for resetting. The seed is optional and defaults to
+                None.
+
+            options: A dictionary containing additional options for the reset operation. This parameter is optional and
+                     defaults to None.
+
+        Returns:
+            A tuple containing two elements:
+            1. An instance of the IDEObs class representing the initial
+        """
+        self._assert_not_closed()
+        for m in self.models:
+            m.dispose()
+        self.models.clear()
+        self.clear_active_models()
+        return super().reset(seed=seed)
+
+    @abstractmethod
+    def render(self) -> RenderFrame | list[RenderFrame] | None:
+        ...
+
+    def close(self) -> None:
+        """
+        关闭环境
+
+        Args:
+            self: The current instance of the class.
+
+        Returns:
+            None
+        """
+        self._is_closing = True
+        for m in self.models:
+            m.dispose()
+        self.models.clear()
+        with self.lsp_mutex:
+            self.kill_lsp()
+        if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
+            self.lsp_output_monitor_thread.join()  # 确保输出监控线程已经结束
+        self._is_closed = True
+        self._is_closing = False
+
+    def _assert_not_closed(self) -> bool:
+        """
+        Assert that the environment is not closed.
+
+        Returns:
+            bool: True if the environment is not closed, False otherwise.
+        """
+        if self._is_closed:
+            raise ValueError("Environment is closed.")
+        return True
+
+    @abstractmethod
+    def open_file(self, *, uri: str) -> TextModel:
+        """
+        Open a file in the workspace.
+        Initial a model instance, add it to self.models and active it
+
+        Args:
+            uri (str): The uri to the file to be opened.
+
+        Returns:
+            TextModel: The model instance representing the opened file.
+        """
+        ...
+
+    def save_file(self, *, uri: str) -> None:
+        """
+        Save a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to be saved.
+
+        Returns:
+            None
+        """
+        self._assert_not_closed()
+        tm = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
+        if tm:
+            # will_save reason
+            # 1: Manually triggered, e.g. by the user pressing save, by starting debugging, or by an API call.
+            # 2: Automatic after a delay
+            # 3: When the editor lost focus
+            self.send_lsp_msg("textDocument/willSave", {"textDocument": {"uri": uri}, "reason": 1})
+            tm.save()
+            self.send_lsp_msg(
+                "textDocument/didSave",
+                {"textDocument": {"uri": uri}, "text": tm.get_value()},
+            )
+
+    @abstractmethod
+    def apply_edit(
+        self,
+        *,
+        uri: str,
+        edits: Sequence[SingleEditOperation | dict],
+        compute_undo_edits: bool = False,
+    ) -> Optional[list[TextEdit]]:
+        """
+        Apply edits to a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to which the edits should be applied.
+            edits (list[SingleEditOperation | dict]): The edits to be applied to the file.
+            compute_undo_edits (bool): Whether to compute the undo edits. This parameter is optional and defaults to
+                False.
+
+        Returns:
+            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes.
+        """
+        ...
+
+    @abstractmethod
+    def apply_workspace_edit(self, *, workspace_edit: LSPWorkspaceEdit) -> Any:
+        """
+        Apply a workspace edit to the workspace.
+
+        Args:
+            workspace_edit (LSPWorkspaceEdit): The workspace edit to be applied.
+
+        Returns:
+            Any: The result of applying the workspace edit.
+        """
+        ...
+
+    @abstractmethod
+    def rename_file(
+        self,
+        *,
+        old_uri: str,
+        new_uri: str,
+        overwrite: Optional[bool] = None,
+        ignore_if_exists: Optional[bool] = None,
+    ) -> bool:
+        """
+        Rename a file in the workspace.
+
+        Args:
+            old_uri (str): 旧的URI信息
+            new_uri (str): 新的URI信息
+            overwrite (Optional[bool]): 如果文件存在是否覆盖。优先级高于ignore_if_exists
+            ignore_if_exists (Optional[bool]): 如果文件存在是否忽略
+
+        Returns:
+            bool: 操作是否成功
+        """
+        ...
+
+    @abstractmethod
+    def delete_file(
+        self,
+        *,
+        uri: str,
+        recursive: Optional[bool] = None,
+        ignore_if_not_exists: Optional[bool] = None,
+    ) -> bool:
+        """
+        Delete a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to be deleted.
+            recursive (Optional[bool]): Whether to delete the content recursively if a folder is denoted.
+            ignore_if_not_exists (Optional[bool]): Whether to ignore the operation if the file does not exist.
+
+        Returns:
+            bool: True if the file was deleted successfully, False otherwise.
+        """
+        ...
+
+    @abstractmethod
+    def create_file(
+        self,
+        *,
+        uri: str,
+        overwrite: Optional[bool] = None,
+        ignore_if_exists: Optional[bool] = None,
+    ) -> Optional[TextModel]:
+        """
+        Create a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to be created.
+            overwrite (Optional[bool]): Whether to overwrite the target if it already exists.
+            ignore_if_exists (Optional[bool]): Whether to ignore the operation if the file already exists.
+
+        Returns:
+            Optional[TextModel]: The model instance representing the created file.
+        """
+        ...
+
+    def close_file(self, *, uri: str) -> None:
+        """
+        Close a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to be closed.
+
+        Returns:
+            None
+        """
+        tm = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
+        if tm:
+            tm.dispose()
+            self.deactivate_model(tm.m_id)
+            self.models.remove(tm)
+            self.send_lsp_msg("textDocument/didClose", {"textDocument": {"uri": uri}})
+
+    def read_file(
+        self,
+        *,
+        uri: str,
+        with_line_num: bool = True,
+        code_range: Optional[Range] = None,
+    ) -> str:
+        """
+        Read the content of a file in the workspace.
+
+        Notes:
+            if current workspace enable simple view mode, with_line_num will be ignored, the response of this function
+            will always contain line number.
+
+        Args:
+            uri (str): The URI of the file to be read.
+            with_line_num (bool): 是否带有行号。默认为True。
+            code_range (Optional[Range]): The range of the code to be read. This parameter is optional and defaults to
+                None.
+
+        Returns:
+            str: The content of the file.
+        """
+        tm: Optional[TextModel] = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
+        if tm:
+            return (
+                tm.get_view(with_line_num, code_range)
+                if not self._enable_simple_view_mode
+                else tm.get_simple_view(code_range)
+            )
+        else:
+            tm = self.open_file(uri=uri)
+            return (
+                tm.get_view(with_line_num, code_range)
+                if not self._enable_simple_view_mode
+                else tm.get_simple_view(code_range)
+            )
+
+    def expand_folder(self, *, uri: str) -> str:
+        """
+        Expand a folder in the workspace.
+
+        Args:
+            uri (str): The URI of the folder to be expanded.
+
+        Returns:
+            str: The directory info after expanding the folder.
+        """
+        if not uri.startswith("file://"):
+            raise ValueError("URI must start with 'file://'")
+        folder_path = uri[7:]
+        if not os.path.realpath(folder_path) or not os.path.exists(folder_path):
+            raise ValueError(f"Invalid folder path: {folder_path}")
+        if not is_subdirectory(folder_path, self.root_dir):
+            raise ValueError(f"Folder path {folder_path} is not a subdirectory of the root directory {self.root_dir}")
+        if self.expand_folders != "all":
+            self.expand_folders.add(folder_path)
+        return list_directory_tree(folder_path, include_dirs=self.expand_folders, recursive=True)
+
+    def collapse_folder(self, *, uri: str) -> str:
+        """
+        Collapse a folder in the workspace.
+
+        Args:
+            uri (str): The URI of the folder to be collapsed.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the URI does not start with 'file://' or the folder path is not expanded.
+        """
+        if not uri.startswith("file://"):
+            raise ValueError("URI must start with 'file://'")
+        folder_path = uri[7:]
+        if self.expand_folders == "all":
+            self.expand_folders = set()
+        if folder_path in self.expand_folders:
+            self.expand_folders.remove(folder_path)
+        else:
+            raise ValueError(f"Folder path {folder_path} is not expanded")
+        return list_directory_tree(folder_path, include_dirs=self.expand_folders, recursive=True)
+
+    def get_file_symbols(self, *, uri: str, kinds: list[int]) -> str:
+        """
+        Get the symbols in a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to get the symbols from.
+            kinds (list[int]): The kinds of symbols to get.
+
+        Returns:
+            str: The symbols in the file.
+        """
+        self._assert_not_closed()
+        mid = self.get_lsp_msg_id()
+        lsp_res = self.send_lsp_msg(
+            "textDocument/documentSymbol",
+            {"textDocument": {"uri": uri}},
+            message_id=mid,
+        )
+        if lsp_res:
+            res_model = LSPResponseMessage.model_validate(json.loads(lsp_res))
+            if res_model.error:
+                return res_model.error.message
+            symbols = res_model.result
+            res = render_symbols(cast(list[dict], symbols), kinds)
+            return res + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
+        else:
+            return "获取文件符号失败"
+
+    @abstractmethod
+    def find_in_file(
+        self,
+        *,
+        uri: str,
+        query: str,
+        search_scope: Range | list[Range] | None = None,
+        is_regex: bool = False,
+        match_case: bool = False,
+        word_separator: Optional[str] = None,
+        capture_matches: bool = True,
+        limit_result_count: Optional[int] = None,
+    ) -> list[SearchResult]:
+        """
+        Find a query in a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to search in. | 要搜索的文件的 URI。
+            query (str): The query to search for. | 要搜索的查询。
+            search_scope: Optional. The range or list of ranges where the search should be performed. If not provided,
+                the search will be performed in the full model range. | 可选。指定搜索应在其中进行的范围或范围列表。如果未提供，
+                则在整个模型范围内进行搜索。
+            is_regex: Optional. Specifies whether the search string should be treated as a regular expression. Default
+                is False. | 可选。指定是否应将搜索字符串视为正则表达式。默认为 False。
+            match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
+                索是否应区分大小写。默认为 False。
+            word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
+                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分。
+            capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
+                Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
+            limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches
+                will be returned. | 可选。返回的搜索结果的最大数量。如果未提供，将返回所有匹配项。
+
+        Returns:
+            A list of Range objects representing the matched ranges. | 表示匹配范围的 Range 对象列表。
+
+        Raises:
+            ValueError: If an invalid search scope is provided. | 如果提供了无效的搜索范围。
+
+        """
+        ...
+
+    def replace_in_file(
+        self,
+        *,
+        uri: str,
+        query: str,
+        replacement: str,
+        search_scope: Range | list[Range] | None = None,
+        is_regex: bool = False,
+        match_case: bool = False,
+        word_separator: Optional[str] = None,
+        compute_undo_edits: bool = False,
+    ) -> Optional[list[TextEdit]]:
+        """
+        Replace a query with a specified string in a file in the workspace.
+
+        Args:
+            uri (str): The URI of the file to perform the replacement in. | 要在其中执行替换的文件的 URI。
+            query (str): The query string to search for. | 要搜索的查询字符串。
+            replacement (str): The string to replace the query with. | 用于替换查询的字符串。
+            search_scope: Optional. The range or list of ranges where the replacement should be performed. If not
+                provided, the replacement will be performed in the full model range. | 可选。指定替换应在其中进行的范围或范围列表。如果未提供，
+                则在整个模型范围内进行替换。
+            is_regex: Optional. Specifies whether the query string should be treated as a regular expression. Default is
+                False. | 可选。指定是否应将查询字符串视为正则表达式。默认为 False。
+            match_case: Optional. Specifies whether the replacement should be case-sensitive. Default is False. | 可选。
+                指定替换是否应区分大小写。默认为 False。
+            word_separator: Optional. The separator used to define word boundaries for the search and replacement. If
+                not provided, all characters are considered as part of a word. | 可选。用于定义搜索和替换中单词边界的分隔符。如果未提供，
+                则所有字符都视为单词的一部分。
+            compute_undo_edits: Optional. Specifies whether to compute the undo edits. Default is False. | 可选。决定是否计算Undo
+                的TextEditor
+
+        Returns:
+            The number of replacements made. | 已进行的替换数量。
+
+        Raises:
+            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes. | 可选的列表[TextEdit]：可以应用于撤消更改的反向编辑。
+
+        """
+        search_res = self.find_in_file(
+            uri=uri,
+            query=query,
+            search_scope=search_scope,
+            is_regex=is_regex,
+            match_case=match_case,
+            word_separator=word_separator,
+        )
+        if not search_res:
+            return None
+        edits = [SingleEditOperation(range=sr.range, text=replacement) for sr in search_res]
+        res = self.apply_edit(uri=uri, edits=edits, compute_undo_edits=compute_undo_edits)
+        return res
+
+    def insert_cursor(self, *, uri: str, key: str, position: Position) -> str:
+        """
+        Inserts a cursor at the specified position in the given file.
+
+        Args:
+            uri (str): The URI of the file to insert the cursor into.
+            key (str): The key associated with the cursor.
+            position (Position): The position where the cursor should be inserted.
+
+        Returns:
+            str: The content near the inserted cursor.
+
+        Raises:
+            AssertionError: If the file is closed.
+        """
+        self._assert_not_closed()
+        model = self.get_model(uri)
+        if not model:
+            model = self.open_file(uri=uri)
+        near_content = model.insert_cursor(key=key, position=position)
+        return near_content
+
+    def delete_cursor(self, *, uri: str, key: str) -> str:
+        """
+        Args:
+            uri (str): A string representing the URI of the file to perform the delete operation on.
+            key (str): A string representing the key of the cursor to be deleted.
+
+        Returns:
+            str: A string representing the content near the deleted cursor position.
+
+        Raises:
+            AssertionError: If the database is closed.
+            FileNotFoundError: If the specified file does not exist.
+
+        """
+        self._assert_not_closed()
+        model = self.get_model(uri)
+        if not model:
+            model = self.open_file(uri=uri)
+        near_content = model.delete_cursor(key=key)
+        return near_content
+
+    def clear_cursors(self, *, uri: str) -> str:
+        """
+        Clears all cursors in the given model.
+
+        Args:
+            uri (str): The URI of the model.
+
+        Returns:
+            str: The result of clearing the cursors.
+        """
+        self._assert_not_closed()
+        model = self.get_model(uri)
+        if not model:
+            model = self.open_file(uri=uri)
+        return model.clear_cursors()

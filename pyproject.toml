@@ -1,0 +1,112 @@
+[project]
+name = "ai-ide"
+version = "0.1.0"
+description = "A powerful IDE environment designed for AI agents to interact with code"
+readme = "README.md"
+authors = [
+    { name = "JQQ", email = "jqq1716@gmail.com" }
+]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "pydantic>=2.11.0,<3.0.0",
+    "gymnasium>=0.29.1",
+    "simple-parsing>=0.1.5",
+    "docker>=7.0.0",
+    "paramiko>=3.4.0",
+    "emoji>=2.11.1",
+    "loguru>=0.7.2",
+    "cachetools>=5.3.2",
+]
+license = { text = "MIT" }
+keywords = ["ai", "ide", "lsp", "code-editor", "ai-agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.urls]
+Homepage = "https://github.com/JQQ/ai-ide"
+Repository = "https://github.com/JQQ/ai-ide"
+Documentation = "https://github.com/JQQ/ai-ide#readme"
+Issues = "https://github.com/JQQ/ai-ide/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-timeout>=2.3.1",
+    "ruff>=0.1.11",
+    "mypy>=1.16.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by formatter
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "--cov=ai_ide",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["ai_ide"]
+omit = ["*/tests/*", "*/.cache/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "\\.\\.\\.",
+]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: base.py
 # @Time    : 2024/4/16 19:56
 # @Author  : JQQ
@@ -6,7 +5,7 @@
 # @Software: PyCharm
 import atexit
 from abc import abstractmethod
-from typing import Any, ClassVar, Optional, SupportsFloat
+from typing import Any, ClassVar, SupportsFloat
 
 import gymnasium as gym
 from gymnasium.core import RenderFrame
@@ -42,7 +41,7 @@ class IDE(gym.Env):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: Optional[dict[str, Any]] = None,
+        workspace_setting: dict[str, Any] | None = None,
         *args: Any,
         **kwargs: Any,
     ):
@@ -55,8 +54,8 @@ class IDE(gym.Env):
         self.enable_simple_view_mode = enable_simple_view_mode
         self.max_active_models = max_active_models
         self.terminals: list[BaseTerminalEnv] = []
-        self.active_terminal_index: Optional[int] = None
-        self.workspace: Optional[BaseWorkspace] = None
+        self.active_terminal_index: int | None = None
+        self.workspace: BaseWorkspace | None = None
         self._workspace_setting = workspace_setting or {}
         # 初始化动作空间与观察空间
         self.action_space = gym.spaces.Dict(
@@ -88,8 +87,7 @@ class IDE(gym.Env):
             return terminal
 
     @abstractmethod
-    def init_terminal(self) -> BaseTerminalEnv:
-        ...
+    def init_terminal(self) -> BaseTerminalEnv: ...
 
     def active_terminal(self, index: int) -> None:
         self.active_terminal_index = index

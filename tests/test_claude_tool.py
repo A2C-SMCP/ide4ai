@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_claude_tool.py
 # @Time    : 2025/4/25 11:50
 # @Author  : JQQ
@@ -6,11 +5,11 @@
 # @Software: PyCharm
 import os
 import tempfile
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-
 from tfrobot.drive.tool.ides.claude_tool import ClaudeEditorTool
 from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
 from tfrobot.drive.tool.ides.schema import LanguageId
@@ -79,7 +78,7 @@ def test_str_replace(mock_text_model: TextModel) -> None:
     tool = ClaudeEditorTool(root_dir=dir_path, project_name="test_project")
     _ = tool.run(tool_params=tool_params)
     # 检查文件内容是否被替换
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert "hi world" in content
         assert "hello world" not in content
@@ -91,7 +90,7 @@ def test_str_replace(mock_text_model: TextModel) -> None:
     }
     _ = tool.run(tool_params=undo_params)
     # 检查文件内容是否被还原
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert "hello world" in content
         assert "hi world" not in content
@@ -116,7 +115,7 @@ def test_insert_line(mock_multiline_text_model: TextModel) -> None:
     tool = ClaudeEditorTool(root_dir=dir_path, project_name="test_project")
     _ = tool.run(tool_params=tool_params)
     # 检查文件内容是否被插入
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert "inserted line" in content
         print("---after-insert---")
@@ -127,7 +126,7 @@ def test_insert_line(mock_multiline_text_model: TextModel) -> None:
     }
     _ = tool.run(tool_params=undo_params)
     # 检查文件内容是否被还原
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert "inserted line" not in content
         print("---after-undo---")

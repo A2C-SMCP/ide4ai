@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 # filename: test_ide.py
 # @Time    : 2024/5/13 14:39
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import pytest
-
 from tfrobot.schema.exceptions import TFExecutionError
 
 

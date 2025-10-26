@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: const.py
 # @Time    : 2024/5/8 15:01
 # @Author  : JQQ

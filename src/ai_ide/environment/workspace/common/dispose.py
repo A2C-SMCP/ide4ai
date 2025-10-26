@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: dispose.py
 # @Time    : 2024/4/18 19:30
 # @Author  : JQQ
@@ -29,8 +28,7 @@ disposable_tracker: Optional["DisposableTracker"] = None
 
 @runtime_checkable
 class DisposableProtocol(Protocol):
-    def dispose(self) -> None:
-        ...
+    def dispose(self) -> None: ...
 
 
 class DisposableTracker:
@@ -203,7 +201,7 @@ class ImmortalReference:
 
 class DisposableMap(DisposableProtocol):
     def __init__(self) -> None:
-        self._store: dict[str, DisposableProtocol] = dict()
+        self._store: dict[str, DisposableProtocol] = {}
         self._is_disposed = False
         track_disposable(self)
 

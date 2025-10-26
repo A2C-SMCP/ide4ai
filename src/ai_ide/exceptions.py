@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """AI IDE Exceptions Module."""
 
 

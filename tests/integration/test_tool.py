@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_tool.py
 # @Time    : 2024/5/14 16:06
 # @Author  : JQQ
@@ -138,7 +137,9 @@ def test_ai_editor_init(ai_editor, create_file_tool, apply_edits_tool) -> None:
         }
     )
     print(res)
-    res = ai_editor.run(tool_params={"job_des": "帮我解决一下print_without_os.py（位置项目根目录下）中的未正确导入的语法错误"})
+    res = ai_editor.run(
+        tool_params={"job_des": "帮我解决一下print_without_os.py（位置项目根目录下）中的未正确导入的语法错误"}
+    )
     print(res)
     with open(f"{ai_editor.root_dir}/print_without_os.py") as f:
         content = f.read()
@@ -148,7 +149,9 @@ def test_ai_editor_init(ai_editor, create_file_tool, apply_edits_tool) -> None:
 
 @pytest.mark.flaky(reruns=2, reruns_delay=1)
 def test_ai_editor_wm_create_file(ai_editor, create_file_tool, apply_edits_tool) -> None:
-    res = ai_editor.run(tool_params={"job_des": "帮我在项目根目录创建一个print_without_os.py文件，然后写入 import os\nprint(os.path)\n"})
+    res = ai_editor.run(
+        tool_params={"job_des": "帮我在项目根目录创建一个print_without_os.py文件，然后写入 import os\nprint(os.path)\n"}
+    )
     print(res)
     with open(f"{ai_editor.root_dir}/print_without_os.py") as f:
         content = f.read()
@@ -159,7 +162,9 @@ def test_ai_editor_wm_create_file(ai_editor, create_file_tool, apply_edits_tool)
 
 @pytest.mark.flaky(reruns=2, reruns_delay=1)
 def test_gpt_editor_create_file(gpt_editor, create_file_tool, apply_edits_tool) -> None:
-    res = gpt_editor.run(tool_params={"job_des": "帮我在项目根目录创建一个print_without_os.py文件，然后写入 import os\nprint(os.path)\n"})
+    res = gpt_editor.run(
+        tool_params={"job_des": "帮我在项目根目录创建一个print_without_os.py文件，然后写入 import os\nprint(os.path)\n"}
+    )
     print(res)
     with open(f"{gpt_editor.root_dir}/print_without_os.py") as f:
         content = f.read()

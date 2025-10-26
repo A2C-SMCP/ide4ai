@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: local_terminal_env.py
 # @Time    : 2024/5/13 10:40
 # @Author  : JQQ
@@ -10,7 +9,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from tfrobot.drive.tool.ides.environment.terminal.base import EnvironmentArguments
 from tfrobot.drive.tool.ides.environment.terminal.local_terminal_env import TerminalEnv
 
@@ -137,15 +135,15 @@ def test_reset_method(terminal_env):
     new_path = os.path.join(terminal_env.work_dir, "subdir")
     os.mkdir(new_path)
     terminal_env.change_dir(path=new_path)
-    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(
-        new_path
-    ), "The current directory should have been changed to the new path."
+    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(new_path), (
+        "The current directory should have been changed to the new path."
+    )
 
     # Perform the reset operation
     observation, info = terminal_env.reset()
-    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(
-        terminal_env.work_dir
-    ), "After reset, the current directory should be the work directory."
+    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(terminal_env.work_dir), (
+        "After reset, the current directory should be the work directory."
+    )
     assert observation.obs == "Reset environment", "Observation message should confirm the environment reset."
 
 
@@ -166,9 +164,9 @@ def test_change_dir_valid_subdirectory(terminal_env, temp_work_dir):
     valid_subdir = os.path.join(temp_work_dir, "valid_subdir")
     os.makedirs(valid_subdir)
     terminal_env.change_dir(path=valid_subdir)
-    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(
-        valid_subdir
-    ), "The current directory should be the new valid subdirectory."
+    assert os.path.realpath(terminal_env.current_dir) == os.path.realpath(valid_subdir), (
+        "The current directory should be the new valid subdirectory."
+    )
 
 
 def test_change_dir_invalid_subdirectory(terminal_env):
@@ -176,9 +174,9 @@ def test_change_dir_invalid_subdirectory(terminal_env):
     invalid_subdir = "/invalid/path"
     with pytest.raises(ValueError):
         terminal_env.change_dir(path=invalid_subdir)
-    assert (
-        terminal_env.current_dir == terminal_env.work_dir
-    ), "The current directory should remain the original work directory after a failed change."
+    assert terminal_env.current_dir == terminal_env.work_dir, (
+        "The current directory should remain the original work directory after a failed change."
+    )
 
 
 def test_change_dir_to_nonexistent_directory(terminal_env):
@@ -196,9 +194,9 @@ def test_change_dir_to_non_subdirectory(terminal_env, temp_work_dir):
     os.makedirs(non_subdir, exist_ok=True)
     with pytest.raises(ValueError) as excinfo:
         terminal_env.change_dir(path=non_subdir)
-    assert "not a subdirectory of the working directory" in str(
-        excinfo.value
-    ), "Should raise an error for non-subdirectories"
+    assert "not a subdirectory of the working directory" in str(excinfo.value), (
+        "Should raise an error for non-subdirectories"
+    )
 
 
 def test_change_dir_to_different_drive(terminal_env):
@@ -209,6 +207,6 @@ def test_change_dir_to_different_drive(terminal_env):
     if os.path.exists(different_drive_path):
         with pytest.raises(ValueError) as excinfo:
             terminal_env.change_dir(path=different_drive_path)
-        assert "not a subdirectory of the working directory" in str(
-            excinfo.value
-        ), "Should raise an error for directories on different drives"
+        assert "not a subdirectory of the working directory" in str(excinfo.value), (
+            "Should raise an error for directories on different drives"
+        )

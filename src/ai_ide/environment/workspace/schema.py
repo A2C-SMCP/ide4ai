@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: schema.py
 # @Time    : 2024/4/18 11:40
 # @Author  : JQQ
@@ -6,13 +5,12 @@
 # @Software: PyCharm
 import dataclasses
 import struct
+from collections.abc import Callable, Iterator
 from enum import Enum
 from functools import total_ordering
 from typing import (
     Annotated,
     Any,
-    Callable,
-    Iterator,
     Literal,
     NamedTuple,
     NoReturn,
@@ -337,7 +335,7 @@ class SearchResult(BaseModel):
     # The range of the search result.
     range: Range
     # The matching text if capture_matches is True.
-    match: Optional[str] = None
+    match: str | None = None
 
     def __repr__(self) -> str:
         return f"SearchResult: {self.match}.\n\tRange Scope: {repr(self.range)}"
@@ -352,14 +350,14 @@ class SingleEditOperation(BaseModel):
         title="编辑范围",
         description="The range to replace. This can be empty to emulate a simple insert.",
     )
-    text: Optional[str] = Field(
+    text: str | None = Field(
         title="替换文本",
         description="The text to replace with. This can be empty to emulate a simple delete.",
     )
     # This indicates that this operation has "insert" semantics. i.e. forceMoveMarkers = true => if range is collapsed,
     # all markers at the position will be moved. | 这个操作具有"插入"的语义。也就是说，当 forceMoveMarkers = true 时，如果范围
     # （range）已经折叠（即开始和结束位置相同），那么所有位于该位置的标记都将被移动。
-    force_move_markers: Optional[bool] = Field(
+    force_move_markers: bool | None = Field(
         default=False,
         title="强制移动标记",
         description="Whether to force moving the cursor markers, even if the edit is a no-op.",
@@ -372,14 +370,14 @@ class IdentifiedSingleEditOperation(SingleEditOperation):
     """
 
     # TODO: 如果注释掉text与force_move_markers字段，会引起mypy的递归判断，这个问题比较奇怪，可能是mypy的问题。需要进一步确认
-    text: Optional[str] = Field(
+    text: str | None = Field(
         title="替换文本",
         description="The text to replace with. This can be empty to emulate a simple delete.",
     )
     # This indicates that this operation has "insert" semantics. i.e. forceMoveMarkers = true => if range is collapsed,
     # all markers at the position will be moved. | 这个操作具有"插入"的语义。也就是说，当 forceMoveMarkers = true 时，如果范围
     # （range）已经折叠（即开始和结束位置相同），那么所有位于该位置的标记都将被移动。
-    force_move_markers: Optional[bool] = Field(
+    force_move_markers: bool | None = Field(
         default=False,
         title="强制移动标记",
         description="Whether to force moving the cursor markers, even if the edit is a no-op.",
@@ -396,7 +394,7 @@ class IdentifiedSingleEditOperation(SingleEditOperation):
 class FindMatch(BaseModel):
     range: Range  # Specify the correct type based on what 'range' is expected to be in your application
     matches: list[Any]  # Specify the correct type based on what 'matches' typically contains
-    _findMatchBrand: Optional[Any] = PrivateAttr(
+    _findMatchBrand: Any | None = PrivateAttr(
         None
     )  # Use 'Optional' to indicate this can be undefined, similar to TypeScript's 'undefined'
 
@@ -585,7 +583,7 @@ class ModelContentChangedEvent:
     is_eol_change: bool
 
 
-CursorStateComputer: TypeAlias = Callable[[Optional[list[Range]]], Optional[list[Range]]]
+CursorStateComputer: TypeAlias = Callable[[list[Range] | None], list[Range] | None]
 
 
 class DefaultEndOfLine(Enum):
@@ -618,7 +616,7 @@ class TextModelResolvedOptions:
     insert_spaces: bool
     default_eol: DefaultEndOfLine
     trim_auto_whitespace: bool
-    _text_model_resolved_options_brand: Optional[Callable] = None
+    _text_model_resolved_options_brand: Callable | None = None
 
     @property
     def original_indent_size(self) -> int | Literal["tabSize"]:
@@ -699,8 +697,8 @@ class ModelProtocol(Protocol):
 
     def get_value(
         self,
-        eol: Optional[EndOfLinePreference] = None,
-        preserve_bom: Optional[bool] = None,
+        eol: EndOfLinePreference | None = None,
+        preserve_bom: bool | None = None,
     ) -> str:
         """
         Get the entire text buffer value contained in this model. | 获取此模型中包含的整个文本缓冲区值。
@@ -722,7 +720,7 @@ class ModelProtocol(Protocol):
         """
         ...
 
-    def create_snapshot(self, preserve_bom: Optional[bool] = None) -> Iterator[str]:
+    def create_snapshot(self, preserve_bom: bool | None = None) -> Iterator[str]:
         """
         Get the text stored in this model.
 
@@ -736,8 +734,8 @@ class ModelProtocol(Protocol):
 
     def get_value_length(
         self,
-        eol: Optional[EndOfLinePreference] = None,
-        preserve_bom: Optional[bool] = None,
+        eol: EndOfLinePreference | None = None,
+        preserve_bom: bool | None = None,
     ) -> int:
         """
         Get the length of the text stored in this model.
@@ -752,7 +750,7 @@ class ModelProtocol(Protocol):
         """
         ...
 
-    def get_value_in_range(self, t_range: Range, eol: Optional[EndOfLinePreference]) -> str:
+    def get_value_in_range(self, t_range: Range, eol: EndOfLinePreference | None) -> str:
         """
         Get the text stored in this model by the given range.
 
@@ -766,7 +764,7 @@ class ModelProtocol(Protocol):
         """
         ...
 
-    def get_value_length_in_range(self, t_range: Range, eol: Optional[EndOfLinePreference]) -> int:
+    def get_value_length_in_range(self, t_range: Range, eol: EndOfLinePreference | None) -> int:
         """
         Get the length of the text stored in this model by the given range.
 
@@ -780,7 +778,7 @@ class ModelProtocol(Protocol):
         """
         ...
 
-    def get_character_count_in_range(self, t_range: Range, eol: Optional[EndOfLinePreference]) -> int:
+    def get_character_count_in_range(self, t_range: Range, eol: EndOfLinePreference | None) -> int:
         """
         Get the character count in the given range.
 
@@ -983,9 +981,9 @@ class ModelProtocol(Protocol):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
         Find all matches of the search string in the model.
@@ -1011,9 +1009,9 @@ class ModelProtocol(Protocol):
         search_mode: bool | Range | list[Range],
         is_regex: bool,
         match_case: bool,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-    ) -> Optional[Range]:
+    ) -> Range | None:
         """
         Find the next match of the search string in the model.
 
@@ -1038,9 +1036,9 @@ class ModelProtocol(Protocol):
         search_mode: bool | Range | list[Range],
         is_regex: bool,
         match_case: bool,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-    ) -> Optional[Range]:
+    ) -> Range | None:
         """
         Find the previous match of the search string in the model.
 
@@ -1067,7 +1065,7 @@ class ModelProtocol(Protocol):
         """
         ...
 
-    def get_word_at_position(self, position: Position) -> Optional[WordAtPosition]:
+    def get_word_at_position(self, position: Position) -> WordAtPosition | None:
         """
         Get the word under or besides position.
 
@@ -1136,10 +1134,10 @@ class ModelProtocol(Protocol):
 
     def push_edit_operations(
         self,
-        before_cursor_state: Optional[list[Range]],
+        before_cursor_state: list[Range] | None,
         edit_operations: list[SingleEditOperation],
         cursorStateComputer: CursorStateComputer,
-    ) -> Optional[list[Range]]:
+    ) -> list[Range] | None:
         """
         Push edit operations, basically editing the model. This is the preferred way of editing the model. The edit
         operations will land on the undo stack.
@@ -1169,8 +1167,8 @@ class ModelProtocol(Protocol):
     def apply_edits(
         self,
         operations: list[SingleEditOperation],
-        computeUndoEdits: Optional[bool] = None,
-    ) -> Optional[list[TextEdit]]:
+        computeUndoEdits: bool | None = None,
+    ) -> list[TextEdit] | None:
         """
         Edit the model without adding the edits to the undo stack. This can have dire consequences on the undo stack!
         See @push_edit_operations for the preferred way.
@@ -1320,7 +1318,7 @@ class TextDocumentProtocol(Protocol):
         """
         raise NotImplementedError
 
-    def get_text(self, t_range: Optional[Range]) -> str:
+    def get_text(self, t_range: Range | None) -> str:
         """
         Get the text of this document. A substring can be retrieved by providing a range.
 

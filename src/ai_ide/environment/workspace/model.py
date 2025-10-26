@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: model.py
 # @Time    : 2024/4/18 12:25
 # @Author  : JQQ
@@ -8,8 +7,9 @@ import copy
 import math
 import re
 import uuid
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Callable, Iterator, Literal, Optional, Sequence, cast
+from typing import Literal, cast
 
 from cachetools import LRUCache
 from jinja2 import Template
@@ -117,8 +117,8 @@ class TextModel(ModelProtocol):
     def __init__(
         self,
         language_id: LanguageId,
-        creation_options: Optional[dict] = None,
-        uri: Optional[AnyUrl] = None,
+        creation_options: dict | None = None,
+        uri: AnyUrl | None = None,
         view_template: str = DEFAULT_VIEW_TEMPLATE,
         simple_view_template: str = DEFAULT_SIMPLE_VIEW_TEMPLATE,
         auto_save_during_dispose: bool = True,
@@ -264,7 +264,7 @@ class TextModel(ModelProtocol):
             self._content = [""]
         self._increase_version_id()
 
-    def save(self, path: Optional[FilePath] = None) -> None:
+    def save(self, path: FilePath | None = None) -> None:
         """
         将 self._content 中的内容写入到文件
 
@@ -305,8 +305,8 @@ class TextModel(ModelProtocol):
 
     def get_value(
         self,
-        eol: Optional[EndOfLinePreference] = EndOfLinePreference.TEXT_DEFINED,
-        preserve_bom: Optional[bool] = False,
+        eol: EndOfLinePreference | None = EndOfLinePreference.TEXT_DEFINED,
+        preserve_bom: bool | None = False,
     ) -> str:
         """
         Get the entire text buffer value contained in this model. | 获取此模型中包含的整个文本缓冲区值。
@@ -335,13 +335,13 @@ class TextModel(ModelProtocol):
             return self.__bom + full_value
         return full_value
 
-    def create_snapshot(self, preserve_bom: Optional[bool] = None) -> Iterator[str]:
+    def create_snapshot(self, preserve_bom: bool | None = None) -> Iterator[str]:
         raise NotImplementedError
 
     def get_value_length(
         self,
-        eol: Optional[EndOfLinePreference] = None,
-        preserve_bom: Optional[bool] = None,
+        eol: EndOfLinePreference | None = None,
+        preserve_bom: bool | None = None,
     ) -> int:
         """
         Get the length of the text stored in this model.
@@ -364,7 +364,7 @@ class TextModel(ModelProtocol):
     def get_value_in_range(
         self,
         t_range: Range,
-        eol: Optional[EndOfLinePreference] = EndOfLinePreference.TEXT_DEFINED,
+        eol: EndOfLinePreference | None = EndOfLinePreference.TEXT_DEFINED,
     ) -> str:
         """
         Get the text stored in this model by the given range.
@@ -398,7 +398,7 @@ class TextModel(ModelProtocol):
             value = value.replace(content_eol, line_ending)
         return value
 
-    def get_value_length_in_range(self, t_range: Range, eol: Optional[EndOfLinePreference]) -> int:
+    def get_value_length_in_range(self, t_range: Range, eol: EndOfLinePreference | None) -> int:
         """
         Get the length of the text stored in this model by the given range.
 
@@ -623,9 +623,9 @@ class TextModel(ModelProtocol):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
             Search for matches in the model based on the provided search string and parameters.
@@ -715,7 +715,7 @@ class TextModel(ModelProtocol):
         search_string: str,
         match_case: bool,
         capture_matches: bool,
-        limit_result_count: Optional[int],
+        limit_result_count: int | None,
     ) -> list[SearchResult]:
         """
         Args:
@@ -792,9 +792,9 @@ class TextModel(ModelProtocol):
         search_mode: bool | Range | list[Range],
         is_regex: bool,
         match_case: bool,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-    ) -> Optional[Range]:
+    ) -> Range | None:
         raise NotImplementedError
 
     def find_previous_match(
@@ -804,12 +804,12 @@ class TextModel(ModelProtocol):
         search_mode: bool | Range | list[Range],
         is_regex: bool,
         match_case: bool,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = False,
-    ) -> Optional[Range]:
+    ) -> Range | None:
         raise NotImplementedError
 
-    def get_word_at_position(self, position: Position) -> Optional[WordAtPosition]:
+    def get_word_at_position(self, position: Position) -> WordAtPosition | None:
         """
         Get the word under or besides position.
 
@@ -854,10 +854,10 @@ class TextModel(ModelProtocol):
 
     def push_edit_operations(
         self,
-        before_cursor_state: Optional[list[Range]],
+        before_cursor_state: list[Range] | None,
         edit_operations: list[SingleEditOperation],
         cursorStateComputer: CursorStateComputer,
-    ) -> Optional[list[Range]]:
+    ) -> list[Range] | None:
         raise NotImplementedError
 
     def set_eol(self, eol: EndOfLineSequence) -> None:
@@ -877,7 +877,7 @@ class TextModel(ModelProtocol):
         """
         return "\n" if self.__eol == EndOfLineSequence.LF else "\r\n"
 
-    def get_eol_by_preference(self, eol: Optional[EndOfLinePreference]) -> Literal["\r\n", "\n"]:
+    def get_eol_by_preference(self, eol: EndOfLinePreference | None) -> Literal["\r\n", "\n"]:
         """
         通过指定的EndOfLinePreference获取行尾字符。
 
@@ -1082,8 +1082,8 @@ class TextModel(ModelProtocol):
     def apply_edits(
         self,
         operations: list[SingleEditOperation],
-        compute_undo_edits: Optional[bool] = None,
-    ) -> Optional[list[TextEdit]]:
+        compute_undo_edits: bool | None = None,
+    ) -> list[TextEdit] | None:
         """
         Edit the model without adding the edits to the undo stack. This can have dire consequences on the undo stack!
         See @push_edit_operations for the preferred way.
@@ -1102,8 +1102,8 @@ class TextModel(ModelProtocol):
     def __apply_edits(
         self,
         raw_operations: list[IdentifiedSingleEditOperation],
-        compute_undo_edits: Optional[bool] = None,
-    ) -> Optional[list[TextEdit]]:
+        compute_undo_edits: bool | None = None,
+    ) -> list[TextEdit] | None:
         """
         Apply the edits to the model.
 
@@ -1157,7 +1157,9 @@ class TextModel(ModelProtocol):
                     "is_auto_whitespace_edit": op.is_auto_whitespace_edit,
                 }
             )
-        operations.sort(key=lambda x: x["range"], reverse=True)  # Python自带的sorted方法与 .sort() 均是稳定排序，即相等的元素排序前后的顺序不变
+        operations.sort(
+            key=lambda x: x["range"], reverse=True
+        )  # Python自带的sorted方法与 .sort() 均是稳定排序，即相等的元素排序前后的顺序不变
         has_touching_ranges: bool = False  # 是否有相邻的Range操作恰好有相连但无交集
         count = len(operations) - 1
         for i in range(count):
@@ -1466,7 +1468,7 @@ class TextModel(ModelProtocol):
             key (str): The key of the cursor.
         """
         self._assert_not_disposed()
-        near_range: Optional[Range] = None
+        near_range: Range | None = None
         if key in self.cursors:
             near_range = Range(
                 start_position=Position(max(self.cursors[key].position.line - 5, 1), 1),
@@ -1488,7 +1490,7 @@ class TextModel(ModelProtocol):
             self.cursors["primary"] = Cursor(key="primary", position=Position(1, 1))
         return self.get_view()
 
-    def get_simple_view(self, content_range: Optional[Range] = None) -> str:
+    def get_simple_view(self, content_range: Range | None = None) -> str:
         """
         Get a simple view of the content.
 
@@ -1515,7 +1517,7 @@ class TextModel(ModelProtocol):
         finally:
             self._content = content_bak
 
-    def get_view(self, with_line_num: bool = True, content_range: Optional[Range] = None) -> str:
+    def get_view(self, with_line_num: bool = True, content_range: Range | None = None) -> str:
         """
         获取当前视图，与get_value的区别在于，视图会带上光标信息与一些提示信息。方便大模型进行理解相对位置。
 
@@ -1580,7 +1582,7 @@ class TextModel(ModelProtocol):
         return self.get_eol().join(content_list)
 
     def get_render(
-        self, jinja: str, with_line_num: bool = True, content_range: Optional[Range] = None, with_cursor: bool = True
+        self, jinja: str, with_line_num: bool = True, content_range: Range | None = None, with_cursor: bool = True
     ) -> str:
         """
         获取当前内容按Jinja模板渲染后的结果。
@@ -1636,7 +1638,7 @@ class TextModel(ModelProtocol):
         finally:
             self._content = content_bak
 
-    def get_character_count_in_range(self, t_range: Range, eol: Optional[EndOfLinePreference]) -> int:
+    def get_character_count_in_range(self, t_range: Range, eol: EndOfLinePreference | None) -> int:
         """
         TODO 此函数未经测试
         Get the character count in the given range.

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: schema.py
 # @Time    : 2024/4/16 18:57
 # @Author  : JQQ
@@ -6,10 +5,9 @@
 # @Software: PyCharm
 import datetime
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, Json
-from typing_extensions import Annotated
 
 ACTION_CATEGORY_MAP: dict[int, str] = {
     0: "terminal",
@@ -53,7 +51,7 @@ TERMINAL_ACTIONS: set[str] = set()
 
 ACTIONS: set[str] = TEXT_DOCUMENT_ACTIONS | WORKSPACE_ACTIONS | LSP_ACTIONS | TERMINAL_ACTIONS
 
-ACTION_NAME_MAP: dict[int, str] = {index: action for index, action in enumerate(ACTIONS)}
+ACTION_NAME_MAP: dict[int, str] = dict(enumerate(ACTIONS))
 
 
 class IDEObs(BaseModel):
@@ -70,7 +68,7 @@ class IDEObs(BaseModel):
         pattern=r"^(19|20)\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) (0[0-9]|1[0-9]|2[0-3]):([0-5][0-9]):"
         "([0-5][0-9])$",
     )
-    obs: Optional[str] = Field(
+    obs: str | None = Field(
         default=None,
         title="观察内容",
         description="当前观察的内容",
@@ -93,7 +91,9 @@ class IDEAction(BaseModel):
     ] = Field(title="动作类别", description="动作的类别，是终端动作还是工作区动作", frozen=True)
 
     action_name: Annotated[str, BeforeValidator(lambda s: s if isinstance(s, str) else ACTION_NAME_MAP[s])] = Field(
-        title="动作名称", description="一般是指命令行命令的名称，比如grep，或者可执行的工具名称，比如insert", frozen=True
+        title="动作名称",
+        description="一般是指命令行命令的名称，比如grep，或者可执行的工具名称，比如insert",
+        frozen=True,
     )
 
     action_args: dict | Json[Any] | list[str] | str | None = Field(

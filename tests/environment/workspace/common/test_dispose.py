@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_dispose.py
 # @Time    : 2024/4/19 10:30
 # @Author  : JQQ
@@ -7,7 +6,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from tfrobot.drive.tool.ides.environment.workspace.common import dispose
 from tfrobot.drive.tool.ides.environment.workspace.common.dispose import (
     Disposable,

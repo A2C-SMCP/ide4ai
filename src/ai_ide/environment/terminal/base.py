@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: terminal_env.py
 # @Time    : 2024/4/16 15:10
 # @Author  : JQQ
@@ -6,7 +5,7 @@
 # @Software: PyCharm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 
 import gymnasium as gym
 from simple_parsing.helpers import FrozenSerializable  # type: ignore
@@ -23,7 +22,7 @@ class EnvironmentArguments(FrozenSerializable):
 
     image_name: str
     split: str = "dev"
-    container_name: Optional[str] = None
+    container_name: str | None = None
     install_environment: bool = True
     timeout: int = 35
     verbose: bool = False

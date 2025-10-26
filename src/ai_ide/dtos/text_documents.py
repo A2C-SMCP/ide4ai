@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: text_documents.py
 # @Time    : 2024/4/29 14:36
 # @Author  : JQQ

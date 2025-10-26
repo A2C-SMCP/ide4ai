@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 # filename: word_character_classifier.py
 # @Time    : 2024/5/6 18:07
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Optional
 
 import regex as re
 from cachetools import LRUCache
@@ -52,7 +50,7 @@ class WordCharacterClassifier(CharacterClassifier):
         self.set(32, 1)  # Space
         self.set(9, 1)  # Tab
 
-    def _create_segmenter(self) -> Optional[re.Pattern]:
+    def _create_segmenter(self) -> re.Pattern | None:
         """
         请注意，这里没有使用NLTK或者spaCy等第三方库进行更精细的分词，而是使用了Python内置的re库来实现简单的分词。
         因此这里是有改进空间的
@@ -65,7 +63,7 @@ class WordCharacterClassifier(CharacterClassifier):
             return re.compile(pattern)
         return None
 
-    def find_prev_word_before_or_at_offset(self, line: str, offset: int) -> Optional[str]:
+    def find_prev_word_before_or_at_offset(self, line: str, offset: int) -> str | None:
         if not self._segmenter:
             return None
         segments = self._segmenter.finditer(line)
@@ -76,7 +74,7 @@ class WordCharacterClassifier(CharacterClassifier):
             last_valid = match.group()
         return last_valid
 
-    def find_next_word_at_or_after_offset(self, line_content: str, offset: int) -> Optional[str]:
+    def find_next_word_at_or_after_offset(self, line_content: str, offset: int) -> str | None:
         if not self._segmenter:
             return None
         segments = self._segmenter.finditer(line_content)

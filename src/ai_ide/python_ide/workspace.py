@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: workspace.py
 # @Time    : 2024/4/30 17:08
 # @Author  : JQQ
@@ -8,7 +7,8 @@ import datetime
 import json
 import os
 import subprocess
-from typing import Any, Callable, Optional, Sequence, SupportsFloat
+from collections.abc import Callable, Sequence
+from typing import Any, SupportsFloat
 
 from pydantic import AnyUrl, ValidationError
 
@@ -23,6 +23,7 @@ from ai_ide.environment.workspace.schema import (
     SingleEditOperation,
     TextEdit,
 )
+from ai_ide.exceptions import IDEExecutionError
 from ai_ide.python_ide.const import (
     DEFAULT_CAPABILITY,
     DEFAULT_SYMBOL_VALUE_SET,
@@ -36,7 +37,6 @@ from ai_ide.schema import (
     LanguageId,
 )
 from ai_ide.utils import list_directory_tree, render_symbols
-from ai_ide.exceptions import IDEExecutionError
 
 
 def default_python_header_generator(workspace: BaseWorkspace, file_path: str) -> str:
@@ -65,7 +65,7 @@ class PyWorkspace(BaseWorkspace):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         if self.header_generators is None:
-            self.header_generators: dict[str, Callable[["BaseWorkspace", str], str]] = {
+            self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] = {
                 ".py": default_python_header_generator,
             }
 
@@ -116,8 +116,8 @@ class PyWorkspace(BaseWorkspace):
         if res:
             try:
                 res_json = LSPResponseMessage.model_validate(json.loads(res))
-            except json.JSONDecodeError:  # pragma: no cover
-                raise ValueError(f"初始化LSP服务失败，返回结果无法解析为json: {res}")  # pragma: no cover
+            except json.JSONDecodeError as e:  # pragma: no cover
+                raise ValueError(f"初始化LSP服务失败，返回结果无法解析为json: {res}") from e  # pragma: no cover
             if res_json.error:
                 raise ValueError(f"初始化LSP服务失败: {res_json.error}")  # pragma: no cover
             self.send_lsp_msg("initialized")
@@ -231,7 +231,9 @@ class PyWorkspace(BaseWorkspace):
                                 )
                             )
                         apply_result: str = (
-                            "编辑成功。如果有回滚需求，可以按下面的回滚操作执行。" + "\n".join([repr(e) for e in res]) if res else ""
+                            "编辑成功。如果有回滚需求，可以按下面的回滚操作执行。" + "\n".join([repr(e) for e in res])
+                            if res
+                            else ""
                         )
                         if content_after_edit:
                             apply_result += "\n编辑后的代码如下（仅返回编辑位置附近的代码。如果想看全部，可以使用read_file工具查看）:\n"
@@ -350,7 +352,7 @@ class PyWorkspace(BaseWorkspace):
                         return (
                             IDEObs(
                                 obs="文件创建成功。\n"
-                                + f"当前文件内容如下(IDE会自动初始化部分内容):\n{self.read_file(uri = str(create_model.uri), with_line_num = True)}\n"
+                                + f"当前文件内容如下(IDE会自动初始化部分内容):\n{self.read_file(uri=str(create_model.uri), with_line_num=True)}\n"
                                 if create_model.get_value()
                                 else "文件创建成功"
                             ).model_dump(),
@@ -399,7 +401,16 @@ class PyWorkspace(BaseWorkspace):
                     return IDEObs(obs=inspect_res).model_dump(), 100, True, True, {}
                 except Exception as e:
                     return IDEObs(obs=str(e)).model_dump(), 0, True, False, {}
-            case "get_definition_and_implementation" | "hover" | "find_in_workspace" | "replace_in_workspace" | "create_files" | "delete_files" | "rename_file" | "delete_file":  # type: ignore
+            case (
+                "get_definition_and_implementation"
+                | "hover"
+                | "find_in_workspace"
+                | "replace_in_workspace"
+                | "create_files"
+                | "delete_files"
+                | "rename_file"
+                | "delete_file"
+            ):  # type: ignore
                 raise NotImplementedError(f"Action: {ide_action.action_name} 尚未实现")
             case _:
                 raise ValueError(f"不支持的动作 {ide_action.action_name}")  # pragma: no cover
@@ -477,7 +488,7 @@ class PyWorkspace(BaseWorkspace):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> Optional[list[TextEdit]]:
+    ) -> list[TextEdit] | None:
         """
         Apply edits to a file in the workspace.
 
@@ -503,7 +514,7 @@ class PyWorkspace(BaseWorkspace):
             ]
         except ValidationError as e:
             err_info = f"编辑操作参数错误，具体报错如下:\n{e}\n这类错误经常由Range范围引起，在当前工作区内Range与Position均是1-based。不要使用0基索引"
-            raise IDEExecutionError(message=err_info, detail_for_llm=err_info)
+            raise IDEExecutionError(message=err_info, detail_for_llm=err_info) from e
         res = text_model.apply_edits(model_edits, compute_undo_edits)
 
         self.send_lsp_msg(
@@ -522,8 +533,8 @@ class PyWorkspace(BaseWorkspace):
         *,
         old_uri: str,
         new_uri: str,
-        overwrite: Optional[bool] = None,
-        ignore_if_exists: Optional[bool] = None,
+        overwrite: bool | None = None,
+        ignore_if_exists: bool | None = None,
     ) -> bool:
         """
         # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前暂未实现
@@ -547,8 +558,8 @@ class PyWorkspace(BaseWorkspace):
         self,
         *,
         uri: str,
-        recursive: Optional[bool] = None,
-        ignore_if_not_exists: Optional[bool] = None,
+        recursive: bool | None = None,
+        ignore_if_not_exists: bool | None = None,
     ) -> bool:
         """
         Deletes a file from the specified URI.
@@ -582,10 +593,10 @@ class PyWorkspace(BaseWorkspace):
         self,
         *,
         uri: str,
-        init_content: Optional[str] = None,
-        overwrite: Optional[bool] = None,
-        ignore_if_exists: Optional[bool] = None,
-    ) -> Optional[TextModel]:
+        init_content: str | None = None,
+        overwrite: bool | None = None,
+        ignore_if_exists: bool | None = None,
+    ) -> TextModel | None:
         """
         Create a file at the specified URI.
 
@@ -654,7 +665,7 @@ class PyWorkspace(BaseWorkspace):
             return None  # pragma: no cover
         except Exception as e:
             # Handle other possible exceptions, such as permission errors
-            raise IOError(f"Failed to create file at {uri}: {str(e)}")
+            raise OSError(f"Failed to create file at {uri}: {str(e)}") from e
 
     def find_in_file(
         self,
@@ -664,9 +675,9 @@ class PyWorkspace(BaseWorkspace):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = True,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
         Find a query in a file in the workspace.

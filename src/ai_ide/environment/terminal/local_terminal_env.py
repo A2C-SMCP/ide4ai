@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: local_terminal_env.py
 # @Time    : 2024/4/18 10:45
 # @Author  : JQQ
@@ -10,7 +9,7 @@ import signal
 import subprocess
 import time
 from collections.abc import Iterator
-from typing import Any, ClassVar, Optional, cast
+from typing import Any, ClassVar, cast
 
 import gymnasium as gym
 from typing_extensions import SupportsFloat
@@ -34,7 +33,7 @@ class TerminalEnv(BaseTerminalEnv):
     metadata: dict[str, Any] = {"render_modes": ["ansi"]}
 
     def __init__(self, args: EnvironmentArguments, white_list: list[str], work_dir: str):
-        super(TerminalEnv, self).__init__()
+        super().__init__()
         self.args = args
         self.white_list = white_list
         if os.path.exists(work_dir) and os.path.isdir(work_dir):
@@ -128,7 +127,7 @@ class TerminalEnv(BaseTerminalEnv):
             obs_str += yield_obs_str
         return IDEObs(obs=obs_str).model_dump(), 100.0, done, success, {}
 
-    def run(self, *, cmd: str, args: Optional[list[str]] = None) -> int:
+    def run(self, *, cmd: str, args: list[str] | None = None) -> int:
         """
         运行命令
 
@@ -328,8 +327,10 @@ class TerminalEnv(BaseTerminalEnv):
                     self.current_dir = real_path
                 else:
                     raise ValueError(f"The path {path} is not a subdirectory of the working directory {self.work_dir}.")
-            except ValueError:
+            except ValueError as e:
                 # commonpath 抛出 ValueError 如果路径列表为空或路径不在同一个驱动器上
-                raise ValueError(f"The path {path} is not a subdirectory of the working directory {self.work_dir}.")
+                raise ValueError(
+                    f"The path {path} is not a subdirectory of the working directory {self.work_dir}."
+                ) from e
         else:
             raise ValueError(f"Invalid path: {path}")

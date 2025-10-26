@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # filename: utils.py
 # @Time    : 2024/5/8 17:24
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 from ai_ide.dtos.text_documents import LSPRange
 from ai_ide.environment.workspace.schema import Range
@@ -83,7 +82,7 @@ def render_symbols(symbols: list[dict], render_symbol_kind: list[int], indent: i
 
 def list_directory_tree(
     path: str,
-    include_dirs: Optional[list[str] | set[str] | Literal["all"]] = None,
+    include_dirs: list[str] | set[str] | Literal["all"] | None = None,
     recursive: bool = True,
     indent: str = "",
 ) -> str:

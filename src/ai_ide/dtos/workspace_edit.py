@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 # filename: workspace_edit.py
 # @Time    : 2024/4/29 15:23
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,12 +25,12 @@ class LSPWorkspaceEdit(BaseModel):
     the latter are preferred over changes.
     """
 
-    changes: Optional[dict[str, list[LSPTextEdit]]] = None
+    changes: dict[str, list[LSPTextEdit]] | None = None
 
-    documentChanges: Optional[
-        list[LSPTextDocumentEdit] | list[LSPTextDocumentEdit | LSPCreateFile | LSPRenameFile | LSPDeleteFile]
-    ] = None
+    documentChanges: (
+        list[LSPTextDocumentEdit] | list[LSPTextDocumentEdit | LSPCreateFile | LSPRenameFile | LSPDeleteFile] | None
+    ) = None
 
-    change_annotations: Optional[dict[str, LSPChangeAnnotation]] = Field(
+    change_annotations: dict[str, LSPChangeAnnotation] | None = Field(
         default=None, validation_alias="changeAnnotations"
     )

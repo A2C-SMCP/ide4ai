@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_model.py
 # @Time    : 2024/4/26 13:21
 # @Author  : JQQ
@@ -9,7 +8,6 @@ from unittest.mock import mock_open, patch
 
 import pytest
 from pydantic import AnyUrl
-
 from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
 from tfrobot.drive.tool.ides.environment.workspace.schema import (
     EndOfLinePreference,
@@ -543,7 +541,7 @@ def test_insert(python_text_model, initial_content, insert_text, position, expec
 def test_get_view(python_text_model, cursor_position, cursor_key, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:
@@ -582,7 +580,7 @@ def test_get_view(python_text_model, cursor_position, cursor_key, expected_outpu
 def test_get_simple_view(python_text_model, cursor_position, cursor_key, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:
@@ -622,7 +620,7 @@ def test_get_simple_view(python_text_model, cursor_position, cursor_key, expecte
 def test_get_render(python_text_model, cursor_position, cursor_key, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:
@@ -675,7 +673,7 @@ def test_get_render(python_text_model, cursor_position, cursor_key, expected_out
 def test_get_render_without_cursor(python_text_model, cursor_position, cursor_key, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:
@@ -723,7 +721,7 @@ def test_get_render_without_cursor(python_text_model, cursor_position, cursor_ke
 def test_get_render_without_cursor_and_line_num(python_text_model, cursor_position, cursor_key, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:
@@ -779,7 +777,7 @@ def test_get_render_without_cursor_and_line_num(python_text_model, cursor_positi
 def test_get_view_advanced(python_text_model, cursor_position, cursor_key, content_range, expected_output):
     # Setup model with a cursor
     if isinstance(cursor_position, list):
-        for pos, key in zip(cursor_position[::2], cursor_position[1::2]):
+        for pos, key in zip(cursor_position[::2], cursor_position[1::2], strict=False):
             position = Position(line=pos[0], character=pos[1])
             python_text_model.insert_cursor(key, position)
     else:

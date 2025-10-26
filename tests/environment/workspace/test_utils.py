@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_utils.py
 # @Time    : 2024/4/25 18:39
 # @Author  : JQQ
@@ -9,7 +8,6 @@ from pathlib import Path, PurePath
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-
 from tfrobot.drive.tool.ides.environment.workspace.schema import EndOfLineSequence
 from tfrobot.drive.tool.ides.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
@@ -88,7 +86,7 @@ def test_detect_newline_with_mixed_newlines():
 
 def test_detect_newline_raises_ioerror():
     # 模拟打开文件时的 IOError
-    with patch("builtins.open", side_effect=IOError("Failed to open")):
+    with patch("builtins.open", side_effect=OSError("Failed to open")):
         with pytest.raises(ValueError) as excinfo:
             detect_newline_type(Path("/fake/path"))
         assert "Error reading file" in str(excinfo.value)
@@ -162,7 +160,7 @@ def test_non_utf8_encoded_file_raises():
 
 def test_is_high_surrogate_with_high_surrogate():
     # 测试一个高代理字符
-    char = "\uD800"  # 高代理字符的起始码点
+    char = "\ud800"  # 高代理字符的起始码点
     assert is_high_surrogate(char) is True
 
 
@@ -174,7 +172,7 @@ def test_is_high_surrogate_with_not_high_surrogate():
 
 def test_is_high_surrogate_with_low_surrogate():
     # 测试一个低代理字符
-    char = "\uDC00"  # 低代理字符的起始码点
+    char = "\udc00"  # 低代理字符的起始码点
     assert is_high_surrogate(char) is False
 
 
@@ -474,7 +472,7 @@ def test_detect_newline_type_access_error():
 
 def test_detect_newline_type_with_crlf_char():
     with tempfile.NamedTemporaryFile() as tmp:
-        tmp.write("Hello,一般来讲，Windows的文件系统使用'\\r\\n'来换行\nWorld\n".encode("utf-8"))
+        tmp.write("Hello,一般来讲，Windows的文件系统使用'\\r\\n'来换行\nWorld\n".encode())
         tmp_path = Path(tmp.name)
         tmp.flush()
         assert detect_newline_type(tmp_path) == EndOfLineSequence.LF

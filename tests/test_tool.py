@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_tool.py
 # @Time    : 2024/6/18 13:28
 # @Author  : JQQ
@@ -6,12 +5,12 @@
 # @Software: PyCharm
 import os
 import tempfile
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 from unittest import mock
 
 import pytest
 from pydantic import AnyUrl
-
 from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
 from tfrobot.drive.tool.ides.schema import LanguageId
 from tfrobot.drive.tool.ides.tool import (
@@ -81,7 +80,7 @@ def test_apply_edit(mock_text_model) -> None:
     dir_path = os.path.dirname(file_path)
     apply_edit_tool = PyIDEApplyEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": [edit.model_dump()]})
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert content == "test\n"
 
@@ -101,14 +100,14 @@ def test_apply_edit_delete(mock_text_model) -> None:
     dir_path = os.path.dirname(file_path)
 
     # 预先确认文件内容
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_before = f.read()
     assert content_before == "hello world\n"
 
     apply_edit_tool = PyIDEApplyEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": [edit.model_dump()]})
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_after = f.read()
     assert content_after == ""
 
@@ -126,7 +125,7 @@ def test_apply_simple_edit(mock_text_model) -> None:
     dir_path = os.path.dirname(file_path)
     apply_edit_tool = PyIDEApplySimpleEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": [edit.model_dump()]})
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
         assert content == "test\n"
 
@@ -140,14 +139,14 @@ def test_apply_simple_edit_delete(mock_text_model) -> None:
     file_path = str(mock_text_model.uri)[7:]
     dir_path = os.path.dirname(file_path)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_before = f.read()
     assert content_before == "hello world\n"
 
     apply_edit_tool = PyIDEApplySimpleEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": [edit.model_dump()]})
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_after = f.read()
     assert content_after == ""
 
@@ -168,7 +167,7 @@ def test_apply_simple_edit_out_of_bound(mock_multiline_text_model) -> None:
     apply_edit_tool = PyIDEApplySimpleEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_multiline_text_model.uri), "edits": [edit.model_dump()]})
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         content_after = f.read()
     # 预期整个文件被替换为新内容
     assert content_after == "new content\n"
@@ -181,14 +180,14 @@ def test_apply_edit_no_edits(mock_text_model) -> None:
     file_path = str(mock_text_model.uri)[7:]
     dir_path = os.path.dirname(file_path)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         original_content = f.read()
 
     apply_edit_tool = PyIDEApplyEdit(root_dir=dir_path, project_name="test")
     # 无编辑操作
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": []})
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_after = f.read()
     # 因为目前版本的IDE在自动保存后，会自动移除最后一行空格。这一行为是IDE实现的行为，因此测试对其兼容。如果想修复，需要IDE添加相应的Lint Format能力。
     assert content_after.rstrip("\n") == original_content.rstrip("\n"), "File content should remain unchanged."
@@ -201,13 +200,13 @@ def test_apply_simple_edit_no_edits(mock_text_model) -> None:
     file_path = str(mock_text_model.uri)[7:]
     dir_path = os.path.dirname(file_path)
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         original_content = f.read()
 
     apply_edit_tool = PyIDEApplySimpleEdit(root_dir=dir_path, project_name="test")
     apply_edit_tool.run(tool_params={"uri": str(mock_text_model.uri), "edits": []})
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content_after = f.read()
     # 因为目前版本的IDE在自动保存后，会自动移除最后一行空格。这一行为是IDE实现的行为，因此测试对其兼容。如果想修复，需要IDE添加相应的Lint Format能力。
     assert content_after.rstrip("\n") == original_content.rstrip("\n"), "File content should remain unchanged."

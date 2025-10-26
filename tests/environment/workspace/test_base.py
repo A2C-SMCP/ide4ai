@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_base.py
 # @Time    : 2024/4/30 16:30
 # @Author  : JQQ
@@ -6,12 +5,12 @@
 # @Software: PyCharm
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from json import JSONDecodeError
-from typing import Any, Optional, Sequence
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from tfrobot.drive.tool.ides.dtos.workspace_edit import LSPWorkspaceEdit
 from tfrobot.drive.tool.ides.environment.workspace.base import BaseWorkspace
 from tfrobot.drive.tool.ides.environment.workspace.schema import (
@@ -29,7 +28,7 @@ class TestWorkspace(BaseWorkspace):
         pass
 
     def __init__(self, root_dir: str = "faker_dir", project_name: str = "faker_project", *args: Any, **kwargs: Any):
-        super().__init__(root_dir=root_dir, project_name=project_name, *args, **kwargs)
+        super().__init__(*args, root_dir=root_dir, project_name=project_name, **kwargs)
 
     def _initial_lsp(self) -> None:
         pass
@@ -42,9 +41,9 @@ class TestWorkspace(BaseWorkspace):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = True,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         pass
 
@@ -54,22 +53,18 @@ class TestWorkspace(BaseWorkspace):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> Optional[list[TextEdit]]:
+    ) -> list[TextEdit] | None:
         pass
 
     def rename_file(
-        self, *, old_uri: str, new_uri: str, overwrite: Optional[bool] = None, ignore_if_exists: Optional[bool] = None
+        self, *, old_uri: str, new_uri: str, overwrite: bool | None = None, ignore_if_exists: bool | None = None
     ):
         pass
 
-    def delete_file(
-        self, *, uri: str, recursive: Optional[bool] = None, ignore_if_not_exists: Optional[bool] = None
-    ) -> bool:
+    def delete_file(self, *, uri: str, recursive: bool | None = None, ignore_if_not_exists: bool | None = None) -> bool:
         pass
 
-    def create_file(
-        self, *, uri: str, overwrite: Optional[bool] = None, ignore_if_exists: Optional[bool] = None
-    ) -> bool:
+    def create_file(self, *, uri: str, overwrite: bool | None = None, ignore_if_exists: bool | None = None) -> bool:
         pass
 
     def open_file(self, *, file_path: str) -> None:

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: utils.py
 # @Time    : 2024/4/22 12:23
 # @Author  : JQQ
@@ -9,7 +8,7 @@ import os
 import re
 import unicodedata
 from pathlib import Path
-from typing import Optional, Pattern
+from re import Pattern
 
 from ai_ide.environment.workspace.schema import EndOfLineSequence
 
@@ -37,8 +36,8 @@ def detect_newline_type(uri: Path) -> EndOfLineSequence:
                     return EndOfLineSequence.CRLF
                 elif b"\n" in content:
                     return EndOfLineSequence.LF
-    except IOError as e:
-        raise ValueError(f"Error reading file {uri}: {e}")
+    except OSError as e:
+        raise ValueError(f"Error reading file {uri}: {e}") from e
 
     # Determine the default newline based on the operating system
     if os.name == "nt":  # Windows
@@ -65,7 +64,7 @@ def read_file_with_bom_handling(path: str) -> tuple[str, list[str]]:
         raise ValueError("File size exceeds the maximum limit of 100KB.")
 
     try:
-        with open(path, "r", encoding="utf-8", newline="") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             content: list[str] = f.read().splitlines()
             if not content:
                 content = [""]  # pragma: no cover
@@ -86,10 +85,10 @@ def read_file_with_bom_handling(path: str) -> tuple[str, list[str]]:
             bom = ""
 
         return bom, content
-    except IOError as e:
-        raise ValueError(f"Error reading file {path}: {e}")  # pragma: no cover
-    except UnicodeDecodeError:
-        raise ValueError("Only UTF-8 encoded files are supported now.")
+    except OSError as e:
+        raise ValueError(f"Error reading file {path}: {e}") from e  # pragma: no cover
+    except UnicodeDecodeError as e:
+        raise ValueError("Only UTF-8 encoded files are supported now.") from e
 
 
 def is_high_surrogate(char: str) -> bool:
@@ -338,7 +337,7 @@ def first_non_whitespace_index(s: str) -> int:
     return -1
 
 
-def last_non_whitespace_index(s: str, start_index: Optional[int] = None) -> int:
+def last_non_whitespace_index(s: str, start_index: int | None = None) -> int:
     """
     Returns the last index of the string that is not whitespace.
     If the string is empty or contains only whitespaces, or the start index is out of range, returns -1.

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: docker_terminal_env.py
 # @Time    : 2024/4/18 10:45
 # @Author  : JQQ

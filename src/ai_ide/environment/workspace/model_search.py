@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # filename: model_search.py
 # @Time    : 2024/5/6 12:27
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import re
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,9 +36,9 @@ class SearchData(BaseModel):
     # The regex pattern to search for.
     regex: re.Pattern
     # The word separators to use when searching.
-    word_separators: Optional[WordCharacterClassifier] = None
+    word_separators: WordCharacterClassifier | None = None
     # The original search string if simple search is used.
-    simple_search: Optional[str] = None
+    simple_search: str | None = None
 
     model_config: ClassVar[ConfigDict] = ConfigDict(arbitrary_types_allowed=True)
 
@@ -56,9 +55,9 @@ class SearchParams(BaseModel):
     # Whether the search should be case-sensitive.
     match_case: bool = False
     # Optional string of word separators.
-    word_separators: Optional[str] = None
+    word_separators: str | None = None
 
-    def parse_search_request(self) -> Optional[SearchData]:
+    def parse_search_request(self) -> SearchData | None:
         if not self.search_string:
             return None  # pragma: no cover
 
@@ -184,7 +183,7 @@ class TextModelSearch(BaseModel):
         search_params: SearchParams,
         search_range: Range,
         capture_matches: bool,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
         Finds matches in a given model based on the specified search parameters and range.
@@ -224,7 +223,7 @@ class TextModelSearch(BaseModel):
         search_range: Range,
         regex: re.Pattern,
         capture_matches: bool,
-        limit_result_count: Optional[int],
+        limit_result_count: int | None,
     ) -> list[SearchResult]:
         # Get the start position's delta offset within the entire model content
         delta_offset = model.get_offset_at(search_range.start_position)
@@ -257,7 +256,7 @@ class TextModelSearch(BaseModel):
         search_range: Range,
         searchData: SearchData,
         capture_matches: bool,
-        limit_result_count: Optional[int],
+        limit_result_count: int | None,
     ) -> list[SearchResult]:
         result: list[SearchResult] = []
         # Loop through each line in the range and apply the regex
@@ -288,7 +287,7 @@ class TextModelSearch(BaseModel):
     def _get_multiline_match_range(
         model: TextModel,
         delta_offset: int,
-        lf_counter: Optional[LineFeedCounter],
+        lf_counter: LineFeedCounter | None,
         match_index: int,
         match0: str,
     ) -> Range:

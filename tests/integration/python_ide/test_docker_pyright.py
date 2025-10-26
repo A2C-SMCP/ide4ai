@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_docker_pyright.py
 # @Time    : 2024/4/17 17:08
 # @Author  : JQQ
@@ -9,7 +8,7 @@ import socket
 import threading
 import time
 from queue import Empty
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pytest
 from cachetools import TTLCache
@@ -60,8 +59,8 @@ def message_receiver(sock):
 def send_message(
     sock: socket.socket,
     method: str,
-    params: Optional[Dict[str, Any]] = None,
-    message_id: Optional[int] = None,
+    params: dict[str, Any] | None = None,
+    message_id: int | None = None,
 ) -> None:
     message = {"jsonrpc": "2.0", "method": method, "params": params or {}}
     if message_id is not None:
@@ -95,7 +94,7 @@ def is_docker_running_on_port(d_host: str, d_port: int) -> bool:
         sock = socket.create_connection((d_host, d_port), timeout=1)
         sock.close()
         return True
-    except (socket.timeout, ConnectionRefusedError):
+    except (TimeoutError, ConnectionRefusedError):
         return False
 
 

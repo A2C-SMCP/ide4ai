@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_async_docker_pyright.py
 # @Time    : 2024/4/17 18:09
 # @Author  : JQQ
@@ -131,7 +130,7 @@ def is_docker_running_on_port(d_host: str, d_port: int) -> bool:
         sock = socket.create_connection((d_host, d_port), timeout=1)
         sock.close()
         return True
-    except (socket.timeout, ConnectionRefusedError):
+    except (TimeoutError, ConnectionRefusedError):
         return False
 
 

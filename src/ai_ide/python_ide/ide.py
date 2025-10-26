@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 # filename: ide.py
 # @Time    : 2024/4/16 18:35
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Any, ClassVar, Optional, SupportsFloat
+from typing import Any, ClassVar, SupportsFloat
 
 from ai_ide.base import IDE
 from ai_ide.environment.terminal.base import EnvironmentArguments
 from ai_ide.environment.terminal.local_terminal_env import TerminalEnv
+from ai_ide.exceptions import IDEExecutionError
 from ai_ide.python_ide.workspace import PyWorkspace
 from ai_ide.schema import IDEAction, IDEObs
-from ai_ide.exceptions import IDEExecutionError
 
 
 class PythonIDE(IDE):
@@ -42,7 +41,7 @@ class PythonIDE(IDE):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: Optional[dict[str, Any]] = None,
+        workspace_setting: dict[str, Any] | None = None,
         *args: Any,
         **kwargs: Any,
     ):

@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 # filename: test_character_classifier.py
 # @Time    : 2024/5/6 17:55
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import pytest
-
 from tfrobot.drive.tool.ides.environment.workspace.common.core.character_classifier import (
     CharacterClassifier,
 )

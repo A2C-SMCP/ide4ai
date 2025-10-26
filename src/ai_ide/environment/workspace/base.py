@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: base.py
 # @Time    : 2024/4/18 10:48
 # @Author  : JQQ
@@ -13,8 +12,9 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from collections.abc import Callable, Sequence
 from json import JSONDecodeError
-from typing import Any, Callable, ClassVar, Literal, Optional, Sequence, cast
+from typing import Any, ClassVar, Literal, cast
 
 import gymnasium as gym
 from cachetools import TTLCache
@@ -69,7 +69,7 @@ class BaseWorkspace(gym.Env, ABC):
         render_with_symbols: bool = True,
         max_active_models: int = 3,
         enable_simple_view_mode: bool = False,
-        header_generators: Optional[dict[str, Callable[["BaseWorkspace", str], str]]] = None,
+        header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
         *args: Any,
         **kwargs: Any,
     ):
@@ -86,12 +86,12 @@ class BaseWorkspace(gym.Env, ABC):
         self.lsp_stdout_mutex = threading.Lock()
         self.lsp_stdin_mutex = threading.Lock()
         self.lsp_mutex = threading.Lock()
-        self.lsp: Optional[subprocess.Popen] = None
+        self.lsp: subprocess.Popen | None = None
         self._lsp_msg_id = 1
         self._max_active_models = max_active_models
         self._render_with_symbols = render_with_symbols
         self._enable_simple_view_mode = enable_simple_view_mode
-        self.lsp_output_monitor_thread: Optional[threading.Thread] = None
+        self.lsp_output_monitor_thread: threading.Thread | None = None
         # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
         # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，比如diagnostic。
         self.lsp_server_notifications: TTLCache = TTLCache(maxsize=1000, ttl=300)
@@ -116,7 +116,7 @@ class BaseWorkspace(gym.Env, ABC):
         self._initial_lsp()
         self._is_closing = False
         self._is_closed = False
-        self.header_generators: Optional[dict[str, Callable[["BaseWorkspace", str], str]]] = header_generators
+        self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None = header_generators
 
     def get_lsp_msg_id(self) -> int:
         """
@@ -146,9 +146,9 @@ class BaseWorkspace(gym.Env, ABC):
     def send_lsp_msg(
         self,
         method: str,
-        params: Optional[dict[str, Any]] = None,
-        message_id: Optional[int] = None,
-    ) -> Optional[str]:
+        params: dict[str, Any] | None = None,
+        message_id: int | None = None,
+    ) -> str | None:
         """
         Send a message to the Language Server Protocol (LSP) server.
 
@@ -183,7 +183,9 @@ class BaseWorkspace(gym.Env, ABC):
         with self.lsp_stdin_mutex:
             full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
             if self.lsp.stdin:
-                self.lsp.stdin.write(full_message.encode("utf-8"))  # LSP进程以bytes模式打开，因为LSP协议也是按照bytes进行传输的与长度计算
+                self.lsp.stdin.write(
+                    full_message.encode("utf-8")
+                )  # LSP进程以bytes模式打开，因为LSP协议也是按照bytes进行传输的与长度计算
                 self.lsp.stdin.flush()
         return self.read_response(message_id) if message_id else None
 
@@ -272,7 +274,7 @@ class BaseWorkspace(gym.Env, ABC):
         """
         return f"{method}:{uri}" if method == "textDocument/publishDiagnostics" else method
 
-    def read_response(self, request_id: int, timeout: float = 1) -> Optional[str]:
+    def read_response(self, request_id: int, timeout: float = 1) -> str | None:
         """
         Read the response of the Language Server Protocol (LSP) server.
 
@@ -290,7 +292,7 @@ class BaseWorkspace(gym.Env, ABC):
             time.sleep(0.1)
         return None
 
-    def read_notification(self, method: str, uri: str, timeout: float = 0.05) -> Optional[str]:
+    def read_notification(self, method: str, uri: str, timeout: float = 0.05) -> str | None:
         """
         Read the notification of the Language Server Protocol (LSP) server.
 
@@ -339,7 +341,7 @@ class BaseWorkspace(gym.Env, ABC):
         """
         ...
 
-    def get_model(self, uri: str) -> Optional[TextModel]:
+    def get_model(self, uri: str) -> TextModel | None:
         """
         Get a model by URI.
 
@@ -359,7 +361,7 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             list[TextModel]: The active models.
         """
-        return [m for m in self._active_models.values()]
+        return list(self._active_models.values())
 
     def active_model(self, model_id: str) -> None:
         """
@@ -500,8 +502,7 @@ class BaseWorkspace(gym.Env, ABC):
         return super().reset(seed=seed)
 
     @abstractmethod
-    def render(self) -> RenderFrame | list[RenderFrame] | None:
-        ...
+    def render(self) -> RenderFrame | list[RenderFrame] | None: ...
 
     def close(self) -> None:
         """
@@ -580,7 +581,7 @@ class BaseWorkspace(gym.Env, ABC):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> Optional[list[TextEdit]]:
+    ) -> list[TextEdit] | None:
         """
         Apply edits to a file in the workspace.
 
@@ -614,8 +615,8 @@ class BaseWorkspace(gym.Env, ABC):
         *,
         old_uri: str,
         new_uri: str,
-        overwrite: Optional[bool] = None,
-        ignore_if_exists: Optional[bool] = None,
+        overwrite: bool | None = None,
+        ignore_if_exists: bool | None = None,
     ) -> bool:
         """
         Rename a file in the workspace.
@@ -636,8 +637,8 @@ class BaseWorkspace(gym.Env, ABC):
         self,
         *,
         uri: str,
-        recursive: Optional[bool] = None,
-        ignore_if_not_exists: Optional[bool] = None,
+        recursive: bool | None = None,
+        ignore_if_not_exists: bool | None = None,
     ) -> bool:
         """
         Delete a file in the workspace.
@@ -657,9 +658,9 @@ class BaseWorkspace(gym.Env, ABC):
         self,
         *,
         uri: str,
-        overwrite: Optional[bool] = None,
-        ignore_if_exists: Optional[bool] = None,
-    ) -> Optional[TextModel]:
+        overwrite: bool | None = None,
+        ignore_if_exists: bool | None = None,
+    ) -> TextModel | None:
         """
         Create a file in the workspace.
 
@@ -695,7 +696,7 @@ class BaseWorkspace(gym.Env, ABC):
         *,
         uri: str,
         with_line_num: bool = True,
-        code_range: Optional[Range] = None,
+        code_range: Range | None = None,
     ) -> str:
         """
         Read the content of a file in the workspace.
@@ -713,7 +714,7 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             str: The content of the file.
         """
-        tm: Optional[TextModel] = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
+        tm: TextModel | None = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
         if tm:
             return (
                 tm.get_view(with_line_num, code_range)
@@ -797,7 +798,10 @@ class BaseWorkspace(gym.Env, ABC):
                 return res_model.error.message
             symbols = res_model.result
             res = render_symbols(cast(list[dict], symbols), kinds)
-            return res + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
+            return (
+                res
+                + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
+            )
         else:
             return "获取文件符号失败"
 
@@ -810,9 +814,9 @@ class BaseWorkspace(gym.Env, ABC):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         capture_matches: bool = True,
-        limit_result_count: Optional[int] = None,
+        limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
         Find a query in a file in the workspace.
@@ -852,9 +856,9 @@ class BaseWorkspace(gym.Env, ABC):
         search_scope: Range | list[Range] | None = None,
         is_regex: bool = False,
         match_case: bool = False,
-        word_separator: Optional[str] = None,
+        word_separator: str | None = None,
         compute_undo_edits: bool = False,
-    ) -> Optional[list[TextEdit]]:
+    ) -> list[TextEdit] | None:
         """
         Replace a query with a specified string in a file in the workspace.
 

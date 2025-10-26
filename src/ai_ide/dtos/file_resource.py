@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 # filename: file_resource.py
 # @Time    : 2024/4/29 15:03
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +14,9 @@ class LSPCreateFileOptions(BaseModel):
     """
 
     # Overwrite existing file.
-    overwrite: Optional[bool] = None
+    overwrite: bool | None = None
     # Ignore if file already exists.
-    ignore_if_exists: Optional[bool] = Field(None, validation_alias="ignoreIfExists")
+    ignore_if_exists: bool | None = Field(None, validation_alias="ignoreIfExists")
 
 
 class LSPCreateFile(BaseModel):
@@ -29,9 +28,9 @@ class LSPCreateFile(BaseModel):
     # The resource to create.
     uri: str
     # Additional options
-    options: Optional[LSPCreateFileOptions] = None
+    options: LSPCreateFileOptions | None = None
     # An optional annotation identifier describing the operation.
-    annotation_id: Optional[str] = Field(None, validation_alias="annotationId")
+    annotation_id: str | None = Field(None, validation_alias="annotationId")
 
 
 class LSPRenameFileOptions(BaseModel):
@@ -40,9 +39,9 @@ class LSPRenameFileOptions(BaseModel):
     """
 
     # Overwrite target if existing. Overwrite wins over `ignoreIfExists`
-    overwrite: Optional[bool] = None
+    overwrite: bool | None = None
     # Ignores if target exists.
-    ignore_if_exists: Optional[bool] = Field(None, validation_alias="ignoreIfExists")
+    ignore_if_exists: bool | None = Field(None, validation_alias="ignoreIfExists")
 
 
 class LSPRenameFile(BaseModel):
@@ -56,9 +55,9 @@ class LSPRenameFile(BaseModel):
     # The new location.
     new_uri: str = Field(..., validation_alias="newUri")
     # Additional options
-    options: Optional[LSPRenameFileOptions] = None
+    options: LSPRenameFileOptions | None = None
     # An optional annotation identifier describing the operation.
-    annotation_id: Optional[str] = Field(None, validation_alias="annotationId")
+    annotation_id: str | None = Field(None, validation_alias="annotationId")
 
 
 class LSPDeleteFileOptions(BaseModel):
@@ -67,9 +66,9 @@ class LSPDeleteFileOptions(BaseModel):
     """
 
     # Delete the content recursively if a folder is denoted.
-    recursive: Optional[bool] = None
+    recursive: bool | None = None
     # Ignore the operation if the file doesn't exist.
-    ignore_if_not_exists: Optional[bool] = Field(None, validation_alias="ignoreIfNotExists")
+    ignore_if_not_exists: bool | None = Field(None, validation_alias="ignoreIfNotExists")
 
 
 class LSPDeleteFile(BaseModel):
@@ -81,6 +80,6 @@ class LSPDeleteFile(BaseModel):
     # The file to delete.
     uri: str
     # Additional options
-    options: Optional[LSPDeleteFileOptions] = None
+    options: LSPDeleteFileOptions | None = None
     # An optional annotation identifier describing the operation.
-    annotation_id: Optional[str] = Field(None, validation_alias="annotationId")
+    annotation_id: str | None = Field(None, validation_alias="annotationId")

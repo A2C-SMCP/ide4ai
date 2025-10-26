@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_text_model_search.py
 # @Time    : 2024/5/6 14:49
 # @Author  : JQQ
@@ -9,7 +8,6 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 from pydantic import AnyUrl
-
 from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
 from tfrobot.drive.tool.ides.environment.workspace.model_search import (
     LineFeedCounter,

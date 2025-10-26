@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # filename: ides.py
 # @Time    : 2024/5/13 15:12
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from ai_ide.python_ide.ide import PythonIDE
 
@@ -40,7 +39,7 @@ class PyIDESingleton(metaclass=IDESingleton):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: Optional[dict[str, Any]] = None,
+        workspace_setting: dict[str, Any] | None = None,
         *args: Any,
         **kwargs: Any,
     ):

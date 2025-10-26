@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_schema.py
 # @Time    : 2024/4/16 19:29
 # @Author  : JQQ
@@ -8,7 +7,6 @@ import json
 
 import pytest
 from pydantic import ValidationError
-
 from tfrobot.drive.tool.ides.environment.workspace.schema import Position, Range
 from tfrobot.drive.tool.ides.schema import ACTION_NAME_MAP, IDEAction, IDEObs
 

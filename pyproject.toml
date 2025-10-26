@@ -50,6 +50,7 @@ dev-dependencies = [
     "pytest-timeout>=2.3.1",
     "ruff>=0.1.11",
     "mypy>=1.16.0",
+    "poethepoet>=0.24.0",
 ]
 
 [tool.ruff]
@@ -110,3 +111,41 @@ exclude_lines = [
     "pass",
     "\\.\\.\\.",
 ]
+
+[tool.poe.tasks]
+# Linting tasks
+lint = "ruff check src tests"
+lint-fix = "ruff check --fix src tests"
+format = "ruff format src tests"
+format-check = "ruff format --check src tests"
+
+# Type checking
+typecheck = "mypy src"
+
+# Testing tasks
+test = "pytest tests"
+test-unit = "pytest tests -k 'not integration'"
+test-integration = "pytest tests/integration"
+test-cov = "pytest tests --cov=ai_ide --cov-report=html --cov-report=term"
+test-verbose = "pytest tests -vv"
+
+# Combined quality checks
+check = ["lint", "format-check", "typecheck"]
+fix = ["lint-fix", "format"]
+
+# Clean tasks
+clean-pyc = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete"
+clean-cov = "rm -rf .coverage htmlcov .pytest_cache"
+clean = ["clean-pyc", "clean-cov"]
+
+# Development setup
+install = "uv sync"
+install-dev = "uv sync --all-extras"
+
+[tool.poe.tasks.docs]
+help = "Build documentation (placeholder for future)"
+cmd = "echo 'Documentation build not yet configured'"
+
+[tool.poe.tasks.pre-commit]
+help = "Run all pre-commit checks"
+sequence = ["format", "lint-fix", "typecheck", "test"]

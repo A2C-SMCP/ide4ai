@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 # filename: test_workspace.py
 # @Time    : 2024/5/9 19:32
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import os
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-
 from tfrobot.drive.tool.ides.environment.workspace.schema import (
     Position,
     Range,
@@ -50,7 +49,7 @@ def test_py_workspace_read_file(project_root_dir, py_workspace) -> None:
     test_file_uri = "file://" + test_file_path
     content = py_workspace.read_file(uri=test_file_uri)
     print(content)
-    with open(test_file_path, "r") as f:
+    with open(test_file_path) as f:
         read_res = f.read()
     assert read_res[:20] in content  # 因为文件较大，直接使用in判断会比较慢，所以截取20个字符做判断
     import tiktoken
@@ -213,7 +212,7 @@ def test_create_file_with_init_content(py_workspace, file_uri) -> None:
     tm.save()
     assert tm is not None
     assert os.path.exists(file_uri[7:])
-    with open(file_uri[7:], "r") as f:
+    with open(file_uri[7:]) as f:
         content = f.read()
     assert content.endswith("print('Hello, World!')") and content.startswith("# -*- coding: utf-8 -*-")
 
@@ -226,7 +225,7 @@ def test_create_file_with_not_header_generator(project_root_dir, file_uri) -> No
         tm.save()
         assert tm is not None
         assert os.path.exists(file_uri[7:])
-        with open(file_uri[7:], "r") as f:
+        with open(file_uri[7:]) as f:
             content = f.read()
         assert content.endswith("print('Hello, World!')") and content.startswith("print('Hello, World!')")
     finally:

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_word_character_classifier.py
 # @Time    : 2024/5/7 10:16
 # @Author  : JQQ

@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 # filename: conftest.py
 # @Time    : 2024/6/20 17:21
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
+from collections.abc import Generator
 from tempfile import TemporaryDirectory
-from typing import Any, Generator
+from typing import Any
 
 import pytest
-
 from tfrobot.drive.tool.ides.python_ide.ide import PythonIDE
 from tfrobot.drive.tool.ides.tool import (
     PyAIEditor,

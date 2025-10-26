@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 # filename: file_for_render_1.py
 # @Time    : 2024/5/10 11:02
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -25,4 +24,4 @@ class LSPCommand(BaseModel):
     # The identifier of the actual command handler.
     command: str
     # Arguments that the command handler should be invoked with.
-    arguments: Optional[list[Any]] = None
+    arguments: list[Any] | None = None

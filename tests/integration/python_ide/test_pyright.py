@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_pyright.py
 # @Time    : 2024/4/17 12:20
 # @Author  : JQQ
@@ -8,8 +7,9 @@ import json
 import pprint
 import subprocess
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Any
 
 import pytest
 from cachetools import TTLCache
@@ -49,8 +49,8 @@ print(os.path)
 def send_message(
     process: subprocess.Popen,
     method: str,
-    params: Optional[Dict[str, Any]] = None,
-    message_id: Optional[int] = None,
+    params: dict[str, Any] | None = None,
+    message_id: int | None = None,
 ) -> None:
     message = {"jsonrpc": "2.0", "method": method, "params": params or {}}
     if message_id is not None:
@@ -239,7 +239,7 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
 
         # 发送文本打开通知
         err_py_path = fake_py_with_err_path
-        with open(err_py_path, "r") as f:
+        with open(err_py_path) as f:
             content = f.read()
 
         # 需要注意textDocument/didOpen是一个Notification，并不是method，所以不需要ID，也无法获取返回。如果输出ID会作为method处理，会发生异常
@@ -398,7 +398,7 @@ def test_get_file_symbols(workspace_root) -> None:
 
         # 发送文本打开通知
         err_py_path = f"{workspace_root}/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py"
-        with open(err_py_path, "r") as f:
+        with open(err_py_path) as f:
             content = f.read()
 
         # 需要注意textDocument/didOpen是一个Notification，并不是method，所以不需要ID，也无法获取返回。如果输出ID会作为method处理，会发生异常

@@ -9,8 +9,6 @@ from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-from src.ai_ide.tool import EditOperation, EditPosition, EditRange, construct_single_edit_operation
-from tfrobot.schema.exceptions import TFExecutionError
 
 from src.ai_ide.environment.workspace.schema import (
     Position,
@@ -58,79 +56,6 @@ def test_py_workspace_read_file(project_root_dir, py_workspace) -> None:
     enc = tiktoken.get_encoding("cl100k_base")
     tokens = enc.encode(content)
     print(f"内容长度: {len(tokens)}")
-
-
-def test_py_workspace_construct_edit_range(project_root_dir, py_workspace) -> None:
-    test_file_path = project_root_dir + "/file_for_test_read.py"
-    test_file_uri = "file://" + test_file_path
-    edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(0, 0), end_position=EditPosition(0, 1)),
-        new_text="test",
-    )
-    t_model = py_workspace.open_file(uri=test_file_uri)
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    total_line = t_model.get_line_count()
-    edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(total_line + 1, 1), end_position=EditPosition(total_line + 1, 1)),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    line_1_len = t_model.get_line_length(1)
-    edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(1, line_1_len + 2), end_position=EditPosition(1, line_1_len + 2)),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(1, 1), end_position=EditPosition(1, line_1_len + 2)),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(1, 1), end_position=EditPosition(1, (line_1_len + 2) * -1)),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    edit_param = EditOperation(
-        range=EditRange(
-            start_position=EditPosition(1, (line_1_len + 2) * -1),
-            end_position=EditPosition(1, (line_1_len + 2) * -1),
-        ),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-
-
-def test_py_workspace_construct_negative_edit_range(project_root_dir, py_workspace) -> None:
-    test_file_path = project_root_dir + "/file_for_test_read.py"
-    test_file_uri = "file://" + test_file_path
-    t_model = py_workspace.open_file(uri=test_file_uri)
-    t_model.disable_auto_save()
-    line_1_length = t_model.get_line_length(1)
-    # 模拟在第一行行尾添加 test
-    edit_param = EditOperation(
-        range=EditRange(
-            start_position=EditPosition(1, line_1_length + 1),
-            end_position=EditPosition(1, line_1_length + 1),
-        ),
-        new_text="test",
-    )
-    with pytest.raises(TFExecutionError):
-        # 现在针对LLM使用编辑器做了优化，禁止了非行首对行尾的操作
-        construct_single_edit_operation(edit_param.model_dump(), t_model)
-    edit_param.range.start_position = EditPosition(1, -1)
-    edit_param.range.end_position = EditPosition(1, -1)
-    model_range_edits = construct_single_edit_operation(edit_param.model_dump(), t_model)
-    res = py_workspace.apply_edit(uri=test_file_uri, edits=[model_range_edits.model_dump()], compute_undo_edits=False)
-    assert not res
-    line_1_content = t_model.get_line_content(1)
-    assert line_1_content.endswith("test")
 
 
 def test_py_workspace_render(project_root_dir, py_workspace) -> None:

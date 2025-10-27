@@ -5,7 +5,7 @@
 # @Software: PyCharm
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from json import JSONDecodeError
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -103,7 +103,7 @@ class TestWorkspace(BaseWorkspace):
 
 # Step 2: Setup Pytest fixtures
 @pytest.fixture
-def workspace() -> TestWorkspace:
+def workspace() -> Generator[TestWorkspace, Any, None]:
     with tempfile.TemporaryDirectory() as tmp_dir:
         ws = TestWorkspace(root_dir=tmp_dir)
         yield ws

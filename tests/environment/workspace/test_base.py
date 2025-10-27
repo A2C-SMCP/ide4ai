@@ -24,7 +24,8 @@ from ai_ide.schema import IDEAction
 
 
 # Step 1: Define a concrete subclass for testing
-class TestWorkspace(BaseWorkspace):
+# 具体的工作区子类用于测试 / Concrete workspace subclass for testing
+class MockWorkspace(BaseWorkspace):
     def apply_workspace_edit(self, *, workspace_edit: LSPWorkspaceEdit) -> Any:
         pass
 
@@ -103,30 +104,30 @@ class TestWorkspace(BaseWorkspace):
 
 # Step 2: Setup Pytest fixtures
 @pytest.fixture
-def workspace() -> Generator[TestWorkspace, Any, None]:
+def workspace() -> Generator[MockWorkspace, Any, None]:
     with tempfile.TemporaryDirectory() as tmp_dir:
-        ws = TestWorkspace(root_dir=tmp_dir)
+        ws = MockWorkspace(root_dir=tmp_dir)
         yield ws
         ws.close()
 
 
 # Step 3: Write tests
-def test_workspace_initialization(workspace: TestWorkspace):
+def test_workspace_initialization(workspace: MockWorkspace):
     assert workspace._render_with_symbols is True
 
 
-def test_read_lsp_output_handling(workspace: TestWorkspace):
+def test_read_lsp_output_handling(workspace: MockWorkspace):
     with patch("threading.Thread.start"):
         workspace._start_lsp_monitor_thread()
         assert workspace.lsp_output_monitor_thread is not None
 
 
-def test_kill_lsp(workspace: TestWorkspace):
+def test_kill_lsp(workspace: MockWorkspace):
     workspace.kill_lsp()
     assert workspace.lsp is None
 
 
-def test_close(workspace: TestWorkspace):
+def test_close(workspace: MockWorkspace):
     workspace.close()
     assert workspace.lsp is None
     assert workspace.lsp_output_monitor_thread is None or not workspace.lsp_output_monitor_thread.is_alive()

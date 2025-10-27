@@ -18,7 +18,7 @@ from cachetools import TTLCache
 @pytest.fixture
 def workspace_root() -> str:
     current_file_path = Path(__file__).resolve()
-    root_path = current_file_path.parent.parent.parent.parent.parent.parent.parent
+    root_path = current_file_path.parent.parent.parent.parent
     return str(root_path)
 
 
@@ -40,7 +40,7 @@ def test():
 
 
 print(os.path)
-"""
+""",
         )
         f.flush()
         yield f.name
@@ -88,14 +88,15 @@ def receive_message(process: subprocess.Popen, expected_id: int, cache: TTLCache
     return cache[expected_id]
 
 
-def handle_diagnostics(process: subprocess.Popen) -> str:
+def handle_diagnostics(process: subprocess.Popen) -> str | None:
     """
-    处理诊断信息
+    处理诊断信息 / Handle diagnostic information
 
     Args:
-        process:
+        process: Pyright进程 / Pyright process
 
     Returns:
+        诊断响应字符串，如果未找到则返回None / Diagnostic response string, or None if not found
 
     """
     n = 0
@@ -184,7 +185,7 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
             "initialize",
             {
                 "processId": None,
-                "workspaceFolders": [{"uri": f"file://{workspace_root}", "name": "TFRobotV2"}],
+                "workspaceFolders": [{"uri": f"file://{workspace_root}", "name": "ai-ide"}],
                 "initializationOptions": {
                     "disablePullDiagnostics": True,
                 },
@@ -252,7 +253,7 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
                     "languageId": "python",
                     "version": 1,
                     "text": content,
-                }
+                },
             },
         )
 
@@ -272,12 +273,15 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
                             "end": {"line": 0, "character": 1},
                         },
                         "text": "a",
-                    }
+                    },
                 ],
             },
         )
 
         diagnostics = handle_diagnostics(process)
+        assert diagnostics is not None, (
+            "未能获取到诊断信息，Pyright进程可能已崩溃 / Failed to get diagnostics, Pyright process may have crashed"
+        )
         assert any(
             '"os" is not defined' in diagnostic["message"]
             for diagnostic in json.loads(diagnostics)["params"]["diagnostics"]
@@ -341,7 +345,7 @@ def test_get_file_symbols(workspace_root) -> None:
                     {
                         "uri": f"file://{workspace_root}",
                         "name": "TFRobotV2",
-                    }
+                    },
                 ],
                 "initializationOptions": {
                     "disablePullDiagnostics": True,
@@ -397,7 +401,8 @@ def test_get_file_symbols(workspace_root) -> None:
         send_message(process, "initialized")
 
         # 发送文本打开通知
-        err_py_path = f"{workspace_root}/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py"
+        # 使用当前测试文件作为测试目标 / Use current test file as test target
+        err_py_path = str(Path(__file__).resolve())
         with open(err_py_path) as f:
             content = f.read()
 
@@ -411,7 +416,7 @@ def test_get_file_symbols(workspace_root) -> None:
                     "languageId": "python",
                     "version": 1,
                     "text": content,
-                }
+                },
             },
         )
 

@@ -4,7 +4,8 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import pytest
-from tfrobot.schema.exceptions import TFExecutionError
+
+from ai_ide.exceptions import IDEExecutionError
 
 
 def test_initialization(python_ide):
@@ -21,7 +22,7 @@ def test_construct_action_valid(python_ide):
 
 def test_construct_action_invalid(python_ide):
     action = {"category": "terminal", "action_name": "rm", "action_args": ["important_file"]}
-    with pytest.raises(TFExecutionError):
+    with pytest.raises(IDEExecutionError):
         python_ide.construct_action(action)
 
 

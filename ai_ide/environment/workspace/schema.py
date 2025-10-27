@@ -229,7 +229,11 @@ class Range(BaseModel, validate_assignment=True):
         return self.start_position > other.start_position
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Range) and self.start_position == other.start_position and self.end_position == other.end_position
+        return (
+            isinstance(other, Range)
+            and self.start_position == other.start_position
+            and self.end_position == other.end_position
+        )
 
     def __repr__(self) -> str:
         return f"Range({self.start_position}, {self.end_position})"

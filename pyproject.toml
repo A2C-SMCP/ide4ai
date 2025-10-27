@@ -76,6 +76,9 @@ addopts = [
     "--strict-markers",
     "--tb=short",
 ]
+markers = [
+    "flaky: mark test as flaky (may need multiple retries)",
+]
 # Coverage options removed from default to allow debugging
 # Use: pytest --cov=ai_ide --cov-report=term-missing --cov-report=html
 # Or use the poe task: poe test-cov
@@ -169,4 +172,5 @@ dev = [
     # 类型存根 / Type stubs
     "types-cachetools>=6.2.0.20251022",
     "types-regex>=2025.10.23.20251023",
+    "pyfakefs>=5.10.0",
 ]

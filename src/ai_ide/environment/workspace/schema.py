@@ -42,17 +42,21 @@ class Position(NamedTuple):
     line: Annotated[int, Gt(0)]
     character: Annotated[int, Gt(0)]
 
-    def __lt__(self, other: "Position") -> bool:
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, Position):
+            return NotImplemented  # 让Python处理不兼容的类型比较 | Let Python handle incompatible type comparisons
         if self.line == other.line:
             return self.character < other.character
         return self.line < other.line
 
-    def __gt__(self, other: "Position") -> bool:
+    def __gt__(self, other: Any) -> bool:
+        if not isinstance(other, Position):
+            return NotImplemented  # 让Python处理不兼容的类型比较 | Let Python handle incompatible type comparisons
         if self.line == other.line:
             return self.character > other.character
         return self.line > other.line
 
-    def __eq__(self, other: "Position") -> bool:
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Position):
             return False  # pragma: no cover
         return self.line == other.line and self.character == other.character
@@ -153,7 +157,7 @@ class Range(BaseModel, validate_assignment=True):
         Returns:
             bool: True if the range contains the given range, False otherwise.
         """
-        return (self & t_range) == t_range  # type: ignore
+        return (self & t_range) == t_range
 
     def strict_contains_range(self, t_range: "Range") -> bool:
         """

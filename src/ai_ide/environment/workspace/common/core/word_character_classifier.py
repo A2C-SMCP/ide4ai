@@ -3,6 +3,7 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
+from typing import cast
 
 import regex as re
 from cachetools import LRUCache
@@ -93,4 +94,4 @@ def get_map_for_word_separators(word_separators: str, intl_segmenter_locales: li
     if key not in word_classifier_cache:
         classifier = WordCharacterClassifier(word_separators, intl_segmenter_locales)
         word_classifier_cache[key] = classifier
-    return word_classifier_cache[key]
+    return cast(WordCharacterClassifier, word_classifier_cache[key])

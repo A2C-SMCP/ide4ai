@@ -44,7 +44,7 @@ class PythonIDE(IDE):
         workspace_setting: dict[str, Any] | None = None,
         *args: Any,
         **kwargs: Any,
-    ):
+    ) -> None:
         super().__init__(
             cmd_white_list,
             root_dir,

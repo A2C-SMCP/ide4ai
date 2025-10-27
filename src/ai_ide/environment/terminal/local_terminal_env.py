@@ -32,7 +32,7 @@ class TerminalEnv(BaseTerminalEnv):
     name: ClassVar[str] = "TerminalEnv"
     metadata: dict[str, Any] = {"render_modes": ["ansi"]}
 
-    def __init__(self, args: EnvironmentArguments, white_list: list[str], work_dir: str):
+    def __init__(self, args: EnvironmentArguments, white_list: list[str], work_dir: str) -> None:
         super().__init__()
         self.args = args
         self.white_list = white_list
@@ -55,13 +55,13 @@ class TerminalEnv(BaseTerminalEnv):
                 "category": gym.spaces.Discrete(2),
                 "action_name": gym.spaces.Text(100),
                 "action_args": gym.spaces.Text(1000),
-            }
+            },
         )
         self.observation_space = gym.spaces.Dict(
             {
                 "created_at": gym.spaces.Text(100),
                 "obs": gym.spaces.Text(100000),
-            }
+            },
         )
 
     def construct_action(self, action: dict) -> IDEAction:
@@ -85,7 +85,7 @@ class TerminalEnv(BaseTerminalEnv):
                     raise ValueError(f"Action not in white list: {ide_action.action_args}")
                 elif not isinstance(ide_action.action_args, list) and not isinstance(ide_action.action_args, str):
                     raise ValueError(
-                        f"Unsupported action arguments: {ide_action.action_args}, args should be str or list[str]"
+                        f"Unsupported action arguments: {ide_action.action_args}, args should be str or list[str]",
                     )
                 else:
                     return ide_action
@@ -156,7 +156,10 @@ class TerminalEnv(BaseTerminalEnv):
                 return " ".join(arg.decode("utf-8") if isinstance(arg, bytes) else arg for arg in f_args)
             elif isinstance(f_args, bytes):
                 return f_args.decode("utf-8")
-            return f_args
+            elif isinstance(f_args, str):
+                return f_args
+            else:
+                raise ValueError(f"Unknow type of {f_args}")
 
         self._procs_working_description[proc.pid] = f"${self.current_dir}: {format_args(proc.args)}\n"
         return proc.pid
@@ -330,7 +333,7 @@ class TerminalEnv(BaseTerminalEnv):
             except ValueError as e:
                 # commonpath 抛出 ValueError 如果路径列表为空或路径不在同一个驱动器上
                 raise ValueError(
-                    f"The path {path} is not a subdirectory of the working directory {self.work_dir}."
+                    f"The path {path} is not a subdirectory of the working directory {self.work_dir}.",
                 ) from e
         else:
             raise ValueError(f"Invalid path: {path}")

@@ -72,7 +72,7 @@ class BaseWorkspace(gym.Env, ABC):
         header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
         *args: Any,
         **kwargs: Any,
-    ):
+    ) -> None:
         super().__init__(*args, **kwargs)
         if not os.path.exists(root_dir):
             raise ValueError(f"项目根目录 {root_dir} 不存在")
@@ -93,7 +93,8 @@ class BaseWorkspace(gym.Env, ABC):
         self._enable_simple_view_mode = enable_simple_view_mode
         self.lsp_output_monitor_thread: threading.Thread | None = None
         # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
-        # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，比如diagnostic。
+        # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，
+        # 比如diagnostic。
         self.lsp_server_notifications: TTLCache = TTLCache(maxsize=1000, ttl=300)
         # 对于发起的request，我们需要等待response，因此需要缓存response，key值是request_id
         self.lsp_server_response: TTLCache = TTLCache(maxsize=1000, ttl=300)
@@ -103,14 +104,14 @@ class BaseWorkspace(gym.Env, ABC):
                 "category": gym.spaces.Discrete(2),
                 "action_name": gym.spaces.Text(100),
                 "action_args": gym.spaces.Text(1000),
-            }
+            },
         )
         self._action_category_map = ACTION_CATEGORY_MAP
         self.observation_space = gym.spaces.Dict(
             {
                 "created_at": gym.spaces.Text(100),
                 "obs": gym.spaces.Text(100000),
-            }
+            },
         )
         self.launch_lsp()
         self._initial_lsp()
@@ -184,7 +185,7 @@ class BaseWorkspace(gym.Env, ABC):
             full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
             if self.lsp.stdin:
                 self.lsp.stdin.write(
-                    full_message.encode("utf-8")
+                    full_message.encode("utf-8"),
                 )  # LSP进程以bytes模式打开，因为LSP协议也是按照bytes进行传输的与长度计算
                 self.lsp.stdin.flush()
         return self.read_response(message_id) if message_id else None
@@ -254,7 +255,7 @@ class BaseWorkspace(gym.Env, ABC):
                                     ] = response
                             except JSONDecodeError:
                                 logger.error(
-                                    f"Failed to decode JSON: {response}\nCurrent LSP Head Line: {line}\nLength in line: {length}"
+                                    f"Failed to decode JSON: {response}\nCurrent LSP Head Line: {line}\nLength in line: {length}",
                                 )
             else:
                 # lsp已经停止
@@ -288,7 +289,7 @@ class BaseWorkspace(gym.Env, ABC):
         start_time = time.time()
         while time.time() - start_time < timeout:
             if request_id in self.lsp_server_response:
-                return self.lsp_server_response.pop(request_id)
+                return cast(str, self.lsp_server_response.pop(request_id))
             time.sleep(0.1)
         return None
 
@@ -308,7 +309,7 @@ class BaseWorkspace(gym.Env, ABC):
         notification_key = self.__construct_notification_key(method, uri)
         while time.time() - start_time < timeout:
             if notification_key in self.lsp_server_notifications:
-                return self.lsp_server_notifications.pop(notification_key)
+                return cast(str, self.lsp_server_notifications.pop(notification_key))
             time.sleep(0.1)
         return None
 
@@ -351,7 +352,7 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             Optional[TextModel]: The model instance.
         """
-        return next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
+        return next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
 
     @property
     def active_models(self) -> list[TextModel]:
@@ -714,7 +715,7 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             str: The content of the file.
         """
-        tm: TextModel | None = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)  # type: ignore
+        tm: TextModel | None = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
         if tm:
             return (
                 tm.get_view(with_line_num, code_range)
@@ -832,7 +833,8 @@ class BaseWorkspace(gym.Env, ABC):
             match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
                 索是否应区分大小写。默认为 False。
             word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
-                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分。
+                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为
+                单词的一部分。
             capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
                 Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
             limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches
@@ -867,8 +869,8 @@ class BaseWorkspace(gym.Env, ABC):
             query (str): The query string to search for. | 要搜索的查询字符串。
             replacement (str): The string to replace the query with. | 用于替换查询的字符串。
             search_scope: Optional. The range or list of ranges where the replacement should be performed. If not
-                provided, the replacement will be performed in the full model range. | 可选。指定替换应在其中进行的范围或范围列表。如果未提供，
-                则在整个模型范围内进行替换。
+                provided, the replacement will be performed in the full model range. | 可选。指定替换应在其中进行的范围或范围列表。
+                如果未提供，则在整个模型范围内进行替换。
             is_regex: Optional. Specifies whether the query string should be treated as a regular expression. Default is
                 False. | 可选。指定是否应将查询字符串视为正则表达式。默认为 False。
             match_case: Optional. Specifies whether the replacement should be case-sensitive. Default is False. | 可选。
@@ -883,8 +885,8 @@ class BaseWorkspace(gym.Env, ABC):
             The number of replacements made. | 已进行的替换数量。
 
         Raises:
-            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes. | 可选的列表[TextEdit]：可以应用于撤消更改的反向编辑。
-
+            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes. | 可选的列表[TextEdit]：
+                可以应用于撤消更改的反向编辑。
         """
         search_res = self.find_in_file(
             uri=uri,

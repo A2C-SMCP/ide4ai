@@ -62,7 +62,7 @@ def default_python_header_generator(workspace: BaseWorkspace, file_path: str) ->
 
 
 class PyWorkspace(BaseWorkspace):
-    def __init__(self, *args: Any, **kwargs: Any):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         if self.header_generators is None:
             self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] = {
@@ -103,7 +103,7 @@ class PyWorkspace(BaseWorkspace):
                     {
                         "uri": f"file://{self.root_dir}",
                         "name": self.project_name,
-                    }
+                    },
                 ],
                 # TODO 参考：https://czq2u5hs17.feishu.cn/docx/HLPLdDMJUoKwdRx6f6wc3kh0nCg?from=from_copylink 这其中文章后最面的TODO进行实现
                 "initializationOptions": {
@@ -206,7 +206,7 @@ class PyWorkspace(BaseWorkspace):
                                     Range(
                                         start_position=Position(max(1, range_start_line - 3), 1),
                                         end_position=Position(range_end_line + length_of_new_text + 3, 1),
-                                    )
+                                    ),
                                 )
                         # 对content_ranges进行合并。有交集的合并，无交集独立
                         content_ranges.sort(key=lambda x: x.start_position.line)
@@ -228,7 +228,7 @@ class PyWorkspace(BaseWorkspace):
                                     uri=ide_action.action_args["uri"],
                                     with_line_num=True,
                                     code_range=merged_ranges[-1],
-                                )
+                                ),
                             )
                         apply_result: str = (
                             "编辑成功。如果有回滚需求，可以按下面的回滚操作执行。" + "\n".join([repr(e) for e in res])
@@ -273,7 +273,7 @@ class PyWorkspace(BaseWorkspace):
                         # 构建调用参数
                         if ide_action.action_args.get("code_range"):
                             ide_action.action_args["code_range"] = Range.model_validate(
-                                ide_action.action_args["code_range"]
+                                ide_action.action_args["code_range"],
                             )
                         text = self.read_file(**ide_action.action_args)
                     elif isinstance(ide_action.action_args, str):
@@ -298,7 +298,7 @@ class PyWorkspace(BaseWorkspace):
                         if ide_action.action_args.get("search_scope"):
                             if isinstance(ide_action.action_args["search_scope"], dict):
                                 ide_action.action_args["search_scope"] = Range.model_validate(
-                                    ide_action.action_args["search_scope"]
+                                    ide_action.action_args["search_scope"],
                                 )
                             elif isinstance(ide_action.action_args["search_scope"], list):
                                 ide_action.action_args["search_scope"] = [
@@ -322,7 +322,7 @@ class PyWorkspace(BaseWorkspace):
                         if ide_action.action_args.get("search_scope"):
                             if isinstance(ide_action.action_args["search_scope"], dict):
                                 ide_action.action_args["search_scope"] = Range.model_validate(
-                                    ide_action.action_args["search_scope"]
+                                    ide_action.action_args["search_scope"],
                                 )
                             elif isinstance(ide_action.action_args["search_scope"], list):
                                 ide_action.action_args["search_scope"] = [
@@ -351,10 +351,10 @@ class PyWorkspace(BaseWorkspace):
                     if create_model:
                         return (
                             IDEObs(
-                                obs="文件创建成功。\n"
-                                + f"当前文件内容如下(IDE会自动初始化部分内容):\n{self.read_file(uri=str(create_model.uri), with_line_num=True)}\n"
+                                obs="文件创建成功。\n当前文件内容如下(IDE会自动初始化部分内容):\n"
+                                f"{self.read_file(uri=str(create_model.uri), with_line_num=True)}\n"
                                 if create_model.get_value()
-                                else "文件创建成功"
+                                else "文件创建成功",
                             ).model_dump(),
                             100,
                             True,
@@ -410,7 +410,7 @@ class PyWorkspace(BaseWorkspace):
                 | "delete_files"
                 | "rename_file"
                 | "delete_file"
-            ):  # type: ignore
+            ):
                 raise NotImplementedError(f"Action: {ide_action.action_name} 尚未实现")
             case _:
                 raise ValueError(f"不支持的动作 {ide_action.action_name}")  # pragma: no cover
@@ -477,7 +477,7 @@ class PyWorkspace(BaseWorkspace):
                     "languageId": LanguageId.python.value,
                     "version": text_model.get_version_id(),
                     "text": text_model.get_value(),
-                }
+                },
             },
         )
         return text_model
@@ -513,7 +513,10 @@ class PyWorkspace(BaseWorkspace):
                 SingleEditOperation.model_validate(edit) if isinstance(edit, dict) else edit for edit in edits
             ]
         except ValidationError as e:
-            err_info = f"编辑操作参数错误，具体报错如下:\n{e}\n这类错误经常由Range范围引起，在当前工作区内Range与Position均是1-based。不要使用0基索引"
+            err_info = (
+                f"编辑操作参数错误，具体报错如下:\n{e}\n这类错误经常由Range范围引起，在当前工作区内Range与Position均是1-based。"
+                f"不要使用0基索引"
+            )
             raise IDEExecutionError(message=err_info, detail_for_llm=err_info) from e
         res = text_model.apply_edits(model_edits, compute_undo_edits)
 
@@ -537,7 +540,7 @@ class PyWorkspace(BaseWorkspace):
         ignore_if_exists: bool | None = None,
     ) -> bool:
         """
-        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前暂未实现
+        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前未实现
         Rename a file.
 
         Args:
@@ -551,7 +554,7 @@ class PyWorkspace(BaseWorkspace):
         """
         raise NotImplementedError(
             "rename_file 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。"
-            "目前暂未实现。你可以提示用户使用PyCharm等工具手动重命名文件。"
+            "目前暂未实现。你可以提示用户使用PyCharm等工具手动重命名文件。",
         )
 
     def delete_file(
@@ -583,10 +586,10 @@ class PyWorkspace(BaseWorkspace):
         Example:
             delete_file(uri='/path/to/file.txt')
         """
-        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前暂未实现
+        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前未实现
         raise NotImplementedError(
             "delete_file 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。"
-            "目前暂未实现。你可以提示用户使用PyCharm等工具手动删除文件。"
+            "目前暂未实现。你可以提示用户使用PyCharm等工具手动删除文件。",
         )
 
     def create_file(
@@ -630,7 +633,8 @@ class PyWorkspace(BaseWorkspace):
         # lsp_res = LSPResponseMessage.model_validate(json.loads(lsp_res_will_create))
         # if lsp_res.error:
         #     raise ValueError(f"无法创建文件: {uri}， LSP校验未通过: {lsp_res.error}")
-        # # TODO LSP会响应 workspace/willCreateFiles Request，返回的结构中会包括一个workspaceEdit。完成apply_workspace方法的封装后，需要在此调用并响应
+        # TODO LSP会响应 workspace/willCreateFiles Request，返回的结构中会包括一个workspaceEdit。 \
+        #  完成apply_workspace方法的封装后，需要在此调用并响应
         # Create the file
         try:
             # Using 'x' mode to create file will raise an error if the file already exists
@@ -648,13 +652,14 @@ class PyWorkspace(BaseWorkspace):
                         SingleEditOperation(
                             range=Range(
                                 start_position=Position(
-                                    tm.get_line_count(), tm.get_line_length(tm.get_line_count()) + 1
+                                    tm.get_line_count(),
+                                    tm.get_line_length(tm.get_line_count()) + 1,
                                 ),
                                 end_position=Position(tm.get_line_count(), tm.get_line_length(tm.get_line_count()) + 1),
                             ),
                             text=("\n" + init_content) if tm.get_line_count() > 1 else init_content,
-                        )
-                    ]
+                        ),
+                    ],
                 )
             self.models.append(tm)
             self.active_model(tm.m_id)
@@ -693,7 +698,8 @@ class PyWorkspace(BaseWorkspace):
             match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
                 索是否应区分大小写。默认为 False。
             word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
-                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分。
+                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为
+                单词的一部分。
             capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
                 Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
             limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches

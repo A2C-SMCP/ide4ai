@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import gymnasium as gym
-from simple_parsing.helpers import FrozenSerializable  # type: ignore
+from simple_parsing.helpers import FrozenSerializable
 from typing_extensions import SupportsFloat
 
 from ai_ide.schema import IDEObs

@@ -114,7 +114,7 @@ def list_directory_tree(
                             "all" if recursive else include_dirs,
                             recursive,
                             new_indent,
-                        )
+                        ),
                     )
             elif entry.is_file(follow_symlinks=False):
                 output.append(f"{indent}{entry.name}")
@@ -137,8 +137,8 @@ def is_subdirectory(sub_dir: str, root_dir: str) -> bool:
         This method ensures that both paths are absolute paths by using os.path.realpath.
         It checks if both directories exist using os.path.exists.
         It compares the common path between the subdirectory and root directory using os.path.commonpath.
-        If the common path is equal to the root directory, it returns True, indicating that the subdirectory is a subdirectory of the root directory.
-        Otherwise, it returns False.
+        If the common path is equal to the root directory, it returns True, indicating that the subdirectory is a subdirectory of the
+        root directory. Otherwise, it returns False.
 
     Example:
         is_subdirectory('/path/to/subdir', '/path/to')

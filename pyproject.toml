@@ -87,10 +87,10 @@ asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--tb=short",
-    "--cov=ai_ide",
-    "--cov-report=term-missing",
-    "--cov-report=html",
 ]
+# Coverage options removed from default to allow debugging
+# Use: pytest --cov=ai_ide --cov-report=term-missing --cov-report=html
+# Or use the poe task: poe test-cov
 
 [tool.mypy]
 python_version = "3.11"

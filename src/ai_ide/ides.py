@@ -42,7 +42,7 @@ class PyIDESingleton(metaclass=IDESingleton):
         workspace_setting: dict[str, Any] | None = None,
         *args: Any,
         **kwargs: Any,
-    ):
+    ) -> None:
         self._ide: PythonIDE = PythonIDE(
             cmd_white_list,
             root_dir,

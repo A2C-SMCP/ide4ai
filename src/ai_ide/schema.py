@@ -61,7 +61,7 @@ class IDEObs(BaseModel):
 
     created_at: str = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime(
-            "%Y-%m-%d %H:%M:%S"
+            "%Y-%m-%d %H:%M:%S",
         ),
         title="创建时间",
         description="当前观察的创建时间，使用北京时间（东八区）",

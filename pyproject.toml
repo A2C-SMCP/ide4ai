@@ -130,7 +130,7 @@ typecheck = "mypy ai_ide"
 test = "pytest tests"
 test-unit = "pytest tests -k 'not integration'"
 test-integration = "pytest tests/integration"
-test-cov = "pytest tests --cov=ai_ide --cov-report=html --cov-report=term"
+test-cov = "pytest tests --cov=ai_ide --cov-report=html --cov-report=term-missing"
 test-verbose = "pytest tests -vv"
 
 # Combined quality checks

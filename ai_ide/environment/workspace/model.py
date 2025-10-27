@@ -68,8 +68,10 @@ DEFAULT_CREATION_OPTIONS = {
 #     "```python\n"
 #     ">primary|1:1<print('hello world!')\n"
 #     "```\n"
-#     "在这个例子中，第一行的字符串的长度是22，但是行首光标的位置是1:1，因为光标的位置是在字符串的左边界，同时行末位置应该是1:22，EOL并不算入行内字符。\n"
-#     "为了方便你阅读行号，在每一行的开始，插入了一个宽度为5的字符串记录当前行号，与代码正文使用 '|' 分隔，计算光标位置的时候不要计算这一部分。光标定位坐标采用 1-based，注意均是从1开始计数\n"
+#     "在这个例子中，第一行的字符串的长度是22，但是行首光标的位置是1:1，因为光标的位置是在字符串的左边界，同时行末位置应该是1:22，
+#     EOL并不算入行内字符。\n"
+#     "为了方便你阅读行号，在每一行的开始，插入了一个宽度为5的字符串记录当前行号，与代码正文使用 '|' 分隔，
+#     计算光标位置的时候不要计算这一部分。光标定位坐标采用 1-based，注意均是从1开始计数\n"
 # )
 
 DEFAULT_VIEW_TEMPLATE = (
@@ -81,7 +83,8 @@ DEFAULT_VIEW_TEMPLATE = (
     ">primary|1:1<print('hello world!')\n"
     "```\n"
     "在这个例子中，第一行的字符串的长度是22，不会受光标结构影响（即光标不占用实际宽度）。行首光标的位置是1:1，同时行末位置应该是1:22，EOL并不算入行内字符。\n"
-    "为了方便你阅读行号，在每一行的开始，插入了一个固定宽度的字符串记录当前行号，与代码正文使用 '|' 分隔，计算光标位置的时候不要计算这一部分。光标定位坐标采用 1-based，注意均是从1开始计数\n"
+    "为了方便你阅读行号，在每一行的开始，插入了一个固定宽度的字符串记录当前行号，与代码正文使用 '|' 分隔，"
+    "计算光标位置的时候不要计算这一部分。光标定位坐标采用 1-based，注意均是从1开始计数\n"
     "添加了光标与行号信息后的文本如下:\n```{language_id}\n{content_value}\n```\n"
 )
 
@@ -122,7 +125,7 @@ class TextModel(ModelProtocol):
         view_template: str = DEFAULT_VIEW_TEMPLATE,
         simple_view_template: str = DEFAULT_SIMPLE_VIEW_TEMPLATE,
         auto_save_during_dispose: bool = True,
-    ):
+    ) -> None:
         self._is_disposed: bool = False  # 设置是否已释放，默认为False
         self._is_disposing: bool = False
         self._auto_save_during_dispose: bool = auto_save_during_dispose
@@ -642,7 +645,8 @@ class TextModel(ModelProtocol):
             match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
                 索是否应区分大小写。默认为 False。
             word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
-                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分。
+                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，
+                则所有字符都视为单词的一部分。
             capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
                 Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
             limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches
@@ -705,7 +709,11 @@ class TextModel(ModelProtocol):
         results: list[SearchResult] = []
         for search_range in unique_search_ranges:
             results += TextModelSearch.find_matches(
-                self, search_params, search_range, capture_matches, limit_result_count
+                self,
+                search_params,
+                search_range,
+                capture_matches,
+                limit_result_count,
             )
         return results
 
@@ -730,8 +738,8 @@ class TextModel(ModelProtocol):
                 the search will stop after finding this number of matches.
 
         Returns:
-            list[SearchResult]: 每个找到的匹配都表示为一个字典。每个字典包含行号，开始索引，结束索引，以及匹配的文本（如果capture_matches为True）。
-            如果提供了limit_result_count并且匹配数量超过了它，函数将返回到那个点为止找到的匹配。
+            list[SearchResult]: 每个找到的匹配都表示为一个字典。每个字典包含行号，开始索引，结束索引，以及匹配的文本（如果capture_matches
+                为True）。如果提供了limit_result_count并且匹配数量超过了它，函数将返回到那个点为止找到的匹配。
                 A list of dictionaries representing each match found. Each dictionary contains the line number, start
                 index, end index, and the matched text (if capture_matches is True). If limit_result_count is provided
                 and the number of matches exceeds it, the function will return the matches found until that point.
@@ -773,7 +781,7 @@ class TextModel(ModelProtocol):
                                 end_position=Position(line=line_number, character=end + 1),
                             ),
                             match=match_text if capture_matches else None,
-                        )
+                        ),
                     )
                     # 移动开始位置到刚刚过去的最后一个匹配 | Move start to just past the last match
                     start += len(search_string)
@@ -1045,7 +1053,8 @@ class TextModel(ModelProtocol):
         raise NotImplementedError
 
     def _validate_edit_operation(
-        self, raw_operation: IdentifiedSingleEditOperation | SingleEditOperation
+        self,
+        raw_operation: IdentifiedSingleEditOperation | SingleEditOperation,
     ) -> IdentifiedSingleEditOperation:
         """
 
@@ -1155,15 +1164,17 @@ class TextModel(ModelProtocol):
                     "last_line_length": last_line_length,
                     "force_move_markers": op.force_move_markers or False,
                     "is_auto_whitespace_edit": op.is_auto_whitespace_edit,
-                }
+                },
             )
         operations.sort(
-            key=lambda x: x["range"], reverse=True
+            key=lambda x: x["range"],
+            reverse=True,
         )  # Python自带的sorted方法与 .sort() 均是稳定排序，即相等的元素排序前后的顺序不变
         has_touching_ranges: bool = False  # 是否有相邻的Range操作恰好有相连但无交集
         count = len(operations) - 1
         for i in range(count):
-            # 因为经过一轮倒序，所以大文档中越向后面的Range会在此数据越靠前。判断overlapping的时候，需要判断前一个Range的start_position是否小于后一个Range的end_position
+            # 因为经过一轮倒序，所以大文档中越向后面的Range会在此数据越靠前。判断overlapping的时候，需要判断前一个Range的start_position
+            # 是否小于后一个Range的end_position
             range_start = operations[i]["range"].start_position
             next_range_end = operations[i + 1]["range"].end_position
             if range_start <= next_range_end:
@@ -1196,7 +1207,7 @@ class TextModel(ModelProtocol):
                             {
                                 "line_number": line_number,
                                 "old_content": current_line_content,
-                            }
+                            },
                         )
         reverse_operations: list[dict] = []
         if compute_undo_edits:
@@ -1219,7 +1230,7 @@ class TextModel(ModelProtocol):
                             new_position_offset=reverse_range_offset,
                             new_text=op_dict["text"],
                         ),
-                    }
+                    },
                 )
 
             # Can only sort reverse operations when the order is not significant
@@ -1293,7 +1304,7 @@ class TextModel(ModelProtocol):
                     "text": op["text"],
                     "range_offset": op["range_offset"],
                     "force_move_markers": op["force_move_markers"],
-                }
+                },
             )
 
         return content_changes
@@ -1508,11 +1519,15 @@ class TextModel(ModelProtocol):
         try:
             contents = self.get_value_in_range(content_range)
             content_list = contents.splitlines(keepends=False)
-            for line_num, line_content in enumerate(content_list, start=content_range.start_position.line):
-                content_list[line_num - content_range.start_position.line] = f"{line_num: <5}|{line_content}"
+            content_list = [
+                f"{line_num: <5}|{line_content}"
+                for line_num, line_content in enumerate(content_list, start=content_range.start_position.line)
+            ]
             contents = self.get_eol().join(content_list)
             return self.simple_view_template.format(
-                content_value=contents, uri=self.uri, language_id=self.language_id.value
+                content_value=contents,
+                uri=self.uri,
+                language_id=self.language_id.value,
             )
         finally:
             self._content = content_bak
@@ -1577,12 +1592,17 @@ class TextModel(ModelProtocol):
         """
         contents = self.get_value_in_range(Range(start_position=from_pos, end_position=to_pos))
         content_list = contents.splitlines(keepends=False)
-        for line_num, line_content in enumerate(content_list, start=from_pos.line):
-            content_list[line_num - from_pos.line] = f"{line_num: <5}|{line_content}"
+        content_list = [
+            f"{line_num: <5}|{line_content}" for line_num, line_content in enumerate(content_list, start=from_pos.line)
+        ]
         return self.get_eol().join(content_list)
 
     def get_render(
-        self, jinja: str, with_line_num: bool = True, content_range: Range | None = None, with_cursor: bool = True
+        self,
+        jinja: str,
+        with_line_num: bool = True,
+        content_range: Range | None = None,
+        with_cursor: bool = True,
     ) -> str:
         """
         获取当前内容按Jinja模板渲染后的结果。

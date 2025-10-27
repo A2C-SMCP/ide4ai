@@ -103,9 +103,7 @@ jobs:
       # Run tests
       - name: Run tests
         run: |
-          # 使用 -s 选项显示 print 输出，但不使用 -vv 避免日志过多
-          # Use -s to show print output, but avoid -vv to prevent excessive logs
-          uv run pytest tests -s --tb=short
+          uv run pytest tests --tb=short
 
       # 可选：上传覆盖率报告（如需可开启）
       # Optional: upload coverage report (uncomment if needed)

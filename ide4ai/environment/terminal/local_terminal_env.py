@@ -205,7 +205,12 @@ class TerminalEnv(BaseTerminalEnv):
 
             stdout = proc.stdout.read() if proc.stdout else None
             stderr = proc.stderr.read() if proc.stderr else None
-            if stderr:
+
+            # 合并 stdout 和 stderr，优先显示 stderr / Merge stdout and stderr, prioritize stderr
+            if stderr and stdout:
+                # 如果同时有 stderr 和 stdout，合并输出 / If both stderr and stdout exist, merge output
+                yield stderr + stdout, success
+            elif stderr:
                 yield stderr, success
             elif stdout:
                 yield stdout, success

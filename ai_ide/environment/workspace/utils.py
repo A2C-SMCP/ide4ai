@@ -361,7 +361,7 @@ def make_contains_rtl() -> Pattern:
         r"|\uD802[\uDC00-\uDD1B\uDD20-\uDE00\uDE10-\uDE35\uDE40-\uDEE4\uDEEB-\uDF35\uDF40-\uDFFF]"
         r"|\uD803[\uDC00-\uDD23\uDE80-\uDEA9\uDEAD-\uDF45\uDF51-\uDF81\uDF86-\uDFF6]"
         r"|\uD83A[\uDC00-\uDCCF\uDD00-\uDD43\uDD4B-\uDFFF]"
-        r"|\uD83B[\uDC00-\uDEBB])"
+        r"|\uD83B[\uDC00-\uDEBB])",
     )
 
 

@@ -146,7 +146,7 @@ class LineFeedCounter(BaseModel):
     text: str
     _line_feeds_offsets: list[int]
 
-    def __init__(self, **data: Any):
+    def __init__(self, **data: Any) -> None:
         super().__init__(**data)
         self._line_feeds_offsets = [i for i, char in enumerate(self.text) if char == "\n"]
 
@@ -214,7 +214,11 @@ class TextModelSearch(BaseModel):
                 limit_result_count,
             )
         return TextModelSearch._do_find_matches_line_by_line(
-            model, search_range, searchData, capture_matches, limit_result_count
+            model,
+            search_range,
+            searchData,
+            capture_matches,
+            limit_result_count,
         )
 
     @staticmethod
@@ -243,7 +247,11 @@ class TextModelSearch(BaseModel):
                 break  # pragma: no cover
             # Use the modified _get_multiline_match_range to calculate the match range
             match_range = TextModelSearch._get_multiline_match_range(
-                model, delta_offset, lf_counter, match.start(), match.group()
+                model,
+                delta_offset,
+                lf_counter,
+                match.start(),
+                match.group(),
             )
             # Append the match details to the result list
             result.append(SearchResult(range=match_range, match=match.group() if capture_matches else None))
@@ -271,14 +279,16 @@ class TextModelSearch(BaseModel):
                     SearchResult(
                         range=Range(
                             start_position=Position(
-                                line_number, match.start() + 1
+                                line_number,
+                                match.start() + 1,
                             ),  # IDE中的Position从1开始计数，所以+1。 Position is 1-based in IDEs, so +1.
                             end_position=Position(
-                                line_number, match.end() + 1
+                                line_number,
+                                match.end() + 1,
                             ),  # IDE中的Position从1开始计数，所以+1。 Position is 1-based in IDEs, so +1.
                         ),
                         match=match.group() if capture_matches else None,
-                    )
+                    ),
                 )
 
         return result
@@ -308,7 +318,7 @@ class TextModelSearch(BaseModel):
             line_feed_count_before_match = lf_counter.find_line_feed_count_before_offset(match_index)
             start_offset = delta_offset + match_index + line_feed_count_before_match
             line_feed_count_before_end_of_match = lf_counter.find_line_feed_count_before_offset(
-                match_index + len(match0)
+                match_index + len(match0),
             )
             line_feed_count_in_match = line_feed_count_before_end_of_match - line_feed_count_before_match
             end_offset = start_offset + len(match0) + line_feed_count_in_match

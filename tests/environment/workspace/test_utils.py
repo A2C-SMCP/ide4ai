@@ -8,8 +8,9 @@ from pathlib import Path, PurePath
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-from tfrobot.drive.tool.ides.environment.workspace.schema import EndOfLineSequence
-from tfrobot.drive.tool.ides.environment.workspace.utils import (
+
+from src.ai_ide.environment.workspace.schema import EndOfLineSequence
+from src.ai_ide.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
     LARGE_FILE_LINE_COUNT_THRESHOLD,
     LARGE_FILE_SIZE_THRESHOLD,

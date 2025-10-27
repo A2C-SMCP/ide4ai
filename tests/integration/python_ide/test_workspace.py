@@ -9,15 +9,16 @@ from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-from tfrobot.drive.tool.ides.environment.workspace.schema import (
+from src.ai_ide.tool import EditOperation, EditPosition, EditRange, construct_single_edit_operation
+from tfrobot.schema.exceptions import TFExecutionError
+
+from src.ai_ide.environment.workspace.schema import (
     Position,
     Range,
     SingleEditOperation,
 )
-from tfrobot.drive.tool.ides.python_ide.const import DEFAULT_SYMBOL_VALUE_SET
-from tfrobot.drive.tool.ides.python_ide.workspace import PyWorkspace
-from tfrobot.drive.tool.ides.tool import EditOperation, EditPosition, EditRange, construct_single_edit_operation
-from tfrobot.schema.exceptions import TFExecutionError
+from src.ai_ide.python_ide.const import DEFAULT_SYMBOL_VALUE_SET
+from src.ai_ide.python_ide.workspace import PyWorkspace
 
 
 @pytest.fixture
@@ -63,7 +64,8 @@ def test_py_workspace_construct_edit_range(project_root_dir, py_workspace) -> No
     test_file_path = project_root_dir + "/file_for_test_read.py"
     test_file_uri = "file://" + test_file_path
     edit_param = EditOperation(
-        range=EditRange(start_position=EditPosition(0, 0), end_position=EditPosition(0, 1)), new_text="test"
+        range=EditRange(start_position=EditPosition(0, 0), end_position=EditPosition(0, 1)),
+        new_text="test",
     )
     t_model = py_workspace.open_file(uri=test_file_uri)
     with pytest.raises(TFExecutionError):
@@ -96,7 +98,8 @@ def test_py_workspace_construct_edit_range(project_root_dir, py_workspace) -> No
         construct_single_edit_operation(edit_param.model_dump(), t_model)
     edit_param = EditOperation(
         range=EditRange(
-            start_position=EditPosition(1, (line_1_len + 2) * -1), end_position=EditPosition(1, (line_1_len + 2) * -1)
+            start_position=EditPosition(1, (line_1_len + 2) * -1),
+            end_position=EditPosition(1, (line_1_len + 2) * -1),
         ),
         new_text="test",
     )
@@ -113,7 +116,8 @@ def test_py_workspace_construct_negative_edit_range(project_root_dir, py_workspa
     # 模拟在第一行行尾添加 test
     edit_param = EditOperation(
         range=EditRange(
-            start_position=EditPosition(1, line_1_length + 1), end_position=EditPosition(1, line_1_length + 1)
+            start_position=EditPosition(1, line_1_length + 1),
+            end_position=EditPosition(1, line_1_length + 1),
         ),
         new_text="test",
     )

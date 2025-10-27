@@ -11,9 +11,7 @@ from unittest import mock
 
 import pytest
 from pydantic import AnyUrl
-from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
-from tfrobot.drive.tool.ides.schema import LanguageId
-from tfrobot.drive.tool.ides.tool import (
+from src.ai_ide.tool import (
     EditOperation,
     EditPosition,
     EditRange,
@@ -24,6 +22,9 @@ from tfrobot.drive.tool.ides.tool import (
     construct_single_edit_operation,
 )
 from tfrobot.schema.exceptions import TFExecutionError
+
+from src.ai_ide.environment.workspace.model import TextModel
+from src.ai_ide.schema import LanguageId
 
 
 @pytest.fixture
@@ -72,7 +73,8 @@ def test_apply_edit(mock_text_model) -> None:
     """
     edit = EditOperation(
         range=EditRange(
-            start_position=EditPosition(line=1, character=1), end_position=EditPosition(line=1, character=-1)
+            start_position=EditPosition(line=1, character=1),
+            end_position=EditPosition(line=1, character=-1),
         ),
         new_text="test\n",
     )
@@ -92,7 +94,8 @@ def test_apply_edit_delete(mock_text_model) -> None:
     """
     edit = EditOperation(
         range=EditRange(
-            start_position=EditPosition(line=1, character=1), end_position=EditPosition(line=1, character=-1)
+            start_position=EditPosition(line=1, character=1),
+            end_position=EditPosition(line=1, character=-1),
         ),
         new_text="",  # 空文本表示删除
     )

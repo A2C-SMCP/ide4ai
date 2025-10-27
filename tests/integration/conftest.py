@@ -8,8 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import pytest
-from tfrobot.drive.tool.ides.python_ide.ide import PythonIDE
-from tfrobot.drive.tool.ides.tool import (
+from src.ai_ide.tool import (
     PyAIEditor,
     PyGPTEditor,
     PyIDEApplyEdit,
@@ -19,6 +18,8 @@ from tfrobot.drive.tool.ides.tool import (
     PyIDEReadFile,
     PyOllamaEditor,
 )
+
+from src.ai_ide.python_ide.ide import PythonIDE
 
 
 @pytest.fixture(scope="module")

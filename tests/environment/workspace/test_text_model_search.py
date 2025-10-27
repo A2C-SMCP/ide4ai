@@ -8,15 +8,16 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 from pydantic import AnyUrl
-from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
-from tfrobot.drive.tool.ides.environment.workspace.model_search import (
+
+from src.ai_ide.environment.workspace.model import TextModel
+from src.ai_ide.environment.workspace.model_search import (
     LineFeedCounter,
     SearchParams,
     TextModelSearch,
     escape_regexp_characters,
 )
-from tfrobot.drive.tool.ides.environment.workspace.schema import Position, Range
-from tfrobot.drive.tool.ides.schema import LanguageId
+from src.ai_ide.environment.workspace.schema import Position, Range
+from src.ai_ide.schema import LanguageId
 
 
 @pytest.fixture

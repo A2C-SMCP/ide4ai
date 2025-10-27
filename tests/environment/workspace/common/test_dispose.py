@@ -6,8 +6,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-from tfrobot.drive.tool.ides.environment.workspace.common import dispose
-from tfrobot.drive.tool.ides.environment.workspace.common.dispose import (
+
+from src.ai_ide.environment.workspace.common import dispose
+from src.ai_ide.environment.workspace.common.dispose import (
     Disposable,
     DisposableMap,
     DisposableStore,

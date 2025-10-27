@@ -10,9 +10,10 @@ from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-from tfrobot.drive.tool.ides.claude_tool import ClaudeEditorTool
-from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
-from tfrobot.drive.tool.ides.schema import LanguageId
+from src.ai_ide.claude_tool import ClaudeEditorTool
+
+from src.ai_ide.environment.workspace.model import TextModel
+from src.ai_ide.schema import LanguageId
 
 
 @pytest.fixture

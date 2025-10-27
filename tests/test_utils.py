@@ -3,7 +3,7 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from tfrobot.drive.tool.ides.utils import is_subdirectory, list_directory_tree
+from src.ai_ide.utils import is_subdirectory, list_directory_tree
 
 
 def test_list_directory_tree_all_recursive(fs):

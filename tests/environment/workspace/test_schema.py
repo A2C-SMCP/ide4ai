@@ -5,7 +5,8 @@
 # @Software: PyCharm
 import pytest
 from pydantic import ValidationError
-from tfrobot.drive.tool.ides.environment.workspace.schema import (
+
+from src.ai_ide.environment.workspace.schema import (
     Cursor,
     Position,
     Range,
@@ -562,9 +563,7 @@ def test_inplace_subtraction(range1, range2, expected):
         range1 -= range2
         assert range1 == expected
     except ValueError as e:
-        assert (
-            str(e) == "结果为空，无法更新" or str(e) == "差集操作结果为多个区间，无法更新"
-        )  # Matching the error message as defined
+        assert str(e) == "结果为空，无法更新" or str(e) == "差集操作结果为多个区间，无法更新"  # Matching the error message as defined
 
 
 def test_cursor_repr() -> None:

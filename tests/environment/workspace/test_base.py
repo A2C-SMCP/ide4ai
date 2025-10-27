@@ -11,15 +11,16 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from tfrobot.drive.tool.ides.dtos.workspace_edit import LSPWorkspaceEdit
-from tfrobot.drive.tool.ides.environment.workspace.base import BaseWorkspace
-from tfrobot.drive.tool.ides.environment.workspace.schema import (
+
+from src.ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
+from src.ai_ide.environment.workspace.base import BaseWorkspace
+from src.ai_ide.environment.workspace.schema import (
     Range,
     SearchResult,
     SingleEditOperation,
     TextEdit,
 )
-from tfrobot.drive.tool.ides.schema import IDEAction
+from src.ai_ide.schema import IDEAction
 
 
 # Step 1: Define a concrete subclass for testing
@@ -57,7 +58,12 @@ class TestWorkspace(BaseWorkspace):
         pass
 
     def rename_file(
-        self, *, old_uri: str, new_uri: str, overwrite: bool | None = None, ignore_if_exists: bool | None = None
+        self,
+        *,
+        old_uri: str,
+        new_uri: str,
+        overwrite: bool | None = None,
+        ignore_if_exists: bool | None = None,
     ):
         pass
 

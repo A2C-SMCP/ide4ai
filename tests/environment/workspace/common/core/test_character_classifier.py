@@ -4,7 +4,8 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import pytest
-from tfrobot.drive.tool.ides.environment.workspace.common.core.character_classifier import (
+
+from src.ai_ide.environment.workspace.common.core.character_classifier import (
     CharacterClassifier,
 )
 

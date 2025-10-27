@@ -5,7 +5,7 @@
 # @Software: PyCharm
 # 测试 WordCharacterClassifier 的初始化和基本功能
 
-from tfrobot.drive.tool.ides.environment.workspace.common.core.word_character_classifier import (
+from src.ai_ide.environment.workspace.common.core.word_character_classifier import (
     WordCharacterClassifier,
     get_map_for_word_separators,
 )

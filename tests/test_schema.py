@@ -7,8 +7,9 @@ import json
 
 import pytest
 from pydantic import ValidationError
-from tfrobot.drive.tool.ides.environment.workspace.schema import Position, Range
-from tfrobot.drive.tool.ides.schema import ACTION_NAME_MAP, IDEAction, IDEObs
+
+from src.ai_ide.environment.workspace.schema import Position, Range
+from src.ai_ide.schema import ACTION_NAME_MAP, IDEAction, IDEObs
 
 
 def test_ide_obs_created_at() -> None:

@@ -8,17 +8,18 @@ from unittest.mock import mock_open, patch
 
 import pytest
 from pydantic import AnyUrl
-from tfrobot.drive.tool.ides.environment.workspace.model import TextModel
-from tfrobot.drive.tool.ides.environment.workspace.schema import (
+
+from src.ai_ide.environment.workspace.model import TextModel
+from src.ai_ide.environment.workspace.schema import (
     EndOfLinePreference,
     Position,
     Range,
     SingleEditOperation,
 )
-from tfrobot.drive.tool.ides.environment.workspace.utils import (
+from src.ai_ide.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
 )
-from tfrobot.drive.tool.ides.schema import LanguageId
+from src.ai_ide.schema import LanguageId
 
 
 @pytest.fixture
@@ -219,10 +220,7 @@ def test_validate_range_invalid(python_text_model, start_line, start_char, end_l
         # Check if range was adjusted if no error raised
         assert validated_range.start_position.line >= 1
         assert validated_range.end_position.line <= 2  # Assuming file has 2 lines only
-        assert (
-            validated_range.end_position.character
-            <= len(python_text_model._content[validated_range.end_position.line - 1]) + 1
-        )
+        assert validated_range.end_position.character <= len(python_text_model._content[validated_range.end_position.line - 1]) + 1
     except ValueError as e:
         assert "range is out of bounds" in str(e)
 
@@ -553,11 +551,7 @@ def test_get_view(python_text_model, cursor_position, cursor_key, expected_outpu
 
     # Assert the expected cursor format is in the view
     assert ">primary|1:1<" in view
-    assert (
-        expected_output in view
-        if not isinstance(expected_output, list)
-        else all(output in view for output in expected_output)
-    )
+    assert expected_output in view if not isinstance(expected_output, list) else all(output in view for output in expected_output)
 
 
 @pytest.mark.parametrize(
@@ -593,11 +587,7 @@ def test_get_simple_view(python_text_model, cursor_position, cursor_key, expecte
     # Assert the expected cursor format is in the view
     assert ">primary|1:1<" not in view
     assert "1    |" in view
-    assert (
-        expected_output not in view
-        if not isinstance(expected_output, list)
-        else all(output not in view for output in expected_output)
-    )
+    assert expected_output not in view if not isinstance(expected_output, list) else all(output not in view for output in expected_output)
 
 
 @pytest.mark.parametrize(
@@ -791,11 +781,7 @@ def test_get_view_advanced(python_text_model, cursor_position, cursor_key, conte
 
     # Assert the expected cursor format is in the view
     assert ">primary|1:1<" in view
-    assert (
-        expected_output in view
-        if not isinstance(expected_output, list)
-        else all(output in view for output in expected_output)
-    )
+    assert expected_output in view if not isinstance(expected_output, list) else all(output in view for output in expected_output)
 
 
 # Test with no cursors
@@ -833,7 +819,7 @@ def test_clear_cursor(python_text_model):
                 SingleEditOperation(
                     range=Range(start_position=Position(2, 1), end_position=Position(2, 1)),
                     text="import sys\n",
-                )
+                ),
             ],
             "# Sample Python File\nimport sys\nprint('Hello, world!')",
         ),
@@ -843,7 +829,7 @@ def test_clear_cursor(python_text_model):
                 SingleEditOperation(
                     range=Range(start_position=Position(2, 1), end_position=Position(2, 17)),
                     text="",
-                )
+                ),
             ],
             "# Sample Python File\nrld!')",
         ),
@@ -853,7 +839,7 @@ def test_clear_cursor(python_text_model):
                 SingleEditOperation(
                     range=Range(start_position=Position(2, 8), end_position=Position(2, 18)),
                     text="Python 3.8",
-                )
+                ),
             ],
             "# Sample Python File\nprint('Python 3.8ld!')",
         ),
@@ -877,7 +863,7 @@ def test_clear_cursor(python_text_model):
                 SingleEditOperation(
                     range=Range(start_position=Position(1, 1), end_position=Position(3, 18)),
                     text="",
-                )
+                ),
             ],
             "",
         ),
@@ -887,7 +873,7 @@ def test_clear_cursor(python_text_model):
                 SingleEditOperation(
                     range=Range(start_position=Position(1, 1), end_position=Position(2, 1)),
                     text="New content\n",
-                )
+                ),
             ],
             "New content\nprint('Hello, world!')",
         ),
@@ -960,7 +946,7 @@ def test_apply_edits_with_complex_scenarios(python_text_model, edits, expected_o
         if compute_undo_edits:
             assert undo_edits is not None
             python_text_model.apply_edits(
-                [SingleEditOperation(range=undo.range, text=undo.new_text) for undo in undo_edits]
+                [SingleEditOperation(range=undo.range, text=undo.new_text) for undo in undo_edits],
             )
             assert python_text_model.get_value() == origin_value
 
@@ -1116,7 +1102,11 @@ def test_find_matches_line_by_line_capture_matches(text_model_multiline):
     ],
 )
 def test_find_matches_line_by_line_various(
-    text_model_multiline, line_content, search_string, match_case, expected_count
+    text_model_multiline,
+    line_content,
+    search_string,
+    match_case,
+    expected_count,
 ):
     full_range = text_model_multiline.get_full_model_range()
     operation = SingleEditOperation(range=full_range, text=line_content)

@@ -3,7 +3,7 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from tfrobot.drive.tool.ides.utils import render_symbols
+from src.ai_ide.utils import render_symbols
 
 
 def test_render_symbols():
@@ -55,8 +55,7 @@ def test_render_symbols_with_location():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide"
-                "/test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {
@@ -95,8 +94,7 @@ def test_render_symbols_with_location():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/"
-                "test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {
@@ -135,8 +133,7 @@ def test_render_symbols_with_location():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/"
-                "test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {
@@ -194,8 +191,7 @@ def test_render_symbols_with_illegal_kind():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide"
-                "/test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {
@@ -234,8 +230,7 @@ def test_render_symbols_with_illegal_kind():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/"
-                "test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {
@@ -274,8 +269,7 @@ def test_render_symbols_with_illegal_kind():
                     "end": {"character": 13, "line": 19},
                     "start": {"character": 4, "line": 19},
                 },
-                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/"
-                "test_pyright.py",
+                "uri": "file:///Users/jqq/PycharmProjects/TFRobotV2/tests/integration_tests/drive/tool/ides/python_ide/test_pyright.py",
             },
             "children": [
                 {

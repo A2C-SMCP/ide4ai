@@ -6,7 +6,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.ai_ide.environment.workspace.schema import (
+from ai_ide.environment.workspace.schema import (
     Cursor,
     Position,
     Range,

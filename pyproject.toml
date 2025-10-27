@@ -96,7 +96,7 @@ check_untyped_defs = true
 strict_equality = true
 show_error_codes = true
 pretty = true
-mypy_path = ["src"]
+mypy_path = ["."]
 
 [tool.coverage.run]
 source = ["ai_ide"]
@@ -115,13 +115,13 @@ exclude_lines = [
 
 [tool.poe.tasks]
 # Linting tasks
-lint = "ruff check src tests"
-lint-fix = "ruff check --fix src tests"
-format = "ruff format src tests"
-format-check = "ruff format --check src tests"
+lint = "ruff check ai_ide tests"
+lint-fix = "ruff check --fix ai_ide tests"
+format = "ruff format ai_ide tests"
+format-check = "ruff format --check ai_ide tests"
 
 # Type checking
-typecheck = "mypy src"
+typecheck = "mypy ai_ide"
 
 # Testing tasks
 test = "pytest tests"

@@ -12,15 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
-from src.ai_ide.environment.workspace.base import BaseWorkspace
-from src.ai_ide.environment.workspace.schema import (
+from ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
+from ai_ide.environment.workspace.base import BaseWorkspace
+from ai_ide.environment.workspace.schema import (
     Range,
     SearchResult,
     SingleEditOperation,
     TextEdit,
 )
-from src.ai_ide.schema import IDEAction
+from ai_ide.schema import IDEAction
 
 
 # Step 1: Define a concrete subclass for testing

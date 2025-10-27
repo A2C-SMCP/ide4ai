@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from src.ai_ide.environment.terminal.base import EnvironmentArguments
-from src.ai_ide.environment.terminal.local_terminal_env import TerminalEnv
+from ai_ide.environment.terminal.base import EnvironmentArguments
+from ai_ide.environment.terminal.local_terminal_env import TerminalEnv
 
 
 # Example test setup

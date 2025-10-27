@@ -9,17 +9,17 @@ from unittest.mock import mock_open, patch
 import pytest
 from pydantic import AnyUrl
 
-from src.ai_ide.environment.workspace.model import TextModel
-from src.ai_ide.environment.workspace.schema import (
+from ai_ide.environment.workspace.model import TextModel
+from ai_ide.environment.workspace.schema import (
     EndOfLinePreference,
     Position,
     Range,
     SingleEditOperation,
 )
-from src.ai_ide.environment.workspace.utils import (
+from ai_ide.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
 )
-from src.ai_ide.schema import LanguageId
+from ai_ide.schema import LanguageId
 
 
 @pytest.fixture

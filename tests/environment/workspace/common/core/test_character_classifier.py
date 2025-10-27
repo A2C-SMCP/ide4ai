@@ -5,7 +5,7 @@
 # @Software: PyCharm
 import pytest
 
-from src.ai_ide.environment.workspace.common.core.character_classifier import (
+from ai_ide.environment.workspace.common.core.character_classifier import (
     CharacterClassifier,
 )
 

@@ -11,7 +11,7 @@ from unittest import mock
 
 import pytest
 from pydantic import AnyUrl
-from src.ai_ide.tool import (
+from ai_ide.tool import (
     EditOperation,
     EditPosition,
     EditRange,
@@ -23,8 +23,8 @@ from src.ai_ide.tool import (
 )
 from tfrobot.schema.exceptions import TFExecutionError
 
-from src.ai_ide.environment.workspace.model import TextModel
-from src.ai_ide.schema import LanguageId
+from ai_ide.environment.workspace.model import TextModel
+from ai_ide.schema import LanguageId
 
 
 @pytest.fixture

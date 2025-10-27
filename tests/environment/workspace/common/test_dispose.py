@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.ai_ide.environment.workspace.common import dispose
-from src.ai_ide.environment.workspace.common.dispose import (
+from ai_ide.environment.workspace.common import dispose
+from ai_ide.environment.workspace.common.dispose import (
     Disposable,
     DisposableMap,
     DisposableStore,

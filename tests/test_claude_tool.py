@@ -10,10 +10,10 @@ from typing import Any
 
 import pytest
 from pydantic import AnyUrl
-from src.ai_ide.claude_tool import ClaudeEditorTool
+from ai_ide.claude_tool import ClaudeEditorTool
 
-from src.ai_ide.environment.workspace.model import TextModel
-from src.ai_ide.schema import LanguageId
+from ai_ide.environment.workspace.model import TextModel
+from ai_ide.schema import LanguageId
 
 
 @pytest.fixture

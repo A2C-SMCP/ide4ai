@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import pytest
-from src.ai_ide.tool import (
+from ai_ide.tool import (
     PyAIEditor,
     PyGPTEditor,
     PyIDEApplyEdit,
@@ -19,7 +19,7 @@ from src.ai_ide.tool import (
     PyOllamaEditor,
 )
 
-from src.ai_ide.python_ide.ide import PythonIDE
+from ai_ide.python_ide.ide import PythonIDE
 
 
 @pytest.fixture(scope="module")

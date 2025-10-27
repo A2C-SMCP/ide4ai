@@ -9,15 +9,15 @@ from tempfile import NamedTemporaryFile
 import pytest
 from pydantic import AnyUrl
 
-from src.ai_ide.environment.workspace.model import TextModel
-from src.ai_ide.environment.workspace.model_search import (
+from ai_ide.environment.workspace.model import TextModel
+from ai_ide.environment.workspace.model_search import (
     LineFeedCounter,
     SearchParams,
     TextModelSearch,
     escape_regexp_characters,
 )
-from src.ai_ide.environment.workspace.schema import Position, Range
-from src.ai_ide.schema import LanguageId
+from ai_ide.environment.workspace.schema import Position, Range
+from ai_ide.schema import LanguageId
 
 
 @pytest.fixture

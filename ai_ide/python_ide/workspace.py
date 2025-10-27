@@ -177,7 +177,9 @@ class PyWorkspace(BaseWorkspace):
                         text_model = self.open_file(uri=ide_action.action_args)
                     else:
                         raise ValueError("open_file 动作参数错误")
-                    file_content = text_model.get_simple_view() if self._enable_simple_view_mode else text_model.get_view()
+                    file_content = (
+                        text_model.get_simple_view() if self._enable_simple_view_mode else text_model.get_view()
+                    )
                     return (
                         IDEObs(obs=file_content).model_dump(),
                         100,
@@ -229,7 +231,9 @@ class PyWorkspace(BaseWorkspace):
                                 ),
                             )
                         apply_result: str = (
-                            "编辑成功。如果有回滚需求，可以按下面的回滚操作执行。" + "\n".join([repr(e) for e in res]) if res else ""
+                            "编辑成功。如果有回滚需求，可以按下面的回滚操作执行。" + "\n".join([repr(e) for e in res])
+                            if res
+                            else ""
                         )
                         if content_after_edit:
                             apply_result += "\n编辑后的代码如下（仅返回编辑位置附近的代码。如果想看全部，可以使用read_file工具查看）:\n"
@@ -505,7 +509,9 @@ class PyWorkspace(BaseWorkspace):
         if not text_model:
             text_model = self.open_file(uri=uri)  # pragma: no cover
         try:
-            model_edits = [SingleEditOperation.model_validate(edit) if isinstance(edit, dict) else edit for edit in edits]
+            model_edits = [
+                SingleEditOperation.model_validate(edit) if isinstance(edit, dict) else edit for edit in edits
+            ]
         except ValidationError as e:
             err_info = (
                 f"编辑操作参数错误，具体报错如下:\n{e}\n这类错误经常由Range范围引起，在当前工作区内Range与Position均是1-based。"
@@ -518,7 +524,9 @@ class PyWorkspace(BaseWorkspace):
             "textDocument/didChange",
             {
                 "textDocument": {"uri": uri, "version": text_model.get_version_id()},
-                "contentChanges": [{"range": edit.range.to_lsp_range().model_dump(), "text": edit.text} for edit in model_edits],
+                "contentChanges": [
+                    {"range": edit.range.to_lsp_range().model_dump(), "text": edit.text} for edit in model_edits
+                ],
             },
         )
         return res

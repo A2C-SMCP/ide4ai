@@ -43,18 +43,6 @@ Issues = "https://github.com/JQQ/ai-ide/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = [
-    "pytest>=7.4.4",
-    "pytest-asyncio>=0.23.3",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "pytest-timeout>=2.3.1",
-    "ruff>=0.1.11",
-    "mypy>=1.16.0",
-    "poethepoet>=0.24.0",
-]
-
 [tool.ruff]
 line-length = 120
 target-version = "py310"
@@ -165,7 +153,20 @@ sequence = ["format", "lint-fix", "typecheck", "test"]
 
 [dependency-groups]
 dev = [
+    # 测试框架 / Testing framework
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-timeout>=2.3.1",
+    # 代码质量工具 / Code quality tools
+    "ruff>=0.1.11",
+    "mypy>=1.16.0",
+    # 任务运行器 / Task runner
+    "poethepoet>=0.24.0",
+    # AI 相关 / AI related
     "tiktoken>=0.12.0",
+    # 类型存根 / Type stubs
     "types-cachetools>=6.2.0.20251022",
     "types-regex>=2025.10.23.20251023",
 ]

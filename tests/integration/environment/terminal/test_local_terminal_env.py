@@ -74,9 +74,10 @@ def test_command_execution(terminal_env, echo_range):
 
     # The command 'echo' with 'hello world' should produce the output 'hello world\n'
     # Here we check if the output matches what we expect
-    assert observation["obs"] == f"hello world{echo_range}\n" or observation["obs"] == f"hello world{echo_range}\nCommand Finished\n", (
-        "The observation output is not as expected."
-    )
+    assert (
+        observation["obs"] == f"hello world{echo_range}\n"
+        or observation["obs"] == f"hello world{echo_range}\nCommand Finished\n"
+    ), "The observation output is not as expected."
 
     # Additional checks to confirm that the action was handled correctly
     assert success is True, "The action should be successful."
@@ -195,7 +196,9 @@ def test_change_dir_to_non_subdirectory(terminal_env, temp_work_dir):
     os.makedirs(non_subdir, exist_ok=True)
     with pytest.raises(ValueError) as excinfo:
         terminal_env.change_dir(path=non_subdir)
-    assert "not a subdirectory of the working directory" in str(excinfo.value), "Should raise an error for non-subdirectories"
+    assert "not a subdirectory of the working directory" in str(excinfo.value), (
+        "Should raise an error for non-subdirectories"
+    )
 
 
 def test_change_dir_to_different_drive(terminal_env):

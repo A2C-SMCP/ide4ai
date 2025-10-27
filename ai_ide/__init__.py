@@ -20,7 +20,7 @@ from ai_ide.ides import IDESingleton, PyIDESingleton
 from ai_ide.python_ide.ide import PythonIDE
 from ai_ide.schema import IDEAction, IDEObs, LanguageId
 
-__version__ = "0.1.0"
+__version__: str = "0.1.0"
 __all__ = [
     "IDE",
     "PythonIDE",

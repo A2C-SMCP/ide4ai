@@ -5,7 +5,7 @@
 # @Software: PyCharm
 import pytest
 
-from ai_ide.exceptions import IDEExecutionError
+from ide4ai.exceptions import IDEExecutionError
 
 
 def test_initialization(python_ide):

@@ -14,8 +14,8 @@ from typing import Any, ClassVar, cast
 import gymnasium as gym
 from typing_extensions import SupportsFloat
 
-from ai_ide.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
-from ai_ide.schema import IDEAction, IDEObs
+from ide4ai.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
+from ide4ai.schema import IDEAction, IDEObs
 
 
 class TerminalEnv(BaseTerminalEnv):

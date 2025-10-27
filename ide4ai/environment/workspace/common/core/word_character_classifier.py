@@ -8,7 +8,7 @@ from typing import cast
 import regex as re
 from cachetools import LRUCache
 
-from ai_ide.environment.workspace.common.core.character_classifier import (
+from ide4ai.environment.workspace.common.core.character_classifier import (
     CharacterClassifier,
 )
 

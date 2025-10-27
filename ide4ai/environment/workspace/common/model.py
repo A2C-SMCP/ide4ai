@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, PrivateAttr
 
-from ai_ide.environment.workspace.schema import Range
+from ide4ai.environment.workspace.schema import Range
 
 
 # Vertical Lane in the overview ruler of the editor

@@ -5,12 +5,12 @@
 # @Software: PyCharm
 from typing import Any, ClassVar, SupportsFloat
 
-from ai_ide.base import IDE
-from ai_ide.environment.terminal.base import EnvironmentArguments
-from ai_ide.environment.terminal.local_terminal_env import TerminalEnv
-from ai_ide.exceptions import IDEExecutionError
-from ai_ide.python_ide.workspace import PyWorkspace
-from ai_ide.schema import IDEAction, IDEObs
+from ide4ai.base import IDE
+from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.local_terminal_env import TerminalEnv
+from ide4ai.exceptions import IDEExecutionError
+from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.schema import IDEAction, IDEObs
 
 
 class PythonIDE(IDE):

@@ -14,11 +14,11 @@ Main Components:
 - BaseTerminalEnv: Terminal environment interface
 """
 
-from ai_ide.base import IDE
-from ai_ide.exceptions import IDEExecutionError, IDEProtocolError
-from ai_ide.ides import IDESingleton, PyIDESingleton
-from ai_ide.python_ide.ide import PythonIDE
-from ai_ide.schema import IDEAction, IDEObs, LanguageId
+from ide4ai.base import IDE
+from ide4ai.exceptions import IDEExecutionError, IDEProtocolError
+from ide4ai.ides import IDESingleton, PyIDESingleton
+from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.schema import IDEAction, IDEObs, LanguageId
 
 __version__: str = "0.1.0"
 __all__ = [

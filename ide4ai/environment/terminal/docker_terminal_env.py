@@ -7,7 +7,7 @@
 #
 # from gymnasium.core import ActType, ObsType
 #
-# from ai_ide.environment.terminal.base import (
+# from ide4ai.environment.terminal.base import (
 #     BaseTerminalEnv,
 #     EnvironmentArguments,
 # )

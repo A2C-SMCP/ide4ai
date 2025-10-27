@@ -6,7 +6,7 @@
 import threading
 from typing import Any
 
-from ai_ide.python_ide.ide import PythonIDE
+from ide4ai.python_ide.ide import PythonIDE
 
 
 class IDESingleton(type):

@@ -16,10 +16,10 @@ from jinja2 import Template
 from pydantic import AnyUrl, FilePath
 from typing_extensions import TypedDict
 
-from ai_ide.environment.workspace.common.dispose import (
+from ide4ai.environment.workspace.common.dispose import (
     DisposableProtocol,
 )
-from ai_ide.environment.workspace.schema import (
+from ide4ai.environment.workspace.schema import (
     Cursor,
     CursorStateComputer,
     EndOfLinePreference,
@@ -36,7 +36,7 @@ from ai_ide.environment.workspace.schema import (
     TextModelResolvedOptions,
     WordAtPosition,
 )
-from ai_ide.environment.workspace.utils import (
+from ide4ai.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
     contains_rtl,
     contains_unusual_line_terminators,
@@ -48,7 +48,7 @@ from ai_ide.environment.workspace.utils import (
     normalize_indentation,
     read_file_with_bom_handling,
 )
-from ai_ide.schema import LanguageId
+from ide4ai.schema import LanguageId
 
 MODEL_ID = 0
 
@@ -693,7 +693,7 @@ class TextModel(ModelProtocol):
             )
 
         # Prepare the search parameters
-        from ai_ide.environment.workspace.model_search import (
+        from ide4ai.environment.workspace.model_search import (
             SearchParams,
             TextModelSearch,
         )

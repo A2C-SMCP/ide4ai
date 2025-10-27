@@ -1,5 +1,5 @@
 [project]
-name = "ai-ide"
+name = "ide4ai"
 version = "0.1.0"
 description = "A powerful IDE environment designed for AI agents to interact with code"
 readme = "README.md"
@@ -34,10 +34,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JQQ/ai-ide"
-Repository = "https://github.com/JQQ/ai-ide"
-Documentation = "https://github.com/JQQ/ai-ide#readme"
-Issues = "https://github.com/JQQ/ai-ide/issues"
+Homepage = "https://github.com/JQQ/ide4ai"
+Repository = "https://github.com/JQQ/ide4ai"
+Documentation = "https://github.com/JQQ/ide4ai#readme"
+Issues = "https://github.com/JQQ/ide4ai/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -80,7 +80,7 @@ markers = [
     "flaky: mark test as flaky (may need multiple retries)",
 ]
 # Coverage options removed from default to allow debugging
-# Use: pytest --cov=ai_ide --cov-report=term-missing --cov-report=html
+# Use: pytest --cov=ide4ai --cov-report=term-missing --cov-report=html
 # Or use the poe task: poe test-cov
 
 [tool.mypy]
@@ -102,7 +102,7 @@ pretty = true
 mypy_path = ["."]
 
 [tool.coverage.run]
-source = ["ai_ide"]
+source = ["ide4ai"]
 omit = ["*/tests/*", "*/.cache/*"]
 
 [tool.coverage.report]
@@ -118,19 +118,19 @@ exclude_lines = [
 
 [tool.poe.tasks]
 # Linting tasks
-lint = "ruff check ai_ide tests"
-lint-fix = "ruff check --fix ai_ide tests"
-format = "ruff format ai_ide tests"
-format-check = "ruff format --check ai_ide tests"
+lint = "ruff check ide4ai tests"
+lint-fix = "ruff check --fix ide4ai tests"
+format = "ruff format ide4ai tests"
+format-check = "ruff format --check ide4ai tests"
 
 # Type checking
-typecheck = "mypy ai_ide"
+typecheck = "mypy ide4ai"
 
 # Testing tasks
 test = "pytest tests"
 test-unit = "pytest tests -k 'not integration'"
 test-integration = "pytest tests/integration"
-test-cov = "pytest tests --cov=ai_ide --cov-report=html --cov-report=term-missing"
+test-cov = "pytest tests --cov=ide4ai --cov-report=html --cov-report=term-missing"
 test-verbose = "pytest tests -vv"
 test-format = ["test", "format"]
 

@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from re import Pattern
 
-from ai_ide.environment.workspace.schema import EndOfLineSequence
+from ide4ai.environment.workspace.schema import EndOfLineSequence
 
 
 def detect_newline_type(uri: Path) -> EndOfLineSequence:

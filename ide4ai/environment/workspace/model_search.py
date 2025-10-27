@@ -8,12 +8,12 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from ai_ide.environment.workspace.common.core.word_character_classifier import (
+from ide4ai.environment.workspace.common.core.word_character_classifier import (
     WordCharacterClassifier,
     get_map_for_word_separators,
 )
-from ai_ide.environment.workspace.model import TextModel
-from ai_ide.environment.workspace.schema import (
+from ide4ai.environment.workspace.model import TextModel
+from ide4ai.environment.workspace.schema import (
     EndOfLinePreference,
     Position,
     Range,

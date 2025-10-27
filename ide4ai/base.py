@@ -10,9 +10,9 @@ from typing import Any, ClassVar, SupportsFloat
 import gymnasium as gym
 from gymnasium.core import RenderFrame
 
-from ai_ide.environment.terminal.base import BaseTerminalEnv
-from ai_ide.environment.workspace.base import BaseWorkspace
-from ai_ide.schema import IDEObs
+from ide4ai.environment.terminal.base import BaseTerminalEnv
+from ide4ai.environment.workspace.base import BaseWorkspace
+from ide4ai.schema import IDEObs
 
 
 class IDE(gym.Env, ABC):

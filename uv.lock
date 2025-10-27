@@ -7,71 +7,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "ai-ide"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "cachetools" },
-    { name = "docker" },
-    { name = "emoji" },
-    { name = "gymnasium" },
-    { name = "jinja2" },
-    { name = "loguru" },
-    { name = "paramiko" },
-    { name = "pydantic" },
-    { name = "regex" },
-    { name = "simple-parsing" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "bump-my-version" },
-    { name = "mypy" },
-    { name = "poethepoet" },
-    { name = "pyfakefs" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-timeout" },
-    { name = "ruff" },
-    { name = "tiktoken" },
-    { name = "types-cachetools" },
-    { name = "types-regex" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cachetools", specifier = ">=5.3.2" },
-    { name = "docker", specifier = ">=7.0.0" },
-    { name = "emoji", specifier = ">=2.11.1" },
-    { name = "gymnasium", specifier = ">=0.29.1" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "loguru", specifier = ">=0.7.2" },
-    { name = "paramiko", specifier = ">=3.4.0" },
-    { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
-    { name = "regex", specifier = ">=2025.10.23" },
-    { name = "simple-parsing", specifier = ">=0.1.5" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bump-my-version", specifier = ">=1.2.4" },
-    { name = "mypy", specifier = ">=1.16.0" },
-    { name = "poethepoet", specifier = ">=0.24.0" },
-    { name = "pyfakefs", specifier = ">=5.10.0" },
-    { name = "pytest", specifier = ">=7.4.4" },
-    { name = "pytest-asyncio", specifier = ">=0.23.3" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "pytest-mock", specifier = ">=3.12.0" },
-    { name = "pytest-timeout", specifier = ">=2.3.1" },
-    { name = "ruff", specifier = ">=0.1.11" },
-    { name = "tiktoken", specifier = ">=0.12.0" },
-    { name = "types-cachetools", specifier = ">=6.2.0.20251022" },
-    { name = "types-regex", specifier = ">=2025.10.23.20251023" },
-]
-
-[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -534,6 +469,71 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+]
+
+[[package]]
+name = "ide4ai"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "cachetools" },
+    { name = "docker" },
+    { name = "emoji" },
+    { name = "gymnasium" },
+    { name = "jinja2" },
+    { name = "loguru" },
+    { name = "paramiko" },
+    { name = "pydantic" },
+    { name = "regex" },
+    { name = "simple-parsing" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "bump-my-version" },
+    { name = "mypy" },
+    { name = "poethepoet" },
+    { name = "pyfakefs" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "ruff" },
+    { name = "tiktoken" },
+    { name = "types-cachetools" },
+    { name = "types-regex" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cachetools", specifier = ">=5.3.2" },
+    { name = "docker", specifier = ">=7.0.0" },
+    { name = "emoji", specifier = ">=2.11.1" },
+    { name = "gymnasium", specifier = ">=0.29.1" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "loguru", specifier = ">=0.7.2" },
+    { name = "paramiko", specifier = ">=3.4.0" },
+    { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
+    { name = "regex", specifier = ">=2025.10.23" },
+    { name = "simple-parsing", specifier = ">=0.1.5" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bump-my-version", specifier = ">=1.2.4" },
+    { name = "mypy", specifier = ">=1.16.0" },
+    { name = "poethepoet", specifier = ">=0.24.0" },
+    { name = "pyfakefs", specifier = ">=5.10.0" },
+    { name = "pytest", specifier = ">=7.4.4" },
+    { name = "pytest-asyncio", specifier = ">=0.23.3" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-mock", specifier = ">=3.12.0" },
+    { name = "pytest-timeout", specifier = ">=2.3.1" },
+    { name = "ruff", specifier = ">=0.1.11" },
+    { name = "tiktoken", specifier = ">=0.12.0" },
+    { name = "types-cachetools", specifier = ">=6.2.0.20251022" },
+    { name = "types-regex", specifier = ">=2025.10.23.20251023" },
 ]
 
 [[package]]

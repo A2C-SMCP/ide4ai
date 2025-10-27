@@ -11,7 +11,7 @@ import gymnasium as gym
 from simple_parsing.helpers import FrozenSerializable
 from typing_extensions import SupportsFloat
 
-from ai_ide.schema import IDEObs
+from ide4ai.schema import IDEObs
 
 
 @dataclass(frozen=True)

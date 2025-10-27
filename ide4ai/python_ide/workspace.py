@@ -12,23 +12,23 @@ from typing import Any, SupportsFloat
 
 from pydantic import AnyUrl, ValidationError
 
-from ai_ide.dtos.base_protocol import LSPResponseMessage
-from ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
-from ai_ide.environment.workspace.base import BaseWorkspace
-from ai_ide.environment.workspace.model import TextModel
-from ai_ide.environment.workspace.schema import (
+from ide4ai.dtos.base_protocol import LSPResponseMessage
+from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
+from ide4ai.environment.workspace.base import BaseWorkspace
+from ide4ai.environment.workspace.model import TextModel
+from ide4ai.environment.workspace.schema import (
     Position,
     Range,
     SearchResult,
     SingleEditOperation,
     TextEdit,
 )
-from ai_ide.exceptions import IDEExecutionError
-from ai_ide.python_ide.const import (
+from ide4ai.exceptions import IDEExecutionError
+from ide4ai.python_ide.const import (
     DEFAULT_CAPABILITY,
     DEFAULT_SYMBOL_VALUE_SET,
 )
-from ai_ide.schema import (
+from ide4ai.schema import (
     LSP_ACTIONS,
     TEXT_DOCUMENT_ACTIONS,
     WORKSPACE_ACTIONS,
@@ -36,7 +36,7 @@ from ai_ide.schema import (
     IDEObs,
     LanguageId,
 )
-from ai_ide.utils import list_directory_tree, render_symbols
+from ide4ai.utils import list_directory_tree, render_symbols
 
 
 def default_python_header_generator(workspace: BaseWorkspace, file_path: str) -> str:

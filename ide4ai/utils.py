@@ -6,8 +6,8 @@
 import os
 from typing import Literal
 
-from ai_ide.dtos.text_documents import LSPRange
-from ai_ide.environment.workspace.schema import Range
+from ide4ai.dtos.text_documents import LSPRange
+from ide4ai.environment.workspace.schema import Range
 
 
 def render_symbols(symbols: list[dict], render_symbol_kind: list[int], indent: int = 0) -> str:

@@ -6,12 +6,12 @@
 
 from pydantic import BaseModel, Field
 
-from ai_ide.dtos.file_resource import (
+from ide4ai.dtos.file_resource import (
     LSPCreateFile,
     LSPDeleteFile,
     LSPRenameFile,
 )
-from ai_ide.dtos.text_documents import (
+from ide4ai.dtos.text_documents import (
     LSPChangeAnnotation,
     LSPTextDocumentEdit,
     LSPTextEdit,
@@ -32,5 +32,6 @@ class LSPWorkspaceEdit(BaseModel):
     ) = None
 
     change_annotations: dict[str, LSPChangeAnnotation] | None = Field(
-        default=None, validation_alias="changeAnnotations"
+        default=None,
+        validation_alias="changeAnnotations",
     )

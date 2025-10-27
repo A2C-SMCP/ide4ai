@@ -1,9 +1,9 @@
-# AI IDE
+# IDE4AI
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AI IDE** 是一个专为 AI Agent 设计的强大 IDE 环境，提供代码导航、编辑、LSP 支持和终端执行等完整功能。
+**IDE4AI** 是一个专为 AI Agent 设计的强大 IDE 环境，提供代码导航、编辑、LSP 支持和终端执行等完整功能。
 
 ## ✨ 特性
 
@@ -16,7 +16,7 @@
 
 ## 🎯 设计目标
 
-AI IDE 的核心设计理念是为 AI Agent 提供一个**高内聚、低耦合**的代码操作环境：
+IDE4AI 的核心设计理念是为 AI Agent 提供一个**高内聚、低耦合**的代码操作环境：
 
 - **高内聚**：所有 IDE 功能（编辑、导航、LSP、终端）都集中在统一的接口中
 - **低耦合**：独立于任何特定的 AI 框架，可以轻松集成到不同的 Agent 系统
@@ -28,8 +28,8 @@ AI IDE 的核心设计理念是为 AI Agent 提供一个**高内聚、低耦合*
 
 ```bash
 # 克隆仓库
-git clone https://github.com/JQQ/ai-ide.git
-cd ai-ide
+git clone https://github.com/JQQ/ide4ai.git
+cd ide4ai
 
 # 安装依赖
 uv sync
@@ -41,7 +41,7 @@ uv sync --all-extras
 ### 使用 pip
 
 ```bash
-pip install ai-ide
+pip install ide4ai
 ```
 
 ## 🚀 快速开始
@@ -49,7 +49,7 @@ pip install ai-ide
 ### 基础使用
 
 ```python
-from ai_ide import PythonIDE, IDEAction
+from ide4ai import PythonIDE, IDEAction
 
 # 创建 Python IDE 实例
 ide = PythonIDE(
@@ -97,7 +97,7 @@ obs, reward, done, truncated, info = ide.step(cmd_action.model_dump())
 ### 使用单例模式
 
 ```python
-from ai_ide import PyIDESingleton
+from ide4ai import PyIDESingleton
 
 # 获取或创建 IDE 实例
 ide = PyIDESingleton(
@@ -113,7 +113,7 @@ ide = PyIDESingleton(
 
 ### IDE Actions
 
-AI IDE 支持两类操作：
+IDE4AI 支持两类操作：
 
 1. **Workspace Actions** - 工作区操作
    - `open_file` - 打开文件
@@ -249,7 +249,7 @@ ai_ide/
 
 ## 🔌 扩展集成
 
-AI IDE 提供了扩展机制，可以轻松集成到不同的 AI 框架中。
+IDE4AI 提供了扩展机制，可以轻松集成到不同的 AI 框架中。
 
 ### TFRobot 集成示例
 
@@ -257,7 +257,7 @@ AI IDE 提供了扩展机制，可以轻松集成到不同的 AI 框架中。
 # 需要先安装 tfrobot
 # pip install tfrobot
 
-from ai_ide.extensions.tfrobot_tool import IDETool
+from ide4ai.extensions.tfrobot_tool import IDETool
 
 tool = IDETool(
     root_dir="/path/to/project",

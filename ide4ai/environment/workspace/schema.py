@@ -26,15 +26,15 @@ from pydantic import AnyUrl, BaseModel, Field, GetJsonSchemaHandler, PrivateAttr
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import core_schema as cs
 
-from ai_ide.dtos.text_documents import (
+from ide4ai.dtos.text_documents import (
     LSPPosition,
     LSPRange,
     LSPTextEdit,
 )
-from ai_ide.environment.workspace.common.dispose import (
+from ide4ai.environment.workspace.common.dispose import (
     DisposableProtocol,
 )
-from ai_ide.schema import LanguageId
+from ide4ai.schema import LanguageId
 
 
 @total_ordering

@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 from pydantic import AnyUrl
 
-from ai_ide.environment.workspace.schema import (
+from ide4ai.environment.workspace.schema import (
     Position,
     Range,
     SingleEditOperation,
 )
-from ai_ide.python_ide.const import DEFAULT_SYMBOL_VALUE_SET
-from ai_ide.python_ide.workspace import PyWorkspace
+from ide4ai.python_ide.const import DEFAULT_SYMBOL_VALUE_SET
+from ide4ai.python_ide.workspace import PyWorkspace
 
 
 @pytest.fixture

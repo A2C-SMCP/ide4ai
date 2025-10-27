@@ -23,19 +23,19 @@ from loguru import logger
 from pydantic import AnyUrl
 from typing_extensions import SupportsFloat
 
-from ai_ide.dtos.base_protocol import LSPResponseMessage
-from ai_ide.dtos.diagnostics import PreviousResultId
-from ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
-from ai_ide.environment.workspace.model import TextModel
-from ai_ide.environment.workspace.schema import (
+from ide4ai.dtos.base_protocol import LSPResponseMessage
+from ide4ai.dtos.diagnostics import PreviousResultId
+from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
+from ide4ai.environment.workspace.model import TextModel
+from ide4ai.environment.workspace.schema import (
     Position,
     Range,
     SearchResult,
     SingleEditOperation,
     TextEdit,
 )
-from ai_ide.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
-from ai_ide.utils import (
+from ide4ai.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
+from ide4ai.utils import (
     is_subdirectory,
     list_directory_tree,
     render_symbols,
@@ -382,7 +382,7 @@ class BaseWorkspace(gym.Env, ABC):
                 previous_result_id="previous-id-123"
             )
         """
-        from ai_ide.dtos.diagnostics import (
+        from ide4ai.dtos.diagnostics import (
             DocumentDiagnosticParams,
             RelatedFullDocumentDiagnosticReport,
             RelatedUnchangedDocumentDiagnosticReport,

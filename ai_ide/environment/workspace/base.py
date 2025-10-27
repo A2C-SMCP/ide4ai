@@ -24,6 +24,7 @@ from pydantic import AnyUrl
 from typing_extensions import SupportsFloat
 
 from ai_ide.dtos.base_protocol import LSPResponseMessage
+from ai_ide.dtos.diagnostics import PreviousResultId
 from ai_ide.dtos.workspace_edit import LSPWorkspaceEdit
 from ai_ide.environment.workspace.model import TextModel
 from ai_ide.environment.workspace.schema import (
@@ -315,13 +316,13 @@ class BaseWorkspace(gym.Env, ABC):
 
     def inspect_grammar_err(self, uris: list[str]) -> str:
         """
-        检查语法错误
+        检查语法错误 / Check grammar errors
 
         Args:
-            uris (list[str]): 文件URI列表
+            uris (list[str]): 文件URI列表 / List of file URIs
 
         Returns:
-            str: 错误信息
+            str: 错误信息 / Error information
         """
         errors = []
         for uri in uris:
@@ -331,6 +332,131 @@ class BaseWorkspace(gym.Env, ABC):
                 if dig_list := dig_dict.get("params", {}).get("diagnostics"):
                     errors.append(f"文件{uri}有语法异常: {str(dig_list)}")
         return "\n".join(errors)
+
+    def pull_diagnostics(
+        self,
+        uri: str | None = None,
+        previous_result_id: str | None = None,
+        previous_result_ids: list[dict[str, str]] | None = None,
+        timeout: float = 1.0,
+    ) -> Any:
+        """
+        主动拉取诊断信息 / Pull diagnostics actively
+
+        支持两种模式：
+        1. 文档诊断（Document Diagnostics）：当提供 uri 参数时，拉取单个文档的诊断信息
+        2. 工作区诊断（Workspace Diagnostics）：当 uri 为 None 时，拉取整个工作区的诊断信息
+
+        Supports two modes:
+        1. Document Diagnostics: Pull diagnostics for a single document when uri is provided
+        2. Workspace Diagnostics: Pull diagnostics for entire workspace when uri is None
+
+        Args:
+            uri (str | None): 文档的URI，如果为None则拉取工作区诊断 / Document URI, pull workspace diagnostics if None
+            previous_result_id (str | None): 上一次文档诊断的结果ID / Previous result ID for document diagnostics
+            previous_result_ids (list[dict[str, str]] | None): 上一次工作区诊断的结果ID列表 /
+                Previous result IDs for workspace diagnostics
+            timeout (float): 超时时间（秒）/ Timeout in seconds
+
+        Returns:
+            DocumentDiagnosticReport | WorkspaceDiagnosticReport | None: 诊断报告，如果失败则返回None /
+                Diagnostic report, or None if failed
+
+        Examples:
+            # 拉取单个文档的诊断 / Pull diagnostics for a single document
+            doc_diagnostics = workspace.pull_diagnostics(uri="file:///path/to/file.py")
+
+            # 拉取整个工作区的诊断 / Pull diagnostics for entire workspace
+            workspace_diagnostics = workspace.pull_diagnostics()
+
+            # 使用上一次的结果ID进行增量拉取 / Incremental pull with previous result ID
+            doc_diagnostics = workspace.pull_diagnostics(
+                uri="file:///path/to/file.py",
+                previous_result_id="previous-id-123"
+            )
+        """
+        from ai_ide.dtos.diagnostics import (
+            DocumentDiagnosticParams,
+            RelatedFullDocumentDiagnosticReport,
+            RelatedUnchangedDocumentDiagnosticReport,
+            WorkspaceDiagnosticParams,
+            WorkspaceDiagnosticReport,
+        )
+
+        msg_id = self.get_lsp_msg_id()
+
+        # 发送请求但不等待响应 / Send request without waiting for response
+        if not self.lsp:
+            raise ValueError("LSP server is not running.")
+
+        # 根据是否提供 uri 决定使用文档诊断还是工作区诊断 / Choose document or workspace diagnostics based on uri
+        if uri is not None:
+            # 文档诊断模式 / Document diagnostics mode
+            params = DocumentDiagnosticParams(
+                textDocument={"uri": uri},
+                previousResultId=previous_result_id,
+            ).model_dump(exclude_none=True)
+            method = "textDocument/diagnostic"
+        else:
+            # 工作区诊断模式 / Workspace diagnostics mode
+            params = WorkspaceDiagnosticParams(
+                previousResultIds=[
+                    PreviousResultId(uri=item["uri"], value=item["value"]) for item in (previous_result_ids or [])
+                ],
+            ).model_dump(exclude_none=True)
+            method = "workspace/diagnostic"
+
+        msg: dict = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": msg_id,
+        }
+        msg_str = json.dumps(msg)
+        content_length = len(msg_str.encode("utf-8"))
+
+        with self.lsp_stdin_mutex:
+            full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
+            if self.lsp.stdin:
+                self.lsp.stdin.write(full_message.encode("utf-8"))
+                self.lsp.stdin.flush()
+
+        # 使用 timeout 等待响应 / Wait for response with timeout
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if msg_id in self.lsp_server_response:
+                res = cast(str, self.lsp_server_response.pop(msg_id))
+                try:
+                    res_json = LSPResponseMessage.model_validate(json.loads(res))
+                    if res_json.error:
+                        logger.error(f"拉取诊断信息失败 / Failed to pull diagnostics: {res_json.error}")
+                        return None
+
+                    # 根据模式解析不同的响应类型 / Parse different response types based on mode
+                    if uri is not None:
+                        # 文档诊断响应 / Document diagnostics response
+                        if isinstance(res_json.result, dict):
+                            kind = res_json.result.get("kind")
+                            if kind == "full":
+                                return RelatedFullDocumentDiagnosticReport.model_validate(res_json.result)
+                            elif kind == "unchanged":
+                                return RelatedUnchangedDocumentDiagnosticReport.model_validate(res_json.result)
+                        return res_json.result
+                    else:
+                        # 工作区诊断响应 / Workspace diagnostics response
+                        if isinstance(res_json.result, dict):
+                            return WorkspaceDiagnosticReport.model_validate(res_json.result)
+                        return res_json.result
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"解析诊断响应失败 / Failed to parse diagnostic response: {e}")
+                    return None
+            time.sleep(0.1)
+
+        # 超时未收到响应 / Timeout without receiving response
+        target = uri if uri else "workspace"
+        logger.warning(f"拉取诊断信息超时 / Pull diagnostics timeout for {target}")
+        return None
 
     @abstractmethod
     def _launch_lsp(self) -> subprocess.Popen:

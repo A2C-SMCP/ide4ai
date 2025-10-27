@@ -56,7 +56,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bump-my-version", specifier = ">=0.28.1" },
+    { name = "bump-my-version", specifier = ">=1.2.4" },
     { name = "mypy", specifier = ">=1.16.0" },
     { name = "poethepoet", specifier = ">=0.24.0" },
     { name = "pyfakefs", specifier = ">=5.10.0" },

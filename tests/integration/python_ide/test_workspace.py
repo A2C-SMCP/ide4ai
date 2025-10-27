@@ -244,3 +244,106 @@ def test_step_apply_edit_success(py_workspace, project_root_dir):
     assert success is False
     assert reward == 0
     assert done is True
+
+
+def test_workspace_pull_diagnostics_with_error_file(project_root_dir) -> None:
+    """
+    测试使用workspace封装的方法进行文件诊断（类似test_lsp_diagnostic_notification）
+    Test file diagnostics using workspace wrapper methods (similar to test_lsp_diagnostic_notification)
+
+    使用workspace提供的open_file, apply_edit, pull_diagnostics等封装方法，
+    验证workspace的LSP诊断功能正常工作
+    Use workspace's open_file, apply_edit, pull_diagnostics wrapper methods to verify
+    that workspace's LSP diagnostic functionality works correctly
+
+    Returns:
+
+    """
+    import tempfile
+
+    # 创建一个包含错误的临时Python文件 / Create a temporary Python file with errors
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=project_root_dir) as f:
+        f.write(
+            """# -*- coding: utf-8 -*-
+# filename: fake_py_with_err.py
+# @Time    : 2024/4/29 10:24
+# @Author  : JQQ
+# @Email   : jqq1716@gmail.com
+# @Software: PyCharm
+import pydantic
+
+
+def test():
+    print("pydantic")
+
+
+print(os.path)
+""",
+        )
+        temp_file_path = f.name
+
+    temp_file_uri = f"file://{temp_file_path}"
+
+    # 创建workspace实例 / Create workspace instance
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_diagnostics_workspace")
+
+    try:
+        # 1. 使用workspace的open_file方法打开文件 / Use workspace's open_file method to open file
+        text_model = workspace.open_file(uri=temp_file_uri)
+        assert text_model is not None, "文件打开失败 / Failed to open file"
+        assert text_model.uri == AnyUrl(temp_file_uri), "文件URI不匹配 / File URI mismatch"
+
+        # 2. 使用workspace的apply_edit方法编辑文件 / Use workspace's apply_edit method to edit file
+        # 在第一行第二个字符位置插入字符'a' / Insert character 'a' at position (1, 2)
+        edit = SingleEditOperation(
+            range=Range(start_position=Position(1, 2), end_position=Position(1, 2)),
+            text="a",
+        )
+        undo_edits = workspace.apply_edit(uri=temp_file_uri, edits=[edit], compute_undo_edits=True)
+        assert undo_edits is not None, "编辑操作失败 / Edit operation failed"
+
+        # 3. 使用workspace的pull_diagnostics方法拉取诊断信息 / Use workspace's pull_diagnostics method to pull diagnostics
+        diagnostics_result = workspace.pull_diagnostics(uri=temp_file_uri, timeout=20.0)
+
+        assert diagnostics_result is not None, (
+            "未能获取到诊断信息，LSP可能未正常工作 / Failed to get diagnostics, LSP may not be working properly"
+        )
+        print(f"diagnostic result is: {diagnostics_result}")
+
+        # 4. 验证诊断结果包含预期的错误信息 / Verify diagnostics contain expected error
+        # Pull Diagnostics返回的是RelatedFullDocumentDiagnosticReport或RelatedUnchangedDocumentDiagnosticReport
+        # Pull Diagnostics returns RelatedFullDocumentDiagnosticReport or RelatedUnchangedDocumentDiagnosticReport
+        if hasattr(diagnostics_result, "items"):
+            # 如果是full report，items字段包含诊断列表 / If it's a full report, items field contains diagnostic list
+            diagnostics_items = diagnostics_result.items
+        elif hasattr(diagnostics_result, "kind") and diagnostics_result.kind == "unchanged":
+            # 如果是unchanged report，说明没有新的诊断 / If it's unchanged report, no new diagnostics
+            diagnostics_items = []
+        else:
+            diagnostics_items = []
+
+        # 验证包含"os" is not defined错误 / Verify contains "os" is not defined error
+        has_os_error = any(
+            '"os" is not defined' in str(getattr(diagnostic, "message", "")) for diagnostic in diagnostics_items
+        )
+        assert has_os_error, (
+            f"诊断结果中未找到预期的错误信息 / Expected error not found in diagnostics. Got: {diagnostics_items}"
+        )
+
+        # 5. 测试读取文件内容 / Test reading file content
+        file_content = workspace.read_file(uri=temp_file_uri, with_line_num=True)
+        assert "os.path" in file_content, "文件内容读取异常 / File content reading error"
+
+        # 6. 测试获取文件symbols / Test getting file symbols
+        symbols = workspace.get_file_symbols(uri=temp_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        print(f"Symbols output: {symbols}")
+        # 验证symbols方法正常工作（至少返回了结果，即使可能为空）/ Verify symbols method works (returns result even if empty)
+        assert "以上是文件的符号信息" in symbols or "Function: test" in symbols, (
+            f"未能获取到文件symbols / Failed to get file symbols. Got: {symbols}"
+        )
+
+    finally:
+        # 清理：关闭workspace并删除临时文件 / Cleanup: close workspace and delete temp file
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

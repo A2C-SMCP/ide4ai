@@ -248,10 +248,17 @@ class BaseWorkspace(gym.Env, ABC):
                                 if "id" in response_data:
                                     self.lsp_server_response[response_data["id"]] = response
                                 elif "method" in response_data:
+                                    # 获取URI，需要处理params可能是字典或列表的情况 / Get URI, handle params being dict or list
+                                    # 标准LSP通知的params通常是字典，但某些语言服务器（如Pyright）的自定义通知可能使用列表
+                                    # 例如：pyright/beginProgress, pyright/reportProgress, pyright/endProgress
+                                    # Standard LSP notification params are usually dicts, but some language servers
+                                    # (like Pyright) use lists for custom notifications like progress reports
+                                    params = response_data.get("params", {})
+                                    uri = params.get("uri") if isinstance(params, dict) else None
                                     self.lsp_server_notifications[
                                         self.__construct_notification_key(
                                             response_data["method"],
-                                            response_data.get("params", {}).get("uri"),
+                                            uri,
                                         )
                                     ] = response
                             except JSONDecodeError:

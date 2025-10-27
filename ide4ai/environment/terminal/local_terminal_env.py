@@ -198,15 +198,19 @@ class TerminalEnv(BaseTerminalEnv):
         if not proc.stdout:
             yield "进程未指定stdout，无法正常捕获", False  # pragma: no cover
         if proc.poll() is not None:
-            # 进程已经完成
+            # 进程已经完成 / Process has finished
+            # 使用退出码判断成功与否，而不仅仅依赖 stderr / Use exit code to determine success, not just stderr
+            returncode = proc.returncode
+            success = returncode == 0
+
             stdout = proc.stdout.read() if proc.stdout else None
             stderr = proc.stderr.read() if proc.stderr else None
             if stderr:
-                yield stderr, False
+                yield stderr, success
             elif stdout:
-                yield stdout, True
+                yield stdout, success
             else:
-                yield "no output", True
+                yield "no output", success
         else:
             # 进程正在执行中
             while True:
@@ -216,10 +220,12 @@ class TerminalEnv(BaseTerminalEnv):
                     if err_rlist:
                         stderr = proc.stderr.read() if proc.stderr else None
                         if stderr:
+                            # 进程还在运行时，stderr 通常表示错误 / stderr usually indicates error when process is running
                             yield stderr, False
                     if rlist:
                         stdout = proc.stdout.read() if proc.stdout else None
                         if stdout:
+                            # 进程还在运行时，stdout 通常表示正常输出 / stdout usually indicates normal output when process is running
                             yield stdout, True
                     else:
                         continue  # pragma: no cover

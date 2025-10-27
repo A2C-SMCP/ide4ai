@@ -80,7 +80,6 @@ jobs:
           pyright --version
           echo "\nVerifying pyright-langserver:"
           which pyright-langserver || (echo "pyright-langserver not in PATH, searching..." && find $HOME -name "pyright-langserver" 2>/dev/null | head -5)
-          pyright-langserver --help >/dev/null 2>&1 || (echo "WARNING: pyright-langserver not found or not working" && exit 0)
 
       # 运行代码格式检查
       # Run code format check

@@ -48,6 +48,8 @@ class TerminalEnv(BaseTerminalEnv):
         self.procs: dict[int, subprocess.Popen] = {}
         # 用于记录每个进程的输出结果
         self._procs_result: dict[int, Iterator[tuple[str, bool]]] = {}
+        # 用于记录每个进程的最终成功状态 / Record final success status for each process
+        self._procs_final_success: dict[int, bool] = {}
         # 用户记录每个进程启动时指定的工作目录
         self._procs_working_description: dict[int, str] = {}
         self.action_space = gym.spaces.Dict(
@@ -174,14 +176,28 @@ class TerminalEnv(BaseTerminalEnv):
         Returns:
             str : 进程返回 | Process return
             bool: 是否完成 | Whether it is completed
-            bool: 是否异常 | Whether it is abnormal
+            bool: 是否成功 | Whether it is successful
         """
         if pid not in self._procs_result:
             # 如果未捕获过这个进程的结果，则在此执行捕获逻辑
             self._procs_result[pid] = self.capture_proc_stdout(proc=self.procs[pid])
-        res, success = next(self._procs_result[pid], ("Command Finished\n", True))
+
+        # 检查进程是否完成 / Check if process is done
+        proc = self.procs[pid]
+        is_done = proc.poll() is not None
+
+        # 如果进程已完成且还没有记录最终状态，保存它 / If process is done and final status not recorded, save it
+        if is_done and pid not in self._procs_final_success:
+            self._procs_final_success[pid] = proc.returncode == 0
+
+        # 获取默认的 success 值：如果进程已完成，使用保存的最终状态 / Get default success value
+        default_success = self._procs_final_success.get(pid, True)
+
+        # 从迭代器获取结果，使用正确的默认值 / Get result from iterator with correct default
+        res, success = next(self._procs_result[pid], ("Command Finished\n", default_success))
         self._procs_working_description[pid] += res
-        return res, self.procs[pid].poll() is not None, success
+
+        return res, is_done, success
 
     @staticmethod
     def capture_proc_stdout(proc: subprocess.Popen, timeout: float = 0.1) -> Iterator[tuple[str, bool]]:
@@ -298,6 +314,7 @@ class TerminalEnv(BaseTerminalEnv):
                 except subprocess.TimeoutExpired:  # pragma: no cover
                     proc.kill()  # pragma: no cover
         self._procs_result.clear()
+        self._procs_final_success.clear()
         self._procs_working_description.clear()
         self._is_closed = True
         self._is_closing = False

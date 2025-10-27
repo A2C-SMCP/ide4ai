@@ -90,35 +90,12 @@ def test_command_execute_failed(terminal_env):
     action = {"category": "terminal", "action_name": "ls", "action_args": "/22"}
     observation, reward, done, success, info = terminal_env.step(action)
 
-    # 调试信息：记录详细的执行结果 / Debug info: log detailed execution results
-    import sys
-
-    print("\n=== Debug Info for test_command_execute_failed ===", file=sys.stderr)
-    print(f"Platform: {sys.platform}", file=sys.stderr)
-    print(f"observation: {observation}", file=sys.stderr)
-    print(f"reward: {reward}", file=sys.stderr)
-    print(f"done: {done}", file=sys.stderr)
-    print(f"success: {success}", file=sys.stderr)
-    print(f"info: {info}", file=sys.stderr)
-
-    # 获取进程信息 / Get process info
-    if terminal_env.procs:
-        last_pid = list(terminal_env.procs.keys())[-1]
-        last_proc = terminal_env.procs[last_pid]
-        print(f"returncode: {last_proc.returncode}", file=sys.stderr)
-        print(f"args: {last_proc.args}", file=sys.stderr)
-    print("=== End Debug Info ===\n", file=sys.stderr)
-
     # 验证输出包含错误信息 / Verify output contains error message
     assert "No such file or directory" in observation["obs"] or "cannot access" in observation["obs"], (
         f"Expected error message in observation, got: {observation['obs']}"
     )
     # 验证命令执行失败 / Verify command execution failed
-    assert not success, (
-        f"Expected success=False, but got success={success}. "
-        f"Observation: {observation['obs']}, "
-        f"Return code: {terminal_env.procs[list(terminal_env.procs.keys())[-1]].returncode if terminal_env.procs else 'N/A'}"
-    )
+    assert not success, f"Expected success=False, but got success={success}. Observation: {observation['obs']}"
     assert done
 
 

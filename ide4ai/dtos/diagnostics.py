@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: diagnostics.py
 # @Time    : 2025/10/27 14:38
 # @Author  : JQQ

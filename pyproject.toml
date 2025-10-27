@@ -132,6 +132,7 @@ test-unit = "pytest tests -k 'not integration'"
 test-integration = "pytest tests/integration"
 test-cov = "pytest tests --cov=ai_ide --cov-report=html --cov-report=term-missing"
 test-verbose = "pytest tests -vv"
+test-format = ["test", "format"]
 
 # Combined quality checks
 check = ["lint", "format-check", "typecheck"]

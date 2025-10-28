@@ -5,7 +5,7 @@
 # @Software: PyCharm
 from typing import Any, ClassVar, SupportsFloat
 
-from ide4ai.base import IDE
+from ide4ai.base import IDE, WorkspaceSetting
 from ide4ai.environment.terminal.base import EnvironmentArguments
 from ide4ai.environment.terminal.local_terminal_env import TerminalEnv
 from ide4ai.exceptions import IDEExecutionError
@@ -41,7 +41,7 @@ class PythonIDE(IDE):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: dict[str, Any] | None = None,
+        workspace_setting: WorkspaceSetting | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:

@@ -5,14 +5,29 @@
 # @Software: PyCharm
 import atexit
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any, ClassVar, SupportsFloat
 
 import gymnasium as gym
 from gymnasium.core import RenderFrame
+from typing_extensions import TypedDict
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.schema import IDEObs
+
+
+class WorkspaceSetting(TypedDict, total=False):
+    """
+    工作区配置项 / Workspace configuration options
+
+    Attributes:
+        header_generators (dict[str, Callable[[BaseWorkspace, str], str]] | None):
+            文件头生成器字典，key为文件扩展名（如".py"），value为生成器函数 /
+            File header generator dictionary, key is file extension (e.g., ".py"), value is generator function
+    """
+
+    header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None
 
 
 class IDE(gym.Env, ABC):
@@ -21,12 +36,15 @@ class IDE(gym.Env, ABC):
     而PythonIDE当前这个类的封装，在于将通用的能力通过step调用传入到容器内，然后容器内的LSP服务来处理这些能力。
 
     Attributes:
-        name (str): The name of the environment.
-        metadata (dict[str, Any]): The metadata of the environment.
-        root_dir (str): The root directory of the environment.
-        project_name (str): The project name of the environment.
-        render_with_symbols (bool): Whether render with symbols.
-        max_active_models (int): The max active models of the environment.
+        name (str): 环境名称 / The name of the environment.
+        metadata (dict[str, Any]): 环境元数据 / The metadata of the environment.
+        root_dir (str): 环境根目录 / The root directory of the environment.
+        project_name (str): 项目名称 / The project name of the environment.
+        render_with_symbols (bool): 是否使用符号渲染 / Whether render with symbols.
+        max_active_models (int): 最大活跃模型数量 / The max active models of the environment.
+        cmd_time_out (int): 命令超时时间（秒）/ Command timeout in seconds.
+        enable_simple_view_mode (bool): 是否启用简化视图模式 / Whether to enable simple view mode.
+        workspace_setting (WorkspaceSetting | None): 工作区配置项 / Workspace configuration options.
     """
 
     name: ClassVar[str] = "IDE"
@@ -41,7 +59,7 @@ class IDE(gym.Env, ABC):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: dict[str, Any] | None = None,
+        workspace_setting: WorkspaceSetting | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:

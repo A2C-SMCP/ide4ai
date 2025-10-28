@@ -6,6 +6,7 @@
 import threading
 from typing import Any
 
+from ide4ai.base import WorkspaceSetting
 from ide4ai.python_ide.ide import PythonIDE
 
 
@@ -39,7 +40,7 @@ class PyIDESingleton(metaclass=IDESingleton):
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
-        workspace_setting: dict[str, Any] | None = None,
+        workspace_setting: WorkspaceSetting | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:

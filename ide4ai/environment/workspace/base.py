@@ -15,6 +15,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from io import BufferedReader
 from json import JSONDecodeError
+from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
 import gymnasium as gym
@@ -939,6 +940,80 @@ class BaseWorkspace(gym.Env, ABC):
         if self.expand_folders != "all":
             self.expand_folders.add(folder_path)
         return list_directory_tree(folder_path, include_dirs=self.expand_folders, recursive=True)
+
+    def glob_files(
+        self,
+        *,
+        pattern: str,
+        path: str | None = None,
+    ) -> list[dict]:
+        """
+        使用通配符模式匹配文件 / Match files using glob pattern
+
+        支持通配符模式，如 "**/*.js" 或 "src/**/*.ts"
+        按修改时间排序返回匹配的文件路径
+
+        Supports wildcard patterns like "**/*.js" or "src/**/*.ts"
+        Returns matched file paths sorted by modification time
+
+        Args:
+            pattern (str): 用于匹配文件的通配符模式 / Glob pattern for matching files
+            path (str | None): 要搜索的目录。若未指定，将使用工作区根目录 /
+                              Directory to search. If not specified, uses workspace root
+
+        Returns:
+            List[dict]: 匹配的文件列表，每个包含路径和修改时间 /
+                       List of matched files with path and modification time
+
+        Examples:
+            # 查找所有 Python 文件 / Find all Python files
+            workspace.glob_files(pattern="**/*.py")
+
+            # 在特定目录查找 / Search in specific directory
+            workspace.glob_files(pattern="*.js", path="src")
+
+            # 递归查找 TypeScript 文件 / Recursively find TypeScript files
+            workspace.glob_files(pattern="**/*.ts")
+        """
+        self._assert_not_closed()
+
+        # 确定搜索路径 / Determine search path
+        search_path = Path(path) if path else Path(self.root_dir)
+
+        # 如果是相对路径，转换为相对于工作区根目录的绝对路径 / If relative path, convert to absolute path relative to workspace root
+        if not search_path.is_absolute():
+            search_path = Path(self.root_dir) / search_path
+
+        # 验证路径是否存在 / Validate path exists
+        if not search_path.exists():
+            raise ValueError(f"搜索路径不存在 / Search path does not exist: {search_path}")
+
+        # 确保搜索路径在工作区内 / Ensure search path is within workspace
+        if not is_subdirectory(str(search_path), self.root_dir):
+            raise ValueError(f"搜索路径必须在工作区根目录内 / Search path must be within workspace root: {search_path}")
+
+        # 执行 glob 匹配 / Perform glob matching
+        matched_files = []
+        for file_path in search_path.glob(pattern):
+            if file_path.is_file():
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    matched_files.append(
+                        {
+                            "uri": f"file://{file_path.absolute()}",
+                            "path": str(file_path.relative_to(self.root_dir)),
+                            "mtime": mtime,
+                        }
+                    )
+                except (OSError, ValueError) as e:
+                    # 跳过无法访问的文件 / Skip inaccessible files
+                    logger.warning(f"无法访问文件 / Cannot access file {file_path}: {e}")
+                    continue
+
+        # 按修改时间降序排序（最新的在前）/ Sort by modification time descending (newest first)
+        matched_files.sort(key=lambda x: x["mtime"], reverse=True)
+
+        return matched_files
 
     def collapse_folder(self, *, uri: str) -> str:
         """

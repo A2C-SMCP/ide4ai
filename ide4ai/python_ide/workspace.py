@@ -653,9 +653,9 @@ class PyWorkspace(BaseWorkspace):
         Example:
             delete_file(uri='/path/to/file.txt')
         """
-        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。目前未实现
+        # TODO 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件删除。这个过程涉及到LSP互通与异常回滚。目前未实现
         raise NotImplementedError(
-            "delete_file 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件重命名。这个过程涉及到LSP互通与异常回滚。"
+            "delete_file 需要与LSP进行信息互通查询到相应的引用关系后，将引用关系变更后，再进行文件删除。这个过程涉及到LSP互通与异常回滚。"
             "目前暂未实现。你可以提示用户使用PyCharm等工具手动删除文件。",
         )
 

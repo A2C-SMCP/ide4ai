@@ -27,6 +27,7 @@ class PythonIDE(IDE):
         project_name (str): The project name of the environment.
         render_with_symbols (bool): Whether render with symbols.
         max_active_models (int): The max active models of the environment.
+        enable_simple_view_mode (bool): 是否启用简化视图模式 / Whether to enable simple view mode.
     """
 
     name: ClassVar[str] = "PythonIDE"

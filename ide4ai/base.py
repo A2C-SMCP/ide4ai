@@ -44,7 +44,7 @@ class IDE(gym.Env, ABC):
         max_active_models (int): 最大活跃模型数量 / The max active models of the environment.
         cmd_time_out (int): 命令超时时间（秒）/ Command timeout in seconds.
         enable_simple_view_mode (bool): 是否启用简化视图模式 / Whether to enable simple view mode.
-        workspace_setting (WorkspaceSetting | None): 工作区配置项 / Workspace configuration options.
+        _workspace_setting (WorkspaceSetting | None): 工作区配置项 / Workspace configuration options.
     """
 
     name: ClassVar[str] = "IDE"

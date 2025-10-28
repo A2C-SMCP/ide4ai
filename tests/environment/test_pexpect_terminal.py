@@ -108,14 +108,14 @@ class TestPexpectTerminalEnv:
                 "category": "terminal",
                 "action_name": "echo",
                 "action_args": ["test1"],
-            }
+            },
         )
         basic_env.step(
             {
                 "category": "terminal",
                 "action_name": "echo",
                 "action_args": ["test2"],
-            }
+            },
         )
 
         # 渲染 | Render
@@ -132,7 +132,7 @@ class TestPexpectTerminalEnv:
                 "category": "terminal",
                 "action_name": "echo",
                 "action_args": ["before reset"],
-            }
+            },
         )
 
         # 重置 | Reset
@@ -167,7 +167,7 @@ class TestPexpectTerminalEnvWithVenv:
             args=args,
             white_list=white_list,
             work_dir=temp_work_dir_with_venv,
-            init_venv=None,  # 如果有虚拟环境,这里传入激活命令 | Pass activation command if venv exists
+            active_venv_cmd=None,  # 如果有虚拟环境,这里传入激活命令 | Pass activation command if venv exists
         )
 
         # 验证环境已初始化 | Verify environment is initialized
@@ -268,7 +268,7 @@ class TestPexpectTerminalEnvEdgeCases:
                     "category": "terminal",
                     "action_name": "echo",
                     "action_args": ["test"],
-                }
+                },
             )
 
 

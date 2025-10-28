@@ -7,7 +7,7 @@ from typing import Any, ClassVar, SupportsFloat
 
 from ide4ai.base import IDE, WorkspaceSetting
 from ide4ai.environment.terminal.base import EnvironmentArguments
-from ide4ai.environment.terminal.local_terminal_env import TerminalEnv
+from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 from ide4ai.exceptions import IDEExecutionError
 from ide4ai.python_ide.workspace import PyWorkspace
 from ide4ai.schema import IDEAction, IDEObs
@@ -43,6 +43,7 @@ class PythonIDE(IDE):
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
         workspace_setting: WorkspaceSetting | None = None,
+        active_venv_cmd: str | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -58,6 +59,7 @@ class PythonIDE(IDE):
             *args,
             **kwargs,
         )
+        self.active_venv_cmd = active_venv_cmd
         self.workspace = PyWorkspace(
             self.root_dir,
             self.project_name,
@@ -67,18 +69,22 @@ class PythonIDE(IDE):
             **self._workspace_setting,
         )
 
-    def init_terminal(self) -> TerminalEnv:
+    def init_terminal(self) -> PexpectTerminalEnv:
         """
-        初始化终端环境
+        初始化终端环境 | Initialize terminal environment
+
+        使用 PexpectTerminalEnv 以支持持久会话和虚拟环境激活
+        Use PexpectTerminalEnv to support persistent session and virtual environment activation
 
         Returns:
-            TerminalEnv: TerminalEnv 对象 | TerminalEnv object
+            PexpectTerminalEnv: PexpectTerminalEnv 对象 | PexpectTerminalEnv object
         """
 
-        return TerminalEnv(
+        return PexpectTerminalEnv(
             EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
             self.cmd_white_list,
             self.root_dir,
+            active_venv_cmd=self.active_venv_cmd,
         )
 
     def construct_action(self, action: dict) -> IDEAction:

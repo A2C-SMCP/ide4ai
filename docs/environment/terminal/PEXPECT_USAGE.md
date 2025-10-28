@@ -230,14 +230,15 @@ Modify `PythonIDE` to support `PexpectTerminalEnv`:
 from ide4ai.base import IDE
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 
+
 class PythonIDE(IDE):
     def __init__(
-        self,
-        cmd_white_list: list[str],
-        root_dir: str,
-        project_name: str,
-        init_venv: str | None = None,  # 新增参数 | New parameter
-        **kwargs
+            self,
+            cmd_white_list: list[str],
+            root_dir: str,
+            project_name: str,
+            init_venv: str | None = None,  # 新增参数 | New parameter
+            **kwargs
     ):
         super().__init__(
             cmd_white_list,
@@ -246,15 +247,16 @@ class PythonIDE(IDE):
             **kwargs
         )
         self.init_venv = init_venv
-    
+
     def init_terminal(self) -> PexpectTerminalEnv:
         """初始化终端环境 | Initialize terminal environment"""
         return PexpectTerminalEnv(
             EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
             self.cmd_white_list,
             self.root_dir,
-            init_venv=self.init_venv  # 传入虚拟环境初始化命令 | Pass venv init command
+            active_venv_cmd=self.init_venv  # 传入虚拟环境初始化命令 | Pass venv init command
         )
+
 
 # 使用示例 | Usage example
 ide = PythonIDE(

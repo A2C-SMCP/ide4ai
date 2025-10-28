@@ -38,7 +38,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         name (str): 环境名称 | Environment name
         white_list (list[str]): 可执行的命令白名单 | Whitelist of executable commands
         work_dir (str): 工作目录 | Working directory
-        init_venv (str | None): 虚拟环境初始化命令 | Virtual environment initialization command
+        active_venv_cmd (str | None): 虚拟环境初始化命令 | Virtual environment initialization command
         shell (pexpect.spawn): 持久的 shell 进程 | Persistent shell process
     """
 
@@ -53,7 +53,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         args: EnvironmentArguments,
         white_list: list[str],
         work_dir: str,
-        init_venv: str | None = None,
+        active_venv_cmd: str | None = None,
         shell: str = "/bin/bash",
     ) -> None:
         """
@@ -63,14 +63,14 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             args: 环境参数 | Environment arguments
             white_list: 命令白名单 | Command whitelist
             work_dir: 工作目录 | Working directory
-            init_venv: 虚拟环境初始化命令,例如 "source .venv/bin/activate" 或 "uv venv activate"
+            active_venv_cmd: 虚拟环境初始化命令,例如 "source .venv/bin/activate" 或 "uv venv activate"
                       Virtual environment initialization command, e.g., "source .venv/bin/activate" or "uv venv activate"
             shell: Shell 程序路径 | Shell program path
         """
         super().__init__()
         self.args = args
         self.white_list = white_list
-        self.init_venv = init_venv
+        self.active_venv_cmd = active_venv_cmd
         self.shell_path = shell
 
         # 验证工作目录 | Validate working directory
@@ -82,12 +82,15 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         # 状态标志 | State flags
         self._is_closing = False
         self._is_closed = False
-
         # 超时设置 | Timeout settings
         self.timeout = self.args.timeout
 
         # 命令历史记录 | Command history
         self._command_history: list[dict[str, str]] = []
+
+        # 虚拟环境激活状态 | Virtual environment activation status
+        self.venv_activated = False
+        self.venv_activation_error: str | None = None
 
         # 初始化持久 shell 会话 | Initialize persistent shell session
         self._init_shell()
@@ -139,14 +142,55 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             self.shell.expect("PEXPECT_PROMPT>", timeout=5)
 
             # 激活虚拟环境(如果指定) | Activate virtual environment (if specified)
-            if self.init_venv:
-                self.shell.sendline(self.init_venv)
-                self.shell.expect("PEXPECT_PROMPT>", timeout=10)
+            if self.active_venv_cmd:
+                try:
+                    self.shell.sendline(self.active_venv_cmd)
+                    index = self.shell.expect(
+                        ["PEXPECT_PROMPT>", pexpect.TIMEOUT, pexpect.EOF],
+                        timeout=10,
+                    )
 
-                # 验证虚拟环境是否激活成功 | Verify virtual environment activation
-                self.shell.sendline('echo "VENV_ACTIVATED"')
-                self.shell.expect("VENV_ACTIVATED", timeout=5)
-                self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+                    if index == 0:
+                        # 检查命令退出码 | Check command exit code
+                        self.shell.sendline("echo $?")
+                        self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+                        exit_code_output = self.shell.before or ""
+
+                        # 提取退出码 | Extract exit code
+                        exit_code_match = re.search(r"(\d+)", exit_code_output)
+                        exit_code = int(exit_code_match.group(1)) if exit_code_match else 1
+
+                        if exit_code == 0:
+                            # 退出码为0,激活成功 | Exit code is 0, activation successful
+                            self.venv_activated = True
+                            logger.info(f"虚拟环境激活成功 | Virtual environment activated: {self.active_venv_cmd}")
+                        else:
+                            # 退出码非0,激活失败 | Exit code is non-zero, activation failed
+                            self.venv_activated = False
+                            self.venv_activation_error = (
+                                f"虚拟环境激活命令返回非零退出码: {exit_code} | "
+                                f"Venv activation command returned non-zero exit code: {exit_code}"
+                            )
+                            logger.warning(
+                                f"虚拟环境激活失败: {self.venv_activation_error} | "
+                                f"Virtual environment activation failed: {self.venv_activation_error}",
+                            )
+                    else:
+                        # 激活超时或失败 | Activation timeout or failed
+                        self.venv_activated = False
+                        self.venv_activation_error = "虚拟环境激活超时 | Virtual environment activation timeout"
+                        logger.warning(
+                            f"虚拟环境激活失败: {self.venv_activation_error} | "
+                            f"Virtual environment activation failed: {self.venv_activation_error}",
+                        )
+
+                except (pexpect.TIMEOUT, pexpect.EOF) as venv_error:
+                    # 虚拟环境激活失败,但不影响 shell 初始化 | Venv activation failed, but don't fail shell init
+                    self.venv_activated = False
+                    self.venv_activation_error = str(venv_error)
+                    logger.warning(
+                        f"虚拟环境激活失败: {venv_error} | Virtual environment activation failed: {venv_error}",
+                    )
 
         except (pexpect.TIMEOUT, pexpect.EOF) as e:
             raise RuntimeError(f"Failed to initialize shell: {e}") from e

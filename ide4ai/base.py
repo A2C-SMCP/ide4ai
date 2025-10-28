@@ -29,9 +29,13 @@ class WorkspaceSetting(TypedDict, total=False):
         header_generators (dict[str, Callable[[BaseWorkspace, str], str]] | None):
             文件头生成器字典，key为文件扩展名（如".py"），value为生成器函数 /
             File header generator dictionary, key is file extension (e.g., ".py"), value is generator function
+        shortcut_commands (dict[str, list[str]] | None):
+            项目快捷命令字典，key为命令前缀（如"make"、"poe"），value为可用命令列表 /
+            Project shortcut commands dictionary, key is command prefix (e.g., "make", "poe"), value is available commands list
     """
 
     header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None
+    shortcut_commands: dict[str, list[str]] | None
 
 
 class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):

@@ -6,6 +6,8 @@
 import os
 from typing import Literal
 
+from loguru import logger
+
 from ide4ai.dtos.text_documents import LSPRange
 from ide4ai.environment.workspace.schema import Range
 
@@ -159,3 +161,152 @@ def is_subdirectory(sub_dir: str, root_dir: str) -> bool:
         return True
     else:
         return False
+
+
+def get_minimal_expanded_tree(root_dir: str, target_file_path: str, indent: str = "") -> str:
+    """
+    生成最小化展开的目录树，仅展开到目标文件所在路径 | Generate minimally expanded directory tree to target file
+
+    这个函数从项目根目录开始，仅展开包含目标文件的路径分支，其他分支只显示一级
+    This function expands only the path branch containing the target file from root, showing only first level for others
+
+    Args:
+        root_dir (str): 项目根目录 | Project root directory
+        target_file_path (str): 目标文件的绝对路径 | Absolute path of target file
+        indent (str): 当前缩进 | Current indentation
+
+    Returns:
+        str: 格式化的目录树字符串 | Formatted directory tree string
+    """
+    output = []
+
+    # 确保路径是绝对路径 | Ensure paths are absolute
+    root_dir = os.path.realpath(root_dir)
+    target_file_path = os.path.realpath(target_file_path)
+
+    # 获取从根目录到目标文件的路径组件 | Get path components from root to target file
+    try:
+        rel_path = os.path.relpath(target_file_path, root_dir)
+        path_parts = rel_path.split(os.sep)
+    except ValueError:
+        # 目标文件不在根目录下 | Target file not under root directory
+        return list_directory_tree(root_dir, include_dirs=None, recursive=False, indent=indent)
+
+    # 遍历当前目录 | Traverse current directory
+    try:
+        with os.scandir(root_dir) as entries:
+            for entry in entries:
+                entry_path = os.path.join(root_dir, entry.name)
+
+                if entry.is_dir(follow_symlinks=False):
+                    output.append(f"{indent}{entry.name}/")
+
+                    # 检查这个目录是否在目标文件的路径上 | Check if this dir is on target file path
+                    if path_parts and entry.name == path_parts[0]:
+                        # 这个目录在目标路径上，递归展开 | This dir is on target path, expand recursively
+                        new_indent = "  " + indent
+                        next_target = os.path.join(root_dir, *path_parts)
+                        output.append(
+                            get_minimal_expanded_tree(entry_path, next_target, new_indent),
+                        )
+                    else:
+                        # 不在目标路径上，只显示一级 | Not on target path, show only first level
+                        new_indent = "  " + indent
+                        output.append(
+                            list_directory_tree(entry_path, include_dirs=None, recursive=False, indent=new_indent),
+                        )
+
+                elif entry.is_file(follow_symlinks=False):
+                    # 如果是目标文件，标记它 | Mark target file
+                    if entry_path == target_file_path:
+                        output.append(f"{indent}{entry.name} ← 当前文件 | Current file")
+                    else:
+                        output.append(f"{indent}{entry.name}")
+    except PermissionError:
+        output.append(f"{indent}[权限不足 | Permission denied]")
+
+    return "\n".join(output)
+
+
+def detect_makefile_commands(root_dir: str) -> dict[str, list[str]] | None:
+    """
+    检测项目根目录下的Makefile并提取可用命令 | Detect Makefile and extract available commands
+
+    检测规则 | Detection rules:
+    1. 标准Makefile名称：Makefile, makefile, GNUmakefile (GNU Make标准约定)
+    2. .mk扩展名文件：*.mk (模块化makefile片段)
+    3. Makefile.*变体：Makefile.* (特定平台或配置的makefile)
+
+    Args:
+        root_dir (str): 项目根目录 | Project root directory
+
+    Returns:
+        dict[str, list[str]] | None: 命令字典，key为命令前缀(如"make")，value为命令列表 |
+            Command dict, key is command prefix (e.g., "make"), value is command list
+            如果没有Makefile则返回None | Returns None if no Makefile found
+    """
+    import re
+    from pathlib import Path
+
+    root_path = Path(root_dir)
+    all_targets = set()  # 使用set去重 | Use set to deduplicate
+
+    # 1. 检测标准Makefile名称 | Detect standard Makefile names
+    # GNU Make按此优先级查找：GNUmakefile > makefile > Makefile
+    # GNU Make searches in this priority: GNUmakefile > makefile > Makefile
+    standard_names = ["GNUmakefile", "makefile", "Makefile"]
+
+    # 2. 使用glob查找所有可能的makefile | Use glob to find all possible makefiles
+    makefile_patterns = [
+        "*.mk",  # 模块化makefile片段 | Modular makefile fragments
+        "Makefile.*",  # 平台特定makefile | Platform-specific makefiles
+    ]
+
+    makefile_paths = []
+
+    # 添加标准名称的makefile | Add standard named makefiles
+    for name in standard_names:
+        path = root_path / name
+        if path.is_file():
+            makefile_paths.append(path)
+            break  # 找到第一个标准makefile就停止 | Stop at first standard makefile
+
+    # 添加通过glob找到的makefile | Add makefiles found via glob
+    for pattern in makefile_patterns:
+        makefile_paths.extend(root_path.glob(pattern))
+
+    if not makefile_paths:
+        return None
+
+    # 提取所有目标（targets）| Extract all targets
+    # Makefile目标格式: target: dependencies | Makefile target format: target: dependencies
+    # 匹配行首的目标定义，排除以.开头的特殊目标 |
+    # Match target definitions at line start, exclude special targets starting with .
+    pattern = r"^([a-zA-Z0-9_-]+):"
+
+    for makefile_path in makefile_paths:
+        try:
+            with open(makefile_path, encoding="utf-8") as f:
+                content = f.read()
+
+            for line in content.split("\n"):
+                line = line.strip()
+                # 跳过注释和空行 | Skip comments and empty lines
+                if line.startswith("#") or not line:
+                    continue
+                match = re.match(pattern, line)
+                if match:
+                    target = match.group(1)
+                    # 排除常见的内部目标 | Exclude common internal targets
+                    if not target.startswith(".") and target not in ["PHONY"]:
+                        all_targets.add(target)
+
+        except Exception as e:
+            # 读取失败，忽略该文件 | Read failed, ignore this file
+            logger.error(f"处理Makefile {makefile_path} 时发生异常: {e}")
+
+    if all_targets:
+        # 返回排序后的目标列表 | Return sorted target list
+        return {"make": sorted(all_targets)}
+
+    return None

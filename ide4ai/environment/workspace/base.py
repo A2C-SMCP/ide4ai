@@ -73,6 +73,7 @@ class BaseWorkspace(gym.Env, ABC):
         max_active_models: int = 3,
         enable_simple_view_mode: bool = False,
         header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
+        shortcut_commands: dict[str, list[str]] | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -123,6 +124,7 @@ class BaseWorkspace(gym.Env, ABC):
         self._is_closing = False
         self._is_closed = False
         self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None = header_generators
+        self.shortcut_commands: dict[str, list[str]] | None = shortcut_commands
 
     def get_lsp_msg_id(self) -> int:
         """

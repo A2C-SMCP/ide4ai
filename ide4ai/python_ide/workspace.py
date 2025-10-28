@@ -69,6 +69,11 @@ class PyWorkspace(BaseWorkspace):
             self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] = {
                 ".py": default_python_header_generator,
             }
+        # 如果没有提供shortcut_commands，尝试自动检测Makefile | Auto-detect Makefile if no shortcut_commands provided
+        if self.shortcut_commands is None:
+            from ide4ai.utils import detect_makefile_commands
+
+            self.shortcut_commands = detect_makefile_commands(self.root_dir)
 
     @staticmethod
     def _format_diagnostics(diagnostics: DocumentDiagnosticReport | None) -> str:
@@ -480,8 +485,43 @@ class PyWorkspace(BaseWorkspace):
             str: 以字符串的形式来返回渲染结果
         """
         self._assert_not_closed()
-        dir_info = list_directory_tree(self.root_dir, include_dirs=self.expand_folders, recursive=True, indent="- ")
-        view = f"当前工作区: {self.project_name}\n\n{dir_info}\n"
+
+        # 1. 渲染最小化展开的目录树 | Render minimally expanded directory tree
+        from ide4ai.utils import get_minimal_expanded_tree
+
+        if self.active_models:
+            # 获取最后一个active_model的文件路径 | Get the last active_model's file path
+            last_model = self.active_models[-1]
+            target_file = str(last_model.uri).replace("file://", "")
+            dir_info = get_minimal_expanded_tree(self.root_dir, target_file, indent="")
+        else:
+            # 如果没有active_models，使用普通的目录树 | Use normal directory tree if no active_models
+            dir_info = list_directory_tree(self.root_dir, include_dirs=self.expand_folders, recursive=True, indent="- ")
+
+        view = f"当前工作区: {self.project_name}\n\n项目目录结构:\n{dir_info}\n"
+
+        # 2. 添加项目快捷命令信息 | Add project shortcut commands info
+        if self.shortcut_commands:
+            view += "\n项目快捷命令 | Project Shortcut Commands:\n"
+            for cmd_prefix, cmd_list in self.shortcut_commands.items():
+                view += f"  {cmd_prefix} 命令:\n"
+                for cmd in cmd_list:
+                    view += f"    - {cmd_prefix} {cmd}\n"
+            view += "\n"
+        else:
+            # 如果没有shortcut_commands，尝试实时检测Makefile | Try to detect Makefile in real-time if no shortcut_commands
+            from ide4ai.utils import detect_makefile_commands
+
+            detected_commands = detect_makefile_commands(self.root_dir)
+            if detected_commands:
+                view += "\n项目快捷命令 | Project Shortcut Commands:\n"
+                for cmd_prefix, cmd_list in detected_commands.items():
+                    view += f"  {cmd_prefix} 命令:\n"
+                    for cmd in cmd_list:
+                        view += f"    - {cmd_prefix} {cmd}\n"
+                view += "\n"
+
+        # 3. 渲染active_models信息 | Render active_models info
         active_models_count = len(self.active_models)
         if active_models_count > 1:
             view += "\n以下是最近使用的文件其结构信息与关键Symbols信息。每个结构跟随一个Range范围，可以使用这个Range+URI查询代码详情:\n"

@@ -13,7 +13,7 @@ from ide4ai.python_ide.workspace import PyWorkspace
 from ide4ai.schema import IDEAction, IDEObs
 
 
-class PythonIDE(IDE):
+class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
     """
     PythonIDE is a gym environment for python ide.
 

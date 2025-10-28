@@ -6,7 +6,7 @@
 import atexit
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, ClassVar, SupportsFloat
+from typing import Any, ClassVar, Generic, SupportsFloat, TypeVar
 
 import gymnasium as gym
 from gymnasium.core import RenderFrame
@@ -15,6 +15,10 @@ from typing_extensions import TypedDict
 from ide4ai.environment.terminal.base import BaseTerminalEnv
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.schema import IDEObs
+
+# 定义泛型类型变量用于 Terminal 和 Workspace 类型 | Define generic type variables for Terminal and Workspace types
+TerminalT = TypeVar("TerminalT", bound=BaseTerminalEnv)
+WorkspaceT = TypeVar("WorkspaceT", bound=BaseWorkspace)
 
 
 class WorkspaceSetting(TypedDict, total=False):
@@ -30,7 +34,7 @@ class WorkspaceSetting(TypedDict, total=False):
     header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None
 
 
-class IDE(gym.Env, ABC):
+class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
     """
     实现原理是基于Docker容器，在一个容器内跑一个Python版本的slim镜像，然后在这个容器内运行LSP服务，通过LSP服务来实现IDE的功能。
     而PythonIDE当前这个类的封装，在于将通用的能力通过step调用传入到容器内，然后容器内的LSP服务来处理这些能力。
@@ -71,9 +75,9 @@ class IDE(gym.Env, ABC):
         self.render_with_symbols = render_with_symbols
         self.enable_simple_view_mode = enable_simple_view_mode
         self.max_active_models = max_active_models
-        self.terminals: list[BaseTerminalEnv] = []
+        self.terminals: list[TerminalT] = []
         self.active_terminal_index: int | None = None
-        self.workspace: BaseWorkspace | None = None
+        self.workspace: WorkspaceT | None = None
         self._workspace_setting = workspace_setting or {}
         # 初始化动作空间与观察空间
         self.action_space = gym.spaces.Dict(
@@ -95,7 +99,7 @@ class IDE(gym.Env, ABC):
         self.close()
 
     @property
-    def terminal(self) -> BaseTerminalEnv:
+    def terminal(self) -> TerminalT:
         if self.active_terminal_index:
             return self.terminals[self.active_terminal_index]
         else:
@@ -105,7 +109,7 @@ class IDE(gym.Env, ABC):
             return terminal
 
     @abstractmethod
-    def init_terminal(self) -> BaseTerminalEnv: ...
+    def init_terminal(self) -> TerminalT: ...
 
     def active_terminal(self, index: int) -> None:
         self.active_terminal_index = index

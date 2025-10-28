@@ -775,45 +775,150 @@ class PyWorkspace(BaseWorkspace):
         limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
-        Find a query in a file in the workspace.
+        在工作区中的文件或文件夹内查找查询字符串 / Find a query in a file or folder in the workspace.
 
         Args:
-            uri (str): The URI of the file to search in. | 要搜索的文件的 URI。
-            query (str): The query to search for. | 要搜索的查询。
-            search_scope: Optional. The range or list of ranges where the search should be performed. If not provided,
-                the search will be performed in the full model range. | 可选。指定搜索应在其中进行的范围或范围列表。如果未提供，
-                则在整个模型范围内进行搜索。
-            is_regex: Optional. Specifies whether the search string should be treated as a regular expression. Default
-                is False. | 可选。指定是否应将搜索字符串视为正则表达式。默认为 False。
-            match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
-                索是否应区分大小写。默认为 False。
-            word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
-                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为
-                单词的一部分。
-            capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
-                Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
-            limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches
-                will be returned. | 可选。返回的搜索结果的最大数量。如果未提供，将返回所有匹配项。
+            uri (str): 要搜索的文件或文件夹的 URI。如果是文件夹，将递归搜索其中的所有文件 /
+                      The URI of the file or folder to search in. If it's a folder, will recursively search all files within.
+            query (str): 要搜索的查询字符串 / The query to search for.
+            search_scope: 可选。指定搜索应在其中进行的范围或范围列表。仅当 uri 是文件时有效。如果未提供，
+                则在整个文件范围内进行搜索 / Optional. The range or list of ranges where the search should be performed.
+                Only valid when uri is a file. If not provided, the search will be performed in the full file range.
+            is_regex: 可选。指定是否应将搜索字符串视为正则表达式。默认为 False /
+                     Optional. Specifies whether the search string should be treated as a regular expression. Default is False.
+            match_case: 可选。指定搜索是否应区分大小写。默认为 False /
+                       Optional. Specifies whether the search should be case-sensitive. Default is False.
+            word_separator: 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分 /
+                          Optional. The separator used to define word boundaries in the search. If not provided,
+                          all characters are considered as part of a word.
+            capture_matches: 可选。指定是否应在搜索结果中捕获匹配的文本内容。默认为 True /
+                           Optional. Specifies whether the matched text should be captured in the search results. Default is True.
+            limit_result_count: 可选。返回的搜索结果的最大数量。如果未提供，将返回所有匹配项 /
+                              Optional. The maximum number of search results to return. If not provided, all matches will be returned.
 
         Returns:
-            A list of Range objects representing the matched ranges. | 表示匹配范围的 Range 对象列表。
+            表示匹配结果的 SearchResult 对象列表。每个结果包含匹配的范围和文本（如果 capture_matches 为 True）/
+            A list of SearchResult objects representing the matched results. Each result contains the matched range
+            and text (if capture_matches is True).
 
         Raises:
-            ValueError: If an invalid search scope is provided. | 如果提供了无效的搜索范围。
+            ValueError: 如果提供了无效的 URI 或搜索范围 / If an invalid URI or search scope is provided.
 
+        Examples:
+            # 在单个文件中搜索 / Search in a single file
+            results = workspace.find_in_path(uri="file:///path/to/file.py", query="def")
+
+            # 在文件夹中递归搜索 / Recursively search in a folder
+            results = workspace.find_in_path(uri="file:///path/to/folder", query="TODO", match_case=True)
+
+            # 使用正则表达式搜索 / Search with regex
+            results = workspace.find_in_path(uri="file:///path/to/file.py", query=r"\\bclass\\s+\\w+", is_regex=True)
         """
-        text_model = self.get_model(uri)
-        if not text_model:
-            text_model = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
-        return text_model.find_matches(
-            query,
-            search_scope,
-            is_regex,
-            match_case,
-            word_separator,
-            capture_matches,
-            limit_result_count,
-        )
+        # 验证 URI 格式 / Validate URI format
+        if not uri.startswith("file://"):
+            raise ValueError(f"URI 必须以 'file://' 开头 / URI must start with 'file://': {uri}")
+
+        # 提取文件路径 / Extract file path
+        from pathlib import Path
+
+        file_path = Path(uri[7:])
+
+        # 验证路径存在 / Validate path exists
+        if not file_path.exists():
+            raise ValueError(f"路径不存在 / Path does not exist: {file_path}")
+
+        # 如果是文件，直接搜索 / If it's a file, search directly
+        if file_path.is_file():
+            text_model = self.get_model(uri)
+            if not text_model:
+                text_model = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
+            return text_model.find_matches(
+                query,
+                search_scope,
+                is_regex,
+                match_case,
+                word_separator,
+                capture_matches,
+                limit_result_count,
+            )
+
+        # 如果是文件夹，递归搜索所有文件 / If it's a folder, recursively search all files
+        if file_path.is_dir():
+            # 当搜索文件夹时，search_scope 参数无效 / search_scope is not valid when searching a folder
+            if search_scope is not None:
+                raise ValueError(
+                    "搜索文件夹时不支持 search_scope 参数 / search_scope is not supported when searching a folder",
+                )
+
+            all_results: list[SearchResult] = []
+            result_count = 0
+
+            # 递归遍历文件夹中的所有文件 / Recursively iterate all files in the folder
+            for file in file_path.rglob("*"):
+                if file.is_file():
+                    try:
+                        file_uri = f"file://{file.absolute()}"
+
+                        # 先尝试从已打开的模型中获取 / Try to get from opened models first
+                        text_model = self.get_model(file_uri)
+
+                        if not text_model:
+                            # 如果文件未打开，创建临时模型进行搜索 / If file is not opened, create temporary model for search
+                            try:
+                                # 检查文件是否可读 / Check if file is readable
+                                if not file.exists() or not file.is_file():
+                                    continue
+
+                                # 创建临时文本模型 / Create temporary text model
+                                text_model = TextModel(
+                                    language_id=LanguageId.python,
+                                    uri=AnyUrl(file_uri),
+                                    auto_save_during_dispose=False,  # 临时模型不需要自动保存 / Temporary model doesn't need auto-save
+                                )
+                            except Exception as e:
+                                # 跳过无法读取的文件 / Skip files that cannot be read
+                                from loguru import logger
+
+                                logger.debug(f"跳过文件 / Skip file {file}: {e}")
+                                continue
+
+                        # 计算当前文件的结果限制 / Calculate result limit for current file
+                        current_limit = None
+                        if limit_result_count is not None:
+                            remaining = limit_result_count - result_count
+                            if remaining <= 0:
+                                break
+                            current_limit = remaining
+
+                        # 在当前文件中搜索 / Search in current file
+                        file_results = text_model.find_matches(
+                            query,
+                            None,  # 文件夹搜索不使用 search_scope / No search_scope for folder search
+                            is_regex,
+                            match_case,
+                            word_separator,
+                            capture_matches,
+                            current_limit,
+                        )
+
+                        all_results.extend(file_results)
+                        result_count += len(file_results)
+
+                        # 如果达到结果数量限制，停止搜索 / Stop if result limit is reached
+                        if limit_result_count is not None and result_count >= limit_result_count:
+                            break
+
+                    except Exception as e:
+                        # 跳过处理失败的文件 / Skip files that fail to process
+                        from loguru import logger
+
+                        logger.debug(f"处理文件失败 / Failed to process file {file}: {e}")
+                        continue
+
+            return all_results
+
+        # 如果既不是文件也不是文件夹 / If it's neither a file nor a folder
+        raise ValueError(f"URI 必须指向文件或文件夹 / URI must point to a file or folder: {uri}")
 
     def apply_workspace_edit(self, *, workspace_edit: LSPWorkspaceEdit) -> Any:
         # TODO 需要实现 apply_workspace_edit 方法

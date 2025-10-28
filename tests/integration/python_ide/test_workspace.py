@@ -873,3 +873,90 @@ def valid_function():
         workspace.close()
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+
+def test_find_in_folder(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+    """
+    测试在文件夹中搜索功能 / Test find in folder functionality
+    """
+    # 在整个项目文件夹中搜索 "def" / Search for "def" in the entire project folder
+    folder_uri = f"file://{project_root_dir}"
+    results = py_workspace.find_in_path(uri=folder_uri, query="def", match_case=True)
+
+    # 验证返回了结果 / Verify results are returned
+    assert len(results) > 0, "应该在文件夹中找到匹配项 / Should find matches in folder"
+
+    # 验证结果包含匹配的文本 / Verify results contain matched text
+    for result in results:
+        assert result.match is not None, "结果应该包含匹配的文本 / Result should contain matched text"
+        assert "def" in result.match, "匹配的文本应该包含 'def' / Matched text should contain 'def'"
+
+    print(f"在文件夹中找到 {len(results)} 个匹配项 / Found {len(results)} matches in folder")
+
+
+def test_find_in_folder_with_limit(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+    """
+    测试在文件夹中搜索时使用结果限制 / Test find in folder with result limit
+    """
+    folder_uri = f"file://{project_root_dir}"
+
+    # 限制返回5个结果 / Limit to 5 results
+    results = py_workspace.find_in_path(uri=folder_uri, query="def", limit_result_count=5)
+
+    # 验证结果数量不超过限制 / Verify result count doesn't exceed limit
+    assert len(results) <= 5, "结果数量不应超过限制 / Result count should not exceed limit"
+
+    print(f"限制为5个结果，实际返回 {len(results)} 个 / Limited to 5 results, actually returned {len(results)}")
+
+
+def test_find_in_folder_with_regex(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+    """
+    测试在文件夹中使用正则表达式搜索 / Test find in folder with regex
+    """
+    folder_uri = f"file://{project_root_dir}"
+
+    # 使用正则表达式搜索函数定义 / Search for function definitions using regex
+    results = py_workspace.find_in_path(uri=folder_uri, query=r"class\s+\w+", is_regex=True)
+
+    # 验证返回了结果 / Verify results are returned
+    assert len(results) > 0, "应该找到类定义 / Should find class definitions"
+
+    print(f"使用正则表达式找到 {len(results)} 个类定义 / Found {len(results)} class definitions using regex")
+
+
+def test_find_in_file_vs_folder(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+    """
+    测试在单个文件和文件夹中搜索的区别 / Test difference between searching in file vs folder
+    """
+    # 在单个文件中搜索 / Search in a single file
+    file_uri = f"file://{project_root_dir}/file_for_test_read.py"
+    file_results = py_workspace.find_in_path(uri=file_uri, query="def")
+
+    # 在整个文件夹中搜索 / Search in the entire folder
+    folder_uri = f"file://{project_root_dir}"
+    folder_results = py_workspace.find_in_path(uri=folder_uri, query="def")
+
+    # 文件夹搜索结果应该包含文件搜索结果 / Folder search should include file search results
+    assert len(folder_results) >= len(file_results), (
+        "文件夹搜索结果应该 >= 文件搜索结果 / Folder results should be >= file results"
+    )
+
+    print(f"文件搜索: {len(file_results)} 个结果 / File search: {len(file_results)} results")
+    print(f"文件夹搜索: {len(folder_results)} 个结果 / Folder search: {len(folder_results)} results")
+
+
+def test_find_in_folder_with_search_scope_error(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+    """
+    测试在文件夹搜索时使用 search_scope 参数应该报错 / Test that using search_scope with folder search raises error
+    """
+    folder_uri = f"file://{project_root_dir}"
+
+    # 尝试在文件夹搜索时使用 search_scope，应该抛出 ValueError / Try to use search_scope with folder search, should raise ValueError
+    with pytest.raises(ValueError, match="search_scope"):
+        py_workspace.find_in_path(
+            uri=folder_uri,
+            query="def",
+            search_scope=Range(
+                start_position=Position(line=1, character=1), end_position=Position(line=10, character=1)
+            ),
+        )

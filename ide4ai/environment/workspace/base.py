@@ -1084,32 +1084,44 @@ class BaseWorkspace(gym.Env, ABC):
         limit_result_count: int | None = None,
     ) -> list[SearchResult]:
         """
-        Find a query in a file in the workspace.
+        在工作区中的文件或文件夹内查找查询字符串 / Find a query in a file or folder in the workspace.
 
         Args:
-            uri (str): The URI of the file to search in. | 要搜索的文件的 URI。
-            query (str): The query to search for. | 要搜索的查询。
-            search_scope: Optional. The range or list of ranges where the search should be performed. If not provided,
-                the search will be performed in the full model range. | 可选。指定搜索应在其中进行的范围或范围列表。如果未提供，
-                则在整个模型范围内进行搜索。
-            is_regex: Optional. Specifies whether the search string should be treated as a regular expression. Default
-                is False. | 可选。指定是否应将搜索字符串视为正则表达式。默认为 False。
-            match_case: Optional. Specifies whether the search should be case-sensitive. Default is False. | 可选。指定搜
-                索是否应区分大小写。默认为 False。
-            word_separator: Optional. The separator used to define word boundaries in the search. If not provided, all
-                characters are considered as part of a word. | 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为
-                单词的一部分。
-            capture_matches: Optional. Specifies whether the matched ranges should be captured in the search results.
-                Default is False. | 可选。指定是否应在搜索结果中捕获匹配的范围。默认为 False。
-            limit_result_count: Optional. The maximum number of search results to return. If not provided, all matches
-                will be returned. | 可选。返回的搜索结果的最大数量。如果未提供，将返回所有匹配项。
+            uri (str): 要搜索的文件或文件夹的 URI。如果是文件夹，将递归搜索其中的所有文件 /
+                      The URI of the file or folder to search in. If it's a folder, will recursively search all files within.
+            query (str): 要搜索的查询字符串 / The query to search for.
+            search_scope: 可选。指定搜索应在其中进行的范围或范围列表。仅当 uri 是文件时有效。如果未提供，
+                则在整个文件范围内进行搜索 / Optional. The range or list of ranges where the search should be performed.
+                Only valid when uri is a file. If not provided, the search will be performed in the full file range.
+            is_regex: 可选。指定是否应将搜索字符串视为正则表达式。默认为 False /
+                     Optional. Specifies whether the search string should be treated as a regular expression. Default is False.
+            match_case: 可选。指定搜索是否应区分大小写。默认为 False /
+                       Optional. Specifies whether the search should be case-sensitive. Default is False.
+            word_separator: 可选。用于定义搜索中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分 /
+                          Optional. The separator used to define word boundaries in the search. If not provided,
+                          all characters are considered as part of a word.
+            capture_matches: 可选。指定是否应在搜索结果中捕获匹配的文本内容。默认为 True /
+                           Optional. Specifies whether the matched text should be captured in the search results. Default is True.
+            limit_result_count: 可选。返回的搜索结果的最大数量。如果未提供，将返回所有匹配项 /
+                              Optional. The maximum number of search results to return. If not provided, all matches will be returned.
 
         Returns:
-            A list of Range objects representing the matched ranges. | 表示匹配范围的 Range 对象列表。
+            表示匹配结果的 SearchResult 对象列表。每个结果包含匹配的范围和文本（如果 capture_matches 为 True）/
+            A list of SearchResult objects representing the matched results. Each result contains the matched range
+            and text (if capture_matches is True).
 
         Raises:
-            ValueError: If an invalid search scope is provided. | 如果提供了无效的搜索范围。
+            ValueError: 如果提供了无效的 URI 或搜索范围 / If an invalid URI or search scope is provided.
 
+        Examples:
+            # 在单个文件中搜索 / Search in a single file
+            results = workspace.find_in_path(uri="file:///path/to/file.py", query="def")
+
+            # 在文件夹中递归搜索 / Recursively search in a folder
+            results = workspace.find_in_path(uri="file:///path/to/folder", query="TODO", match_case=True)
+
+            # 使用正则表达式搜索 / Search with regex
+            results = workspace.find_in_path(uri="file:///path/to/file.py", query=r"\\bclass\\s+\\w+", is_regex=True)
         """
         ...
 

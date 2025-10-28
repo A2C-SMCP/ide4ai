@@ -35,7 +35,7 @@ class MockWorkspace(BaseWorkspace):
     def _initial_lsp(self) -> None:
         pass
 
-    def find_in_file(
+    def find_in_path(
         self,
         *,
         uri: str,

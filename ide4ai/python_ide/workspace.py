@@ -356,7 +356,7 @@ class PyWorkspace(BaseWorkspace):
                                 ide_action.action_args["search_scope"] = [
                                     Range.model_validate(r) for r in ide_action.action_args["search_scope"]
                                 ]
-                        search_res = self.find_in_file(**ide_action.action_args)
+                        search_res = self.find_in_path(**ide_action.action_args)
                     else:
                         raise ValueError("find_in_file 动作参数错误")
                     return (
@@ -762,7 +762,7 @@ class PyWorkspace(BaseWorkspace):
             # Handle other possible exceptions, such as permission errors
             raise OSError(f"Failed to create file at {uri}: {str(e)}") from e
 
-    def find_in_file(
+    def find_in_path(
         self,
         *,
         uri: str,

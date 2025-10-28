@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_base.py
 # @Time    : 2025/10/28 16:08
 # @Author  : JQQ
@@ -132,11 +131,15 @@ def test_glob_files_specific_directory(temp_workspace: tuple[PyWorkspace, str]) 
 
     # 验证所有文件都在 src 目录下 / Verify all files are under src directory
     for result in results:
-        assert result["path"].startswith("src/"), f"路径应该以 src/ 开头 / Path should start with src/: {result['path']}"
+        assert result["path"].startswith("src/"), (
+            f"路径应该以 src/ 开头 / Path should start with src/: {result['path']}"
+        )
 
     paths = [r["path"] for r in results]
     assert "src/main.py" in paths, "应该找到 src/main.py / Should find src/main.py"
-    assert "src/components/helper.py" in paths, "应该找到 src/components/helper.py / Should find src/components/helper.py"
+    assert "src/components/helper.py" in paths, (
+        "应该找到 src/components/helper.py / Should find src/components/helper.py"
+    )
 
     print(f"\n在 src 目录找到 {len(results)} 个 Python 文件 / Found {len(results)} Python files in src directory:")
     for r in results:
@@ -160,7 +163,9 @@ def test_glob_files_non_recursive(temp_workspace: tuple[PyWorkspace, str]) -> No
 
     # 验证所有文件都在根目录（不在子目录）/ Verify all files are in root directory (not in subdirectories)
     for result in results:
-        assert "/" not in result["path"], f"路径不应该包含子目录 / Path should not contain subdirectories: {result['path']}"
+        assert "/" not in result["path"], (
+            f"路径不应该包含子目录 / Path should not contain subdirectories: {result['path']}"
+        )
 
     paths = [r["path"] for r in results]
     assert "root_file1.py" in paths, "应该找到 root_file1.py / Should find root_file1.py"
@@ -296,7 +301,9 @@ def test_glob_files_relative_path(temp_workspace: tuple[PyWorkspace, str]) -> No
     # 验证所有文件都在 src 目录下 / Verify all files are under src directory
     for result in results:
         # 相对路径会被转换为绝对路径，结果应该在 src 目录下 / Relative path is converted to absolute, results should be under src
-        assert result["path"].startswith("src/"), f"路径应该以 src/ 开头 / Path should start with src/: {result['path']}"
+        assert result["path"].startswith("src/"), (
+            f"路径应该以 src/ 开头 / Path should start with src/: {result['path']}"
+        )
 
     print(
         f"\n✓ 正确处理相对路径，找到 {len(results)} 个文件 / Correctly handled relative path, found {len(results)} files",

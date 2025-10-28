@@ -1003,7 +1003,7 @@ class BaseWorkspace(gym.Env, ABC):
                             "uri": f"file://{file_path.absolute()}",
                             "path": str(file_path.relative_to(self.root_dir)),
                             "mtime": mtime,
-                        }
+                        },
                     )
                 except (OSError, ValueError) as e:
                     # 跳过无法访问的文件 / Skip inaccessible files
@@ -1011,7 +1011,7 @@ class BaseWorkspace(gym.Env, ABC):
                     continue
 
         # 按修改时间降序排序（最新的在前）/ Sort by modification time descending (newest first)
-        matched_files.sort(key=lambda x: x["mtime"], reverse=True)
+        matched_files.sort(key=lambda x: cast(float, x["mtime"]), reverse=True)
 
         return matched_files
 
@@ -1071,7 +1071,7 @@ class BaseWorkspace(gym.Env, ABC):
             return "获取文件符号失败"
 
     @abstractmethod
-    def find_in_file(
+    def find_in_path(
         self,
         *,
         uri: str,
@@ -1151,7 +1151,7 @@ class BaseWorkspace(gym.Env, ABC):
                 - 可用于撤销更改的反向编辑 / The reverse edits that can be applied to undo the changes
                 - 编辑后的诊断结果 / Diagnostics result after editing
         """
-        search_res = self.find_in_file(
+        search_res = self.find_in_path(
             uri=uri,
             query=query,
             search_scope=search_scope,

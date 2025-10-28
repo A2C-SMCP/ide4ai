@@ -8,7 +8,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Sequence
-from typing import Any, SupportsFloat
+from typing import Any, SupportsFloat, cast
 
 from pydantic import AnyUrl, ValidationError
 
@@ -593,7 +593,10 @@ class PyWorkspace(BaseWorkspace):
         # 编辑后主动拉取诊断信息 / Pull diagnostics after editing
         diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
 
-        return res, diagnostics
+        return res, cast(
+            DocumentDiagnosticReport | None,
+            diagnostics,
+        )  # 在指定uri的情况下，返回的diagnostics为DocumentDiagnostics
 
     def rename_file(
         self,
@@ -751,7 +754,7 @@ class PyWorkspace(BaseWorkspace):
             # 创建文件后主动拉取诊断信息 / Pull diagnostics after file creation
             diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
 
-            return tm, diagnostics
+            return tm, cast(DocumentDiagnosticReport | None, diagnostics)
         except FileExistsError:
             # If overwrite was True, we already deleted the file, so this should not happen
             return None, None  # pragma: no cover

@@ -13,6 +13,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from io import BufferedReader
 from json import JSONDecodeError
 from typing import Any, ClassVar, Literal, cast
 
@@ -254,7 +255,9 @@ class BaseWorkspace(gym.Env, ABC):
                             # 使用read1进行单次读取，不会等待填满缓冲区 / Use read1 for single read, won't wait to fill buffer
                             try:
                                 # read1(n) 最多读取n字节，但不会阻塞等待填满n字节 / read1(n) reads at most n bytes without blocking to fill
-                                chunk = self.lsp.stdout.read1(4096)
+                                # subprocess.Popen[bytes].stdout 实际是 BufferedReader 类型 / Actually BufferedReader type
+                                stdout = cast(BufferedReader, self.lsp.stdout)
+                                chunk = stdout.read1(4096)
                                 if not chunk:
                                     break
                                 self._lsp_buffer += chunk.decode("utf-8")
@@ -493,12 +496,16 @@ class BaseWorkspace(gym.Env, ABC):
                                 return RelatedFullDocumentDiagnosticReport.model_validate(res_json.result)
                             elif kind == "unchanged":
                                 return RelatedUnchangedDocumentDiagnosticReport.model_validate(res_json.result)
-                        return res_json.result
+                        else:
+                            logger.error(f"获取到非法诊断数据: {res_json.result}")
+                            return None
                     else:
                         # 工作区诊断响应 / Workspace diagnostics response
                         if isinstance(res_json.result, dict):
                             return WorkspaceDiagnosticReport.model_validate(res_json.result)
-                        return res_json.result
+                        else:
+                            logger.error(f"获取到非法诊断数据: {res_json.result}")
+                            return None
 
                 except json.JSONDecodeError as e:
                     logger.error(f"解析诊断响应失败 / Failed to parse diagnostic response: {e}")

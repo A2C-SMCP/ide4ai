@@ -6,6 +6,5 @@
 
 
 class A:
-class B:
     b: int
     c: int

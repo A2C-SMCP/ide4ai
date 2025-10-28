@@ -13,6 +13,7 @@ from typing import Any, SupportsFloat
 from pydantic import AnyUrl, ValidationError
 
 from ide4ai.dtos.base_protocol import LSPResponseMessage
+from ide4ai.dtos.diagnostics import DocumentDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.environment.workspace.model import TextModel
@@ -69,7 +70,8 @@ class PyWorkspace(BaseWorkspace):
                 ".py": default_python_header_generator,
             }
 
-    def _format_diagnostics(self, diagnostics: Any) -> str:
+    @staticmethod
+    def _format_diagnostics(diagnostics: DocumentDiagnosticReport | None) -> str:
         """
         格式化诊断信息为可读字符串 / Format diagnostics to readable string
 
@@ -91,10 +93,14 @@ class PyWorkspace(BaseWorkspace):
                 result += "  无诊断问题 / No diagnostic issues\n"
             else:
                 for idx, diagnostic in enumerate(diagnostics.items, 1):
-                    severity = getattr(diagnostic, "severity", None)
-                    severity_str = {1: "错误/Error", 2: "警告/Warning", 3: "信息/Info", 4: "提示/Hint"}.get(
-                        severity,
-                        "未知/Unknown",
+                    severity = diagnostic.severity
+                    severity_str = (
+                        {1: "错误/Error", 2: "警告/Warning", 3: "信息/Info", 4: "提示/Hint"}.get(
+                            severity,
+                            "未知/Unknown",
+                        )
+                        if isinstance(severity, int)
+                        else "未知/Unknown"
                     )
                     message = getattr(diagnostic, "message", "")
                     range_info = getattr(diagnostic, "range", None)
@@ -111,14 +117,14 @@ class PyWorkspace(BaseWorkspace):
 
         return result
 
-    def _launch_lsp(self) -> subprocess.Popen:
+    def _launch_lsp(self) -> subprocess.Popen[bytes]:
         """
-        启动 Pyright 语言服务器
+        启动 Pyright 语言服务器 / Launch Pyright language server
 
         注意启动时需要使用Bytes模式，而不是Str模式，即text设置为False。因为LSP协议长度计算是按bytes来计算的。
 
         Returns:
-            subprocess.Popen: Pyright 语言服务器进程 | Pyright language server process
+            subprocess.Popen[bytes]: Pyright 语言服务器进程 | Pyright language server process
         """
         # 启动 Pyright 语言服务器
         process = subprocess.Popen(
@@ -374,11 +380,20 @@ class PyWorkspace(BaseWorkspace):
                                 ide_action.action_args["search_scope"] = [
                                     Range.model_validate(r) for r in ide_action.action_args["search_scope"]
                                 ]
-                        replace_res = self.replace_in_file(**ide_action.action_args)
+                        undo_edits, diagnostics = self.replace_in_file(**ide_action.action_args)
                     else:
                         raise ValueError("replace_in_file 动作参数错误")
+
+                    # 构建观察结果 / Build observation result
+                    obs_text = "完成替换"
+                    if diagnostics:
+                        obs_text += self._format_diagnostics(diagnostics)
+
                     return (
-                        IDEObs(obs="完成替换", original_result=replace_res).model_dump(),
+                        IDEObs(
+                            obs=obs_text,
+                            original_result={"undo_edits": undo_edits, "diagnostics": diagnostics},
+                        ).model_dump(),
                         100,
                         True,
                         True,
@@ -530,7 +545,7 @@ class PyWorkspace(BaseWorkspace):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> tuple[list[TextEdit] | None, Any]:
+    ) -> tuple[list[TextEdit] | None, DocumentDiagnosticReport | None]:
         """
         Apply edits to a file in the workspace.
 
@@ -545,7 +560,7 @@ class PyWorkspace(BaseWorkspace):
                 False.
 
         Returns:
-            tuple[Optional[list[TextEdit]], Any]:
+            tuple[Optional[list[TextEdit]], Optional[DocumentDiagnosticReport]]:
                 - The reverse edits that can be applied to undo the changes / 可用于撤销更改的反向编辑
                 - Diagnostics result after editing / 编辑后的诊断结果
         """
@@ -648,7 +663,7 @@ class PyWorkspace(BaseWorkspace):
         init_content: str | None = None,
         overwrite: bool | None = None,
         ignore_if_exists: bool | None = None,
-    ) -> tuple[TextModel | None, Any]:
+    ) -> tuple[TextModel | None, DocumentDiagnosticReport | None]:
         """
         Create a file at the specified URI.
 
@@ -659,7 +674,7 @@ class PyWorkspace(BaseWorkspace):
             ignore_if_exists (bool, optional): If True, do nothing if the file already exists. Defaults to None.
 
         Returns:
-            tuple[Optional[TextModel], Any]:
+            tuple[Optional[TextModel], Optional[DocumentDiagnosticReport]]:
                 - The model instance representing the created file / 创建的文件模型实例
                 - Diagnostics result after creation / 创建后的诊断结果
         """
@@ -696,7 +711,8 @@ class PyWorkspace(BaseWorkspace):
                         file.write(header)
                         break
             tm = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
-            # 在文件创建后追加初始化内容（如果存在）
+
+            # 在文件创建后追加初始化内容（如果存在）/ Append initial content after file creation (if exists)
             if init_content:
                 tm.apply_edits(
                     [
@@ -712,9 +728,25 @@ class PyWorkspace(BaseWorkspace):
                         ),
                     ],
                 )
+
             self.models.append(tm)
             self.active_model(tm.m_id)
+
+            # 通知LSP文件已创建 / Notify LSP that file has been created
             self.send_lsp_msg("workspace/didCreateFiles", {"files": [{"uri": uri}]})
+
+            # 通知LSP打开文件，发送完整内容（包含header和init_content）/ Notify LSP to open file with complete content
+            self.send_lsp_msg(
+                "textDocument/didOpen",
+                {
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": LanguageId.python.value,
+                        "version": tm.get_version_id(),
+                        "text": tm.get_value(),
+                    },
+                },
+            )
 
             # 创建文件后主动拉取诊断信息 / Pull diagnostics after file creation
             diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)

@@ -95,30 +95,40 @@ def test_py_workspace_create_and_apply_edit(project_root_dir, py_workspace) -> N
     """
     test_file_path = project_root_dir + "/file_for_edit.py"
     test_file_uri = "file://" + test_file_path
-    py_workspace.open_file(uri=test_file_uri)
-    symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
-    print(symbols)
-    assert "Class: A" in symbols
-    new_text = "class B:\n    b: int\n    c: int"
-    edit = SingleEditOperation(
-        range=Range(start_position=Position(9, 1), end_position=Position(10, 11)),
-        text=new_text,
-    )
-    edit_res, diagnostics = py_workspace.apply_edit(uri=test_file_uri, edits=[edit], compute_undo_edits=True)
-    # 诊断信息可能为None（超时）或有值，这里不强制要求 / Diagnostics may be None (timeout) or have value
-    # 主要验证返回值结构正确 / Mainly verify return value structure is correct
-    symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
-    print(symbols)
-    assert "Class: B" in symbols
-    undo_edit, _ = py_workspace.apply_edit(
-        uri=test_file_uri,
-        edits=[e.to_single_edit_operation() for e in edit_res],
-        compute_undo_edits=False,
-    )
-    assert not undo_edit
-    symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
-    print(symbols)
-    assert "Class: A" in symbols
+
+    # 备份原始文件内容 / Backup original file content
+    with open(test_file_path) as f:
+        original_content = f.read()
+
+    try:
+        py_workspace.open_file(uri=test_file_uri)
+        symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        print(symbols)
+        assert "Class: A" in symbols
+        new_text = "class B:\n    b: int\n    c: int"
+        edit = SingleEditOperation(
+            range=Range(start_position=Position(8, 1), end_position=Position(10, 11)),
+            text=new_text,
+        )
+        edit_res, diagnostics = py_workspace.apply_edit(uri=test_file_uri, edits=[edit], compute_undo_edits=True)
+        # 诊断信息可能为None（超时）或有值，这里不强制要求 / Diagnostics may be None (timeout) or have value
+        # 主要验证返回值结构正确 / Mainly verify return value structure is correct
+        symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        print(symbols)
+        assert "Class: B" in symbols
+        undo_edit, _ = py_workspace.apply_edit(
+            uri=test_file_uri,
+            edits=[e.to_single_edit_operation() for e in edit_res],
+            compute_undo_edits=False,
+        )
+        assert not undo_edit
+        symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        print(symbols)
+        assert "Class: A" in symbols
+    finally:
+        # 恢复原始文件内容 / Restore original file content
+        with open(test_file_path, "w") as f:
+            f.write(original_content)
 
 
 @pytest.fixture
@@ -155,14 +165,14 @@ def test_create_file_with_not_header_generator(project_root_dir, file_uri) -> No
     """如果PyWorkspace没有header_generator，不会添加文件头"""
     py_workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_python_workspace", header_generators={})
     try:
-        tm, diagnostics = py_workspace.create_file(uri=file_uri, init_content="print('Hello, World!')")
+        tm, diagnostics = py_workspace.create_file(uri=file_uri, init_content="print(undefined_var)")
         tm.save()
         assert tm is not None
         assert diagnostics is not None
         assert os.path.exists(file_uri[7:])
         with open(file_uri[7:]) as f:
             content = f.read()
-        assert content.endswith("print('Hello, World!')") and content.startswith("print('Hello, World!')")
+        assert content.endswith("print(undefined_var)") and content.startswith("print(undefined_var)")
     finally:
         py_workspace.close()
 
@@ -320,7 +330,6 @@ def test_create_file_with_auto_diagnostics(project_root_dir) -> None:
     验证在创建文件后，系统会自动拉取诊断信息并返回
     Verify that diagnostics are automatically pulled and returned after creating a file
     """
-    import tempfile
 
     temp_file_path = os.path.join(project_root_dir, "test_new_file_with_error.py")
     temp_file_uri = f"file://{temp_file_path}"
@@ -346,6 +355,147 @@ def test_create_file_with_auto_diagnostics(project_root_dir) -> None:
                 "undefined_var" in str(getattr(diagnostic, "message", "")).lower() for diagnostic in diagnostics.items
             )
             assert has_error, f"Expected error about undefined_var, got: {diagnostics.items}"
+
+    finally:
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def test_apply_edit_with_syntax_error_must_have_diagnostics(project_root_dir) -> None:
+    """
+    测试apply_edit引入语法错误后必须返回诊断信息 / Test apply_edit with syntax error must return diagnostics
+
+    故意引入语法错误，验证诊断信息必须不为空
+    Intentionally introduce syntax errors and verify diagnostics must not be None
+    """
+    import tempfile
+    import time
+
+    # 创建一个临时Python文件 / Create a temporary Python file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=project_root_dir) as f:
+        f.write(
+            """# -*- coding: utf-8 -*-
+# Test file
+def valid_function():
+    return 42
+""",
+        )
+        temp_file_path = f.name
+
+    temp_file_uri = f"file://{temp_file_path}"
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_syntax_error_diagnostics")
+
+    try:
+        # 打开文件 / Open file
+        workspace.open_file(uri=temp_file_uri)
+
+        # 等待LSP初始化完成 / Wait for LSP initialization
+        time.sleep(1)
+
+        # 编辑文件，引入明显的语法错误 / Edit file to introduce obvious syntax errors
+        edit = SingleEditOperation(
+            range=Range(start_position=Position(5, 1), end_position=Position(5, 1)),
+            text="""
+# 引入多个语法错误 / Introduce multiple syntax errors
+import os
+print(undefined_var)  # 未定义变量 / Undefined variable
+result = nonexistent_func()  # 未定义函数 / Undefined function
+x = unknown_module.something  # 未导入模块 / Unimported module
+""",
+        )
+
+        # 应用编辑并获取诊断信息 / Apply edit and get diagnostics
+        undo_edits, diagnostics = workspace.apply_edit(uri=temp_file_uri, edits=[edit], compute_undo_edits=True)
+
+        # 验证返回了撤销编辑 / Verify undo edits are returned
+        assert undo_edits is not None, "应该返回撤销编辑 / Should return undo edits"
+
+        # 验证返回了诊断信息（不能为空）/ Verify diagnostics are returned (must not be None)
+        assert diagnostics is not None, (
+            "引入语法错误后必须返回诊断信息 / Diagnostics must be returned after introducing syntax errors"
+        )
+
+        # 验证诊断信息包含错误项 / Verify diagnostics contain error items
+        assert hasattr(diagnostics, "items"), "诊断结果应该有items属性 / Diagnostics should have items attribute"
+        assert diagnostics.items, "诊断信息不应为空列表 / Diagnostics items should not be empty"
+        assert len(diagnostics.items) >= 3, (
+            f"应该至少检测到3个错误，实际检测到{len(diagnostics.items)}个 / "
+            f"Should detect at least 3 errors, actually detected {len(diagnostics.items)}"
+        )
+
+        # 验证包含预期的错误信息 / Verify contains expected error messages
+        error_messages = [str(getattr(d, "message", "")).lower() for d in diagnostics.items]
+        print(f"检测到的错误信息 / Detected error messages: {error_messages}")
+
+        has_undefined_var = any("undefined_var" in msg for msg in error_messages)
+        has_nonexistent_func = any("nonexistent_func" in msg for msg in error_messages)
+        has_unknown_module = any("unknown_module" in msg for msg in error_messages)
+
+        assert has_undefined_var or has_nonexistent_func or has_unknown_module, (
+            f"应该检测到至少一个预期的错误，实际错误信息: {error_messages} / "
+            f"Should detect at least one expected error, actual messages: {error_messages}"
+        )
+
+    finally:
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def test_create_file_with_syntax_error_must_have_diagnostics(project_root_dir) -> None:
+    """
+    测试create_file创建带语法错误的文件后必须返回诊断信息 / Test create_file with syntax error must return diagnostics
+
+    故意创建包含语法错误的文件，验证诊断信息必须不为空
+    Intentionally create file with syntax errors and verify diagnostics must not be None
+    """
+
+    temp_file_path = os.path.join(project_root_dir, "test_file_with_multiple_errors.py")
+    temp_file_uri = f"file://{temp_file_path}"
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_create_syntax_error")
+
+    try:
+        # 创建文件并包含多个明显的语法错误 / Create file with multiple obvious syntax errors
+        tm, diagnostics = workspace.create_file(
+            uri=temp_file_uri,
+            init_content="""import sys
+
+# 多个未定义的变量和函数 / Multiple undefined variables and functions
+print(undefined_variable_1)
+print(os.getenv("test"))
+result = undefined_function()
+data = another_undefined_var
+obj = nonexistent_module.method()
+""",
+        )
+
+        # 验证文件创建成功 / Verify file created successfully
+        assert tm is not None, "文件应该创建成功 / File should be created successfully"
+
+        # 验证返回了诊断信息（不能为空）/ Verify diagnostics are returned (must not be None)
+        assert diagnostics is not None, (
+            "创建包含语法错误的文件后必须返回诊断信息 / Diagnostics must be returned after creating file with syntax errors"
+        )
+
+        # 验证诊断信息包含错误项 / Verify diagnostics contain error items
+        assert hasattr(diagnostics, "items"), "诊断结果应该有items属性 / Diagnostics should have items attribute"
+        assert diagnostics.items, "诊断信息不应为空列表 / Diagnostics items should not be empty"
+        assert len(diagnostics.items) >= 4, (
+            f"应该至少检测到4个错误，实际检测到{len(diagnostics.items)}个 / "
+            f"Should detect at least 4 errors, actually detected {len(diagnostics.items)}"
+        )
+
+        # 验证包含预期的错误信息 / Verify contains expected error messages
+        error_messages = [str(getattr(d, "message", "")).lower() for d in diagnostics.items]
+        print(f"检测到的错误信息 / Detected error messages: {error_messages}")
+
+        # 至少应该检测到一些未定义的变量或函数 / Should detect at least some undefined variables or functions
+        has_undefined_errors = any("undefined" in msg or "not defined" in msg for msg in error_messages)
+        assert has_undefined_errors, (
+            f"应该检测到未定义变量或函数的错误，实际错误信息: {error_messages} / "
+            f"Should detect undefined variable or function errors, actual messages: {error_messages}"
+        )
 
     finally:
         workspace.close()
@@ -453,6 +603,273 @@ print(os.path)
 
     finally:
         # 清理：关闭workspace并删除临时文件 / Cleanup: close workspace and delete temp file
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def test_replace_in_file_basic(project_root_dir, py_workspace) -> None:
+    """
+    测试replace_in_file基本功能 / Test basic replace_in_file functionality
+
+    验证replace_in_file能够正确替换文件中的文本并返回undo_edits和diagnostics
+    Verify that replace_in_file correctly replaces text and returns undo_edits and diagnostics
+    """
+    test_file_path = project_root_dir + "/file_for_edit.py"
+    test_file_uri = "file://" + test_file_path
+
+    # 备份原始文件内容 / Backup original file content
+    with open(test_file_path) as f:
+        original_content = f.read()
+
+    try:
+        py_workspace.open_file(uri=test_file_uri)
+
+        # 替换类名 A -> B / Replace class name A -> B
+        undo_edits, diagnostics = py_workspace.replace_in_file(
+            uri=test_file_uri,
+            query="class A:",
+            replacement="class B:",
+            compute_undo_edits=True,
+        )
+
+        # 验证返回值结构 / Verify return value structure
+        assert undo_edits is not None, "应该返回undo_edits / Should return undo_edits"
+        # diagnostics可能为None（超时）或有值 / diagnostics may be None (timeout) or have value
+
+        # 验证替换成功 / Verify replacement succeeded
+        symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        assert "Class: B" in symbols, "类名应该被替换为B / Class name should be replaced with B"
+        assert "Class: A" not in symbols, "原类名A不应该存在 / Original class name A should not exist"
+
+        # 使用undo_edits恢复 / Restore using undo_edits
+        _, _ = py_workspace.apply_edit(
+            uri=test_file_uri,
+            edits=[e.to_single_edit_operation() for e in undo_edits],
+            compute_undo_edits=False,
+        )
+
+        # 验证恢复成功 / Verify restoration succeeded
+        symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
+        assert "Class: A" in symbols, "类名应该被恢复为A / Class name should be restored to A"
+
+    finally:
+        # 恢复原始文件内容 / Restore original file content
+        with open(test_file_path, "w") as f:
+            f.write(original_content)
+
+
+def test_replace_in_file_with_regex(project_root_dir, py_workspace) -> None:
+    """
+    测试replace_in_file使用正则表达式 / Test replace_in_file with regex
+
+    验证replace_in_file能够使用正则表达式进行替换
+    Verify that replace_in_file can use regex for replacement
+    """
+    test_file_path = project_root_dir + "/file_for_edit.py"
+    test_file_uri = "file://" + test_file_path
+
+    # 备份原始文件内容 / Backup original file content
+    with open(test_file_path) as f:
+        original_content = f.read()
+
+    try:
+        py_workspace.open_file(uri=test_file_uri)
+
+        # 使用正则表达式替换类定义 / Replace class definition using regex
+        undo_edits, diagnostics = py_workspace.replace_in_file(
+            uri=test_file_uri,
+            query=r"class\s+\w+:",
+            replacement="class NewClass:",
+            is_regex=True,
+            compute_undo_edits=True,
+        )
+
+        # 验证返回值 / Verify return values
+        assert undo_edits is not None, "应该返回undo_edits / Should return undo_edits"
+
+        # 验证替换成功 / Verify replacement succeeded
+        content = py_workspace.read_file(uri=test_file_uri)
+        assert "class NewClass:" in content, "应该包含新类名 / Should contain new class name"
+        py_workspace.close()  # 提前调用close触发dispose，否则会在fixture触发close导致文件被篡改
+
+    finally:
+        # 恢复原始文件内容 / Restore original file content
+        with open(test_file_path, "w") as f:
+            f.write(original_content)
+
+
+def test_replace_in_file_with_range(project_root_dir, py_workspace) -> None:
+    """
+    测试replace_in_file在指定范围内替换 / Test replace_in_file with specific range
+
+    验证replace_in_file能够在指定范围内进行替换
+    Verify that replace_in_file can replace within a specific range
+    """
+    test_file_path = project_root_dir + "/file_for_edit.py"
+    test_file_uri = "file://" + test_file_path
+
+    # 备份原始文件内容 / Backup original file content
+    with open(test_file_path) as f:
+        original_content = f.read()
+
+    try:
+        py_workspace.open_file(uri=test_file_uri)
+
+        # 只在第8-9行范围内替换 / Replace only within lines 8-9
+        search_range = Range(
+            start_position=Position(7, 1),  # 第8行开始 / Start at line 8
+            end_position=Position(9, 1),  # 第9行结束 / End at line 9
+        )
+
+        undo_edits, diagnostics = py_workspace.replace_in_file(
+            uri=test_file_uri,
+            query="A",
+            replacement="ReplacedA",
+            match_case=True,
+            search_scope=search_range,
+            compute_undo_edits=True,
+        )
+
+        # 验证返回值 / Verify return values
+        assert undo_edits is not None, "应该返回undo_edits / Should return undo_edits"
+
+        # 验证替换成功 / Verify replacement succeeded
+        content = py_workspace.read_file(uri=test_file_uri)
+        assert "class ReplacedA:" in content, "类名应该被替换 / Class name should be replaced"
+
+        py_workspace.close()
+
+    finally:
+        # 恢复原始文件内容 / Restore original file content
+        with open(test_file_path, "w") as f:
+            f.write(original_content)
+
+
+def test_replace_in_file_no_match(project_root_dir, py_workspace) -> None:
+    """
+    测试replace_in_file没有匹配时的行为 / Test replace_in_file behavior when no match
+
+    验证当没有找到匹配项时，replace_in_file返回(None, None)
+    Verify that replace_in_file returns (None, None) when no match is found
+    """
+    test_file_path = project_root_dir + "/file_for_edit.py"
+    test_file_uri = "file://" + test_file_path
+
+    py_workspace.open_file(uri=test_file_uri)
+
+    # 查询不存在的文本 / Query for non-existent text
+    undo_edits, diagnostics = py_workspace.replace_in_file(
+        uri=test_file_uri,
+        query="NonExistentText",
+        replacement="Replacement",
+        compute_undo_edits=True,
+    )
+
+    # 验证返回(None, None) / Verify returns (None, None)
+    assert undo_edits is None, "没有匹配时应该返回None / Should return None when no match"
+    assert diagnostics is None, "没有匹配时应该返回None / Should return None when no match"
+
+
+def test_replace_in_file_case_sensitive(project_root_dir, py_workspace) -> None:
+    """
+    测试replace_in_file区分大小写 / Test replace_in_file case sensitivity
+
+    验证replace_in_file能够正确处理大小写敏感的替换
+    Verify that replace_in_file correctly handles case-sensitive replacement
+    """
+    test_file_path = project_root_dir + "/file_for_edit.py"
+    test_file_uri = "file://" + test_file_path
+
+    # 备份原始文件内容 / Backup original file content
+    with open(test_file_path) as f:
+        original_content = f.read()
+
+    try:
+        py_workspace.open_file(uri=test_file_uri)
+
+        # 区分大小写替换 / Case-sensitive replacement
+        undo_edits, diagnostics = py_workspace.replace_in_file(
+            uri=test_file_uri,
+            query="class A:",
+            replacement="class B:",
+            match_case=True,
+            compute_undo_edits=True,
+        )
+
+        # 验证返回值 / Verify return values
+        assert undo_edits is not None, "应该找到匹配并返回undo_edits / Should find match and return undo_edits"
+
+        # 尝试用小写查询（不应该匹配）/ Try lowercase query (should not match)
+        undo_edits2, diagnostics2 = py_workspace.replace_in_file(
+            uri=test_file_uri,
+            query="class b:",
+            replacement="class C:",
+            match_case=True,
+            compute_undo_edits=True,
+        )
+
+        # 验证没有匹配 / Verify no match
+        assert undo_edits2 is None, "大小写不匹配时不应该找到结果 / Should not find match when case doesn't match"
+        py_workspace.close()
+
+    finally:
+        # 恢复原始文件内容 / Restore original file content
+        with open(test_file_path, "w") as f:
+            f.write(original_content)
+
+
+def test_replace_in_file_with_diagnostics(project_root_dir) -> None:
+    """
+    测试replace_in_file引入错误后返回诊断信息 / Test replace_in_file returns diagnostics after introducing errors
+
+    验证replace_in_file在引入语法错误后能够返回诊断信息
+    Verify that replace_in_file returns diagnostics after introducing syntax errors
+    """
+    import tempfile
+
+    # 创建一个临时Python文件 / Create a temporary Python file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=project_root_dir) as f:
+        f.write(
+            """# -*- coding: utf-8 -*-
+# Test file
+def valid_function():
+    x = 1
+    return x
+""",
+        )
+        temp_file_path = f.name
+
+    temp_file_uri = f"file://{temp_file_path}"
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_replace_diagnostics")
+
+    try:
+        # 打开文件 / Open file
+        workspace.open_file(uri=temp_file_uri)
+
+        # 使用replace_in_file引入错误 / Introduce error using replace_in_file
+        undo_edits, diagnostics = workspace.replace_in_file(
+            uri=temp_file_uri,
+            query="return x",
+            replacement="return undefined_variable",
+            compute_undo_edits=True,
+        )
+
+        # 验证返回了撤销编辑 / Verify undo edits are returned
+        assert undo_edits is not None, "应该返回undo_edits / Should return undo_edits"
+
+        # 验证返回了诊断信息 / Verify diagnostics are returned
+        assert diagnostics is not None, "应该返回诊断信息 / Should return diagnostics"
+
+        # 验证诊断信息包含错误 / Verify diagnostics contain error
+        if hasattr(diagnostics, "items") and diagnostics.items:
+            has_error = any(
+                "undefined_variable" in str(getattr(diagnostic, "message", "")).lower()
+                for diagnostic in diagnostics.items
+            )
+            assert has_error, "应该包含undefined_variable错误 / Should contain undefined_variable error"
+
+    finally:
         workspace.close()
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)

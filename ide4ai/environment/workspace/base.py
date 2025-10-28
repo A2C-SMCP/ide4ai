@@ -24,7 +24,7 @@ from pydantic import AnyUrl
 from typing_extensions import SupportsFloat
 
 from ide4ai.dtos.base_protocol import LSPResponseMessage
-from ide4ai.dtos.diagnostics import PreviousResultId
+from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, PreviousResultId, WorkspaceDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import (
@@ -87,12 +87,14 @@ class BaseWorkspace(gym.Env, ABC):
         self.lsp_stdout_mutex = threading.Lock()
         self.lsp_stdin_mutex = threading.Lock()
         self.lsp_mutex = threading.Lock()
-        self.lsp: subprocess.Popen | None = None
+        self.lsp: subprocess.Popen[bytes] | None = None
         self._lsp_msg_id = 1
         self._max_active_models = max_active_models
         self._render_with_symbols = render_with_symbols
         self._enable_simple_view_mode = enable_simple_view_mode
         self.lsp_output_monitor_thread: threading.Thread | None = None
+        # LSP输出缓冲区，用于累积未完整的消息 / LSP output buffer for accumulating incomplete messages
+        self._lsp_buffer: str = ""
         # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
         # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，
         # 比如diagnostic。
@@ -226,48 +228,108 @@ class BaseWorkspace(gym.Env, ABC):
         while True:
             if self.lsp and self.lsp.poll() is None and self.lsp.stdout:
                 with self.lsp_stdout_mutex:
-                    if not self.lsp or not self.lsp.stdout:
+                    # 检查LSP进程状态 / Check LSP process status
+                    if not self.lsp or not self.lsp.stdout or self.lsp.poll() is not None:
                         break
-                        # 确保在获取锁之后，LSP和输出流仍然有效
-                    if self.lsp.poll() is not None or not self.lsp.stdout:
-                        break
-                    # 再次调用select，确保在获取锁的过程中不出现其它意外
-                    rlist, _, _ = select.select([self.lsp.stdout], [], [], 0.1)  # 100ms 防止CPU占用过高
+                    # 再次调用select，确保在获取锁的过程中不出现其它意外 / Call select again to ensure no issues during lock acquisition
+                    # 检查是否有数据可读 / Check if there is data to read
+                    rlist, _, _ = select.select([self.lsp.stdout], [], [], 0.1)
                     if not rlist:
                         continue
-                    line_bytes = self.lsp.stdout.readline()
-                    if line_bytes:
-                        # 处理输出
-                        line = line_bytes.decode("utf-8")
-                        if "Content-Length:" in line:
-                            length = int(line.split(":")[1].strip())
-                            response_bytes = self.lsp.stdout.read(length + 2)  # 之所以+2，是因为还有一个换行符(\r\n)
-                            response = response_bytes.decode("utf-8")
+
+                    logger.info("获取到LSP服务器返回数据 / Got LSP server response data")
+
+                    # 持续读取所有可用数据，直到没有完整消息为止 / Continuously read all available data until no complete messages
+                    while True:
+                        # 尝试从缓冲区解析完整消息 / Try to parse complete messages from buffer
+                        message_parsed = self._try_parse_one_message()
+                        if not message_parsed:
+                            # 缓冲区中没有完整消息，尝试读取更多数据 / No complete message in buffer, try to read more data
+                            # 使用非阻塞select检查是否还有数据 / Use non-blocking select to check if more data is available
+                            rlist, _, _ = select.select([self.lsp.stdout], [], [], 0)
+                            if not rlist:
+                                # 没有更多数据可读 / No more data to read
+                                break
+
+                            # 使用read1进行单次读取，不会等待填满缓冲区 / Use read1 for single read, won't wait to fill buffer
                             try:
-                                response_data = json.loads(response.strip())
-                                if "id" in response_data:
-                                    self.lsp_server_response[response_data["id"]] = response
-                                elif "method" in response_data:
-                                    # 获取URI，需要处理params可能是字典或列表的情况 / Get URI, handle params being dict or list
-                                    # 标准LSP通知的params通常是字典，但某些语言服务器（如Pyright）的自定义通知可能使用列表
-                                    # 例如：pyright/beginProgress, pyright/reportProgress, pyright/endProgress
-                                    # Standard LSP notification params are usually dicts, but some language servers
-                                    # (like Pyright) use lists for custom notifications like progress reports
-                                    params = response_data.get("params", {})
-                                    uri = str(params.get("uri")) if isinstance(params, dict) else "NotExists"
-                                    self.lsp_server_notifications[
-                                        self.__construct_notification_key(
-                                            response_data["method"],
-                                            uri,
-                                        )
-                                    ] = response
-                            except JSONDecodeError:
-                                logger.error(
-                                    f"Failed to decode JSON: {response}\nCurrent LSP Head Line: {line}\nLength in line: {length}",
-                                )
+                                # read1(n) 最多读取n字节，但不会阻塞等待填满n字节 / read1(n) reads at most n bytes without blocking to fill
+                                chunk = self.lsp.stdout.read1(4096)
+                                if not chunk:
+                                    break
+                                self._lsp_buffer += chunk.decode("utf-8")
+                            except Exception as e:
+                                logger.error(f"读取LSP输出时出错 / Error reading LSP output: {e}")
+                                break
             else:
-                # lsp已经停止
+                # lsp已经停止 / LSP has stopped
                 break
+
+    def _try_parse_one_message(self) -> bool:
+        """
+        尝试从缓冲区解析一条完整的LSP消息 / Try to parse one complete LSP message from buffer
+
+        Returns:
+            bool: 如果成功解析了一条消息返回True，否则返回False / True if a message was parsed, False otherwise
+        """
+        # LSP消息格式：Content-Length: ...\r\n\r\n{json}
+        if not self._lsp_buffer:
+            return False
+
+        # 查找消息头 / Find message header
+        if not self._lsp_buffer.startswith("Content-Length:"):
+            # 查找下一个消息头 / Find next message header
+            header_start = self._lsp_buffer.find("Content-Length:")
+            if header_start == -1:
+                # 没有完整的消息头，清空无效数据 / No complete header, clear invalid data
+                self._lsp_buffer = ""
+                return False
+            # 丢弃消息头之前的数据 / Discard data before header
+            self._lsp_buffer = self._lsp_buffer[header_start:]
+
+        # 解析内容长度 / Parse content length
+        header_end = self._lsp_buffer.find("\r\n\r\n")
+        if header_end == -1:
+            # 消息头不完整 / Incomplete header
+            return False
+
+        header = self._lsp_buffer[:header_end]
+        length_line = header.split("\r\n")[0]
+        try:
+            length = int(length_line.split(":")[1].strip())
+        except (ValueError, IndexError) as e:
+            logger.error(f"解析Content-Length失败 / Failed to parse Content-Length: {e}")
+            # 跳过这个无效的消息头 / Skip this invalid header
+            self._lsp_buffer = self._lsp_buffer[header_end + 4 :]
+            return False
+
+        # 检查是否有完整的消息体 / Check if complete message body is available
+        message_start = header_end + 4  # 跳过"\r\n\r\n" / Skip "\r\n\r\n"
+        if len(self._lsp_buffer) < message_start + length:
+            # 消息体不完整 / Incomplete message body
+            return False
+
+        # 提取完整消息 / Extract complete message
+        message_body = self._lsp_buffer[message_start : message_start + length]
+        self._lsp_buffer = self._lsp_buffer[message_start + length :]  # 剩余数据 / Remaining data
+
+        logger.info(f"解析到一条完整LSP消息 / Parsed one complete LSP message: {message_body[:100]}...")
+
+        # 处理消息 / Process message
+        try:
+            response_data = json.loads(message_body)
+            with self.lsp_mutex:
+                if "id" in response_data:
+                    self.lsp_server_response[response_data["id"]] = message_body
+                elif "method" in response_data:
+                    params = response_data.get("params", {})
+                    uri = str(params.get("uri")) if isinstance(params, dict) else "NotExists"
+                    key = self.__construct_notification_key(response_data["method"], uri)
+                    self.lsp_server_notifications[key] = message_body
+        except JSONDecodeError as e:
+            logger.error(f"JSON解析失败 / Failed to decode JSON: {e}, message: {message_body}")
+
+        return True
 
     @staticmethod
     def __construct_notification_key(method: str, uri: str) -> str:
@@ -327,7 +389,7 @@ class BaseWorkspace(gym.Env, ABC):
         previous_result_id: str | None = None,
         previous_result_ids: list[dict[str, str]] | None = None,
         timeout: float = 1.0,
-    ) -> Any:
+    ) -> DocumentDiagnosticReport | WorkspaceDiagnosticReport | None:
         """
         主动拉取诊断信息 / Pull diagnostics actively
 
@@ -405,6 +467,7 @@ class BaseWorkspace(gym.Env, ABC):
 
         with self.lsp_stdin_mutex:
             full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
+            logger.info("准备发送拉取诊断信息的请求...")
             if self.lsp.stdin:
                 self.lsp.stdin.write(full_message.encode("utf-8"))
                 self.lsp.stdin.flush()
@@ -412,6 +475,7 @@ class BaseWorkspace(gym.Env, ABC):
         # 使用 timeout 等待响应 / Wait for response with timeout
         start_time = time.time()
         while time.time() - start_time < timeout:
+            logger.info("尝试获取诊断结果...")
             if msg_id in self.lsp_server_response:
                 res = cast(str, self.lsp_server_response.pop(msg_id))
                 try:
@@ -439,7 +503,7 @@ class BaseWorkspace(gym.Env, ABC):
                 except json.JSONDecodeError as e:
                     logger.error(f"解析诊断响应失败 / Failed to parse diagnostic response: {e}")
                     return None
-            time.sleep(0.1)
+            time.sleep(1)
 
         # 超时未收到响应 / Timeout without receiving response
         target = uri if uri else "workspace"
@@ -447,12 +511,12 @@ class BaseWorkspace(gym.Env, ABC):
         return None
 
     @abstractmethod
-    def _launch_lsp(self) -> subprocess.Popen:
+    def _launch_lsp(self) -> subprocess.Popen[bytes]:
         """
         Launch the Language Server Protocol (LSP) server.
 
         Returns:
-            subprocess.Popen: The process of the LSP server.
+            subprocess.Popen[bytes]: The process of the LSP server.
         """
         ...
 
@@ -696,7 +760,7 @@ class BaseWorkspace(gym.Env, ABC):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> list[TextEdit] | None:
+    ) -> tuple[list[TextEdit] | None, DocumentDiagnosticReport | None]:
         """
         Apply edits to a file in the workspace.
 
@@ -707,7 +771,9 @@ class BaseWorkspace(gym.Env, ABC):
                 False.
 
         Returns:
-            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes.
+            tuple[Optional[list[TextEdit]], Optional[DocumentDiagnosticReport]]:
+                - The reverse edits that can be applied to undo the changes / 可用于撤销更改的反向编辑
+                - Diagnostics result after editing / 编辑后的诊断结果
         """
         ...
 
@@ -775,7 +841,7 @@ class BaseWorkspace(gym.Env, ABC):
         uri: str,
         overwrite: bool | None = None,
         ignore_if_exists: bool | None = None,
-    ) -> TextModel | None:
+    ) -> tuple[TextModel | None, DocumentDiagnosticReport | None]:
         """
         Create a file in the workspace.
 
@@ -785,7 +851,9 @@ class BaseWorkspace(gym.Env, ABC):
             ignore_if_exists (Optional[bool]): Whether to ignore the operation if the file already exists.
 
         Returns:
-            Optional[TextModel]: The model instance representing the created file.
+            tuple[Optional[TextModel], Optional[DocumentDiagnosticReport]]:
+                - The model instance representing the created file / 创建的文件模型实例
+                - Diagnostics result after creation / 创建后的诊断结果
         """
         ...
 
@@ -974,33 +1042,32 @@ class BaseWorkspace(gym.Env, ABC):
         match_case: bool = False,
         word_separator: str | None = None,
         compute_undo_edits: bool = False,
-    ) -> list[TextEdit] | None:
+    ) -> tuple[list[TextEdit] | None, DocumentDiagnosticReport | None]:
         """
+        在工作区的文件中替换查询字符串。
         Replace a query with a specified string in a file in the workspace.
 
         Args:
-            uri (str): The URI of the file to perform the replacement in. | 要在其中执行替换的文件的 URI。
-            query (str): The query string to search for. | 要搜索的查询字符串。
-            replacement (str): The string to replace the query with. | 用于替换查询的字符串。
-            search_scope: Optional. The range or list of ranges where the replacement should be performed. If not
-                provided, the replacement will be performed in the full model range. | 可选。指定替换应在其中进行的范围或范围列表。
-                如果未提供，则在整个模型范围内进行替换。
-            is_regex: Optional. Specifies whether the query string should be treated as a regular expression. Default is
-                False. | 可选。指定是否应将查询字符串视为正则表达式。默认为 False。
-            match_case: Optional. Specifies whether the replacement should be case-sensitive. Default is False. | 可选。
-                指定替换是否应区分大小写。默认为 False。
-            word_separator: Optional. The separator used to define word boundaries for the search and replacement. If
-                not provided, all characters are considered as part of a word. | 可选。用于定义搜索和替换中单词边界的分隔符。如果未提供，
-                则所有字符都视为单词的一部分。
-            compute_undo_edits: Optional. Specifies whether to compute the undo edits. Default is False. | 可选。决定是否计算Undo
-                的TextEditor
+            uri (str): 要在其中执行替换的文件的 URI。| The URI of the file to perform the replacement in.
+            query (str): 要搜索的查询字符串。| The query string to search for.
+            replacement (str): 用于替换查询的字符串。| The string to replace the query with.
+            search_scope: 可选。指定替换应在其中进行的范围或范围列表。如果未提供，则在整个模型范围内进行替换。|
+                Optional. The range or list of ranges where the replacement should be performed. If not
+                provided, the replacement will be performed in the full model range.
+            is_regex: 可选。指定是否应将查询字符串视为正则表达式。默认为 False。|
+                Optional. Specifies whether the query string should be treated as a regular expression. Default is False.
+            match_case: 可选。指定替换是否应区分大小写。默认为 False。|
+                Optional. Specifies whether the replacement should be case-sensitive. Default is False.
+            word_separator: 可选。用于定义搜索和替换中单词边界的分隔符。如果未提供，则所有字符都视为单词的一部分。|
+                Optional. The separator used to define word boundaries for the search and replacement. If
+                not provided, all characters are considered as part of a word.
+            compute_undo_edits: 可选。决定是否计算撤销编辑。默认为 False。|
+                Optional. Specifies whether to compute the undo edits. Default is False.
 
         Returns:
-            The number of replacements made. | 已进行的替换数量。
-
-        Raises:
-            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes. | 可选的列表[TextEdit]：
-                可以应用于撤消更改的反向编辑。
+            tuple[Optional[list[TextEdit]], Optional[DocumentDiagnosticReport]]:
+                - 可用于撤销更改的反向编辑 / The reverse edits that can be applied to undo the changes
+                - 编辑后的诊断结果 / Diagnostics result after editing
         """
         search_res = self.find_in_file(
             uri=uri,
@@ -1011,10 +1078,10 @@ class BaseWorkspace(gym.Env, ABC):
             word_separator=word_separator,
         )
         if not search_res:
-            return None
+            return None, None
         edits = [SingleEditOperation(range=sr.range, text=replacement) for sr in search_res]
-        res = self.apply_edit(uri=uri, edits=edits, compute_undo_edits=compute_undo_edits)
-        return res
+        undo_edits, diagnostics = self.apply_edit(uri=uri, edits=edits, compute_undo_edits=compute_undo_edits)
+        return undo_edits, diagnostics
 
     def insert_cursor(self, *, uri: str, key: str, position: Position) -> str:
         """

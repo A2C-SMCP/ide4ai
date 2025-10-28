@@ -104,11 +104,13 @@ def test_py_workspace_create_and_apply_edit(project_root_dir, py_workspace) -> N
         range=Range(start_position=Position(9, 1), end_position=Position(10, 11)),
         text=new_text,
     )
-    edit_res = py_workspace.apply_edit(uri=test_file_uri, edits=[edit], compute_undo_edits=True)
+    edit_res, diagnostics = py_workspace.apply_edit(uri=test_file_uri, edits=[edit], compute_undo_edits=True)
+    # 诊断信息可能为None（超时）或有值，这里不强制要求 / Diagnostics may be None (timeout) or have value
+    # 主要验证返回值结构正确 / Mainly verify return value structure is correct
     symbols = py_workspace.get_file_symbols(uri=test_file_uri, kinds=DEFAULT_SYMBOL_VALUE_SET)
     print(symbols)
     assert "Class: B" in symbols
-    undo_edit = py_workspace.apply_edit(
+    undo_edit, _ = py_workspace.apply_edit(
         uri=test_file_uri,
         edits=[e.to_single_edit_operation() for e in edit_res],
         compute_undo_edits=False,
@@ -128,8 +130,10 @@ def test_create_file_success(py_workspace, file_uri) -> None:
     """
     测试成功创建一个新文件。
     """
-    tm = py_workspace.create_file(uri=file_uri)
+    tm, diagnostics = py_workspace.create_file(uri=file_uri)
     assert tm is not None
+    # 诊断信息可能为None（超时）或有值 / Diagnostics may be None (timeout) or have value
+    # 主要验证返回值结构正确，包含两个元素 / Mainly verify return structure is correct with two elements
     assert os.path.exists(file_uri[7:])  # Removing 'file://' prefix
 
 
@@ -137,9 +141,10 @@ def test_create_file_with_init_content(py_workspace, file_uri) -> None:
     """
     测试创建文件时指定初始内容。
     """
-    tm = py_workspace.create_file(uri=file_uri, init_content="print('Hello, World!')")
+    tm, diagnostics = py_workspace.create_file(uri=file_uri, init_content="print('Hello, World!')")
     tm.save()
     assert tm is not None
+    assert diagnostics is not None
     assert os.path.exists(file_uri[7:])
     with open(file_uri[7:]) as f:
         content = f.read()
@@ -150,9 +155,10 @@ def test_create_file_with_not_header_generator(project_root_dir, file_uri) -> No
     """如果PyWorkspace没有header_generator，不会添加文件头"""
     py_workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_python_workspace", header_generators={})
     try:
-        tm = py_workspace.create_file(uri=file_uri, init_content="print('Hello, World!')")
+        tm, diagnostics = py_workspace.create_file(uri=file_uri, init_content="print('Hello, World!')")
         tm.save()
         assert tm is not None
+        assert diagnostics is not None
         assert os.path.exists(file_uri[7:])
         with open(file_uri[7:]) as f:
             content = f.read()
@@ -168,8 +174,9 @@ def test_overwrite_existing_file(py_workspace, file_uri) -> None:
     # 先创建一个文件
     py_workspace.create_file(uri=file_uri)
     # 再次创建同一文件并尝试覆盖
-    tm = py_workspace.create_file(uri=file_uri, overwrite=True)
+    tm, diagnostics = py_workspace.create_file(uri=file_uri, overwrite=True)
     assert tm is not None
+    assert diagnostics is not None
     assert os.path.exists(file_uri[7:])
 
 
@@ -180,8 +187,9 @@ def test_ignore_existing_file(py_workspace, file_uri) -> None:
     # 先创建一个文件
     py_workspace.create_file(uri=file_uri)
     # 再次创建同一文件并设置忽略存在的文件
-    tm = py_workspace.create_file(uri=file_uri, ignore_if_exists=True)
+    tm, diagnostics = py_workspace.create_file(uri=file_uri, ignore_if_exists=True)
     assert tm is None
+    assert diagnostics is None
 
 
 def test_error_when_file_exists_without_overwrite(py_workspace, file_uri) -> None:
@@ -246,6 +254,105 @@ def test_step_apply_edit_success(py_workspace, project_root_dir):
     assert done is True
 
 
+def test_apply_edit_with_auto_diagnostics(project_root_dir) -> None:
+    """
+    测试apply_edit后自动拉取诊断信息 / Test auto-pull diagnostics after apply_edit
+
+    验证在编辑文件后，系统会自动拉取诊断信息并返回
+    Verify that diagnostics are automatically pulled and returned after editing a file
+    """
+    import tempfile
+
+    # 创建一个临时Python文件 / Create a temporary Python file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, dir=project_root_dir) as f:
+        f.write(
+            """# -*- coding: utf-8 -*-
+# Test file
+def test_function():
+    x = 1
+    return x
+""",
+        )
+        temp_file_path = f.name
+
+    temp_file_uri = f"file://{temp_file_path}"
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_auto_diagnostics")
+
+    try:
+        # 打开文件 / Open file
+        workspace.open_file(uri=temp_file_uri)
+
+        # 编辑文件，引入一个错误 / Edit file to introduce an error
+        edit = SingleEditOperation(
+            range=Range(start_position=Position(6, 1), end_position=Position(6, 1)),
+            text="print(undefined_variable)\n",  # 引入未定义变量错误 / Introduce undefined variable error
+        )
+
+        # 应用编辑并获取诊断信息 / Apply edit and get diagnostics
+        undo_edits, diagnostics = workspace.apply_edit(uri=temp_file_uri, edits=[edit], compute_undo_edits=True)
+
+        # 验证返回了撤销编辑 / Verify undo edits are returned
+        assert undo_edits is not None
+
+        # 验证返回了诊断信息 / Verify diagnostics are returned
+        assert diagnostics is not None
+        print(f"Diagnostics after edit: {diagnostics}")
+
+        # 验证诊断信息包含错误 / Verify diagnostics contain error
+        if hasattr(diagnostics, "items") and diagnostics.items:
+            # 应该包含 "undefined_variable" 相关的错误 / Should contain error about "undefined_variable"
+            has_error = any(
+                "undefined_variable" in str(getattr(diagnostic, "message", "")).lower()
+                for diagnostic in diagnostics.items
+            )
+            assert has_error, f"Expected error about undefined_variable, got: {diagnostics.items}"
+
+    finally:
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def test_create_file_with_auto_diagnostics(project_root_dir) -> None:
+    """
+    测试create_file后自动拉取诊断信息 / Test auto-pull diagnostics after create_file
+
+    验证在创建文件后，系统会自动拉取诊断信息并返回
+    Verify that diagnostics are automatically pulled and returned after creating a file
+    """
+    import tempfile
+
+    temp_file_path = os.path.join(project_root_dir, "test_new_file_with_error.py")
+    temp_file_uri = f"file://{temp_file_path}"
+    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_create_diagnostics")
+
+    try:
+        # 创建文件并包含错误代码 / Create file with error code
+        tm, diagnostics = workspace.create_file(
+            uri=temp_file_uri,
+            init_content="import os\nprint(undefined_var)",  # 引入未定义变量 / Introduce undefined variable
+        )
+
+        # 验证文件创建成功 / Verify file created successfully
+        assert tm is not None
+
+        # 验证返回了诊断信息 / Verify diagnostics are returned
+        assert diagnostics is not None
+        print(f"Diagnostics after create: {diagnostics}")
+
+        # 验证诊断信息包含错误 / Verify diagnostics contain error
+        if hasattr(diagnostics, "items") and diagnostics.items:
+            has_error = any(
+                "undefined_var" in str(getattr(diagnostic, "message", "")).lower() for diagnostic in diagnostics.items
+            )
+            assert has_error, f"Expected error about undefined_var, got: {diagnostics.items}"
+
+    finally:
+        workspace.close()
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
 def test_workspace_pull_diagnostics_with_error_file(project_root_dir) -> None:
     """
     测试使用workspace封装的方法进行文件诊断（类似test_lsp_diagnostic_notification）
@@ -299,8 +406,10 @@ print(os.path)
             range=Range(start_position=Position(1, 2), end_position=Position(1, 2)),
             text="a",
         )
-        undo_edits = workspace.apply_edit(uri=temp_file_uri, edits=[edit], compute_undo_edits=True)
+        undo_edits, auto_diagnostics = workspace.apply_edit(uri=temp_file_uri, edits=[edit], compute_undo_edits=True)
         assert undo_edits is not None, "编辑操作失败 / Edit operation failed"
+        # 验证自动拉取的诊断信息 / Verify auto-pulled diagnostics
+        assert auto_diagnostics is not None, "编辑后应自动返回诊断信息 / Diagnostics should be auto-returned after edit"
 
         # 3. 使用workspace的pull_diagnostics方法拉取诊断信息 / Use workspace's pull_diagnostics method to pull diagnostics
         diagnostics_result = workspace.pull_diagnostics(uri=temp_file_uri, timeout=20.0)

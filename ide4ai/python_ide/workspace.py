@@ -69,6 +69,48 @@ class PyWorkspace(BaseWorkspace):
                 ".py": default_python_header_generator,
             }
 
+    def _format_diagnostics(self, diagnostics: Any) -> str:
+        """
+        格式化诊断信息为可读字符串 / Format diagnostics to readable string
+
+        Args:
+            diagnostics: 诊断结果 / Diagnostics result
+
+        Returns:
+            str: 格式化后的诊断信息 / Formatted diagnostics string
+        """
+        if not diagnostics:
+            return ""
+
+        result = "\n\n诊断信息 / Diagnostics:\n"
+
+        # 处理文档诊断报告 / Handle document diagnostic report
+        if hasattr(diagnostics, "items"):
+            # Full report with diagnostic items
+            if not diagnostics.items:
+                result += "  无诊断问题 / No diagnostic issues\n"
+            else:
+                for idx, diagnostic in enumerate(diagnostics.items, 1):
+                    severity = getattr(diagnostic, "severity", None)
+                    severity_str = {1: "错误/Error", 2: "警告/Warning", 3: "信息/Info", 4: "提示/Hint"}.get(
+                        severity,
+                        "未知/Unknown",
+                    )
+                    message = getattr(diagnostic, "message", "")
+                    range_info = getattr(diagnostic, "range", None)
+                    if range_info:
+                        start = getattr(range_info, "start", None)
+                        line = getattr(start, "line", "?") if start else "?"
+                        result += f"  [{idx}] {severity_str} (行{line}): {message}\n"
+                    else:
+                        result += f"  [{idx}] {severity_str}: {message}\n"
+        elif hasattr(diagnostics, "kind") and diagnostics.kind == "unchanged":
+            result += "  诊断信息未变化 / Diagnostics unchanged\n"
+        else:
+            result += f"  诊断结果: {diagnostics}\n"
+
+        return result
+
     def _launch_lsp(self) -> subprocess.Popen:
         """
         启动 Pyright 语言服务器
@@ -191,7 +233,7 @@ class PyWorkspace(BaseWorkspace):
             case "apply_edit":
                 try:
                     if isinstance(ide_action.action_args, dict):
-                        res = self.apply_edit(**ide_action.action_args)
+                        res, diagnostics = self.apply_edit(**ide_action.action_args)
                         # 成功编辑后，读取编辑位置附近的代码并返回，给LLM一个反馈
                         content_after_edit: list[str] = []
                         content_ranges: list[Range] = []
@@ -237,6 +279,11 @@ class PyWorkspace(BaseWorkspace):
                         if content_after_edit:
                             apply_result += "\n编辑后的代码如下（仅返回编辑位置附近的代码。如果想看全部，可以使用read_file工具查看）:\n"
                             apply_result += "\n".join(content_after_edit)
+
+                        # 添加诊断信息到返回结果 / Add diagnostics to result
+                        if diagnostics:
+                            apply_result += self._format_diagnostics(diagnostics)
+
                         return IDEObs(obs=apply_result, original_result=res).model_dump(), 100, True, True, {}
                     else:
                         raise ValueError("apply_edit 动作参数错误")
@@ -342,19 +389,24 @@ class PyWorkspace(BaseWorkspace):
             case "create_file":
                 try:
                     if isinstance(ide_action.action_args, dict):
-                        create_model = self.create_file(**ide_action.action_args)
+                        create_model, diagnostics = self.create_file(**ide_action.action_args)
                     elif isinstance(ide_action.action_args, str):
-                        create_model = self.create_file(uri=ide_action.action_args)
+                        create_model, diagnostics = self.create_file(uri=ide_action.action_args)
                     else:
                         raise ValueError("create_file 动作参数错误")
                     if create_model:
+                        obs_text = (
+                            "文件创建成功。\n当前文件内容如下(IDE会自动初始化部分内容):\n"
+                            f"{self.read_file(uri=str(create_model.uri), with_line_num=True)}\n"
+                            if create_model.get_value()
+                            else "文件创建成功"
+                        )
+                        # 添加诊断信息 / Add diagnostics
+                        if diagnostics:
+                            obs_text += self._format_diagnostics(diagnostics)
+
                         return (
-                            IDEObs(
-                                obs="文件创建成功。\n当前文件内容如下(IDE会自动初始化部分内容):\n"
-                                f"{self.read_file(uri=str(create_model.uri), with_line_num=True)}\n"
-                                if create_model.get_value()
-                                else "文件创建成功",
-                            ).model_dump(),
+                            IDEObs(obs=obs_text).model_dump(),
                             100,
                             True,
                             True,
@@ -389,15 +441,6 @@ class PyWorkspace(BaseWorkspace):
                     else:
                         raise ValueError("clear_cursors 动作参数错误")
                     return IDEObs(obs=clear_res).model_dump(), 100, True, True, {}
-                except Exception as e:
-                    return IDEObs(obs=str(e)).model_dump(), 0, True, False, {}
-            case "inspect_grammar_err":
-                try:
-                    if isinstance(ide_action.action_args, dict):
-                        inspect_res = self.inspect_grammar_err(**ide_action.action_args)
-                    else:
-                        raise ValueError("inspect_grammar_err 动作参数错误")
-                    return IDEObs(obs=inspect_res).model_dump(), 100, True, True, {}
                 except Exception as e:
                     return IDEObs(obs=str(e)).model_dump(), 0, True, False, {}
             case (
@@ -487,12 +530,13 @@ class PyWorkspace(BaseWorkspace):
         uri: str,
         edits: Sequence[SingleEditOperation | dict],
         compute_undo_edits: bool = False,
-    ) -> list[TextEdit] | None:
+    ) -> tuple[list[TextEdit] | None, Any]:
         """
         Apply edits to a file in the workspace.
 
         Notes:
             注意这个函数不支持 "-1" 形式的Range调用，即不能用负数表示倒数。如果想实现需要在外侧完成转换后再传入。
+            编辑后会自动拉取诊断信息 / Diagnostics will be automatically pulled after editing
 
         Args:
             uri (str): The URI of the file to which the edits should be applied.
@@ -501,7 +545,9 @@ class PyWorkspace(BaseWorkspace):
                 False.
 
         Returns:
-            Optional[list[TextEdit]]: The reverse edits that can be applied to undo the changes.
+            tuple[Optional[list[TextEdit]], Any]:
+                - The reverse edits that can be applied to undo the changes / 可用于撤销更改的反向编辑
+                - Diagnostics result after editing / 编辑后的诊断结果
         """
         self._assert_not_closed()
         text_model = next(filter(lambda model: model.uri == AnyUrl(uri), self.models), None)
@@ -528,7 +574,11 @@ class PyWorkspace(BaseWorkspace):
                 ],
             },
         )
-        return res
+
+        # 编辑后主动拉取诊断信息 / Pull diagnostics after editing
+        diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+
+        return res, diagnostics
 
     def rename_file(
         self,
@@ -598,7 +648,7 @@ class PyWorkspace(BaseWorkspace):
         init_content: str | None = None,
         overwrite: bool | None = None,
         ignore_if_exists: bool | None = None,
-    ) -> TextModel | None:
+    ) -> tuple[TextModel | None, Any]:
         """
         Create a file at the specified URI.
 
@@ -609,7 +659,9 @@ class PyWorkspace(BaseWorkspace):
             ignore_if_exists (bool, optional): If True, do nothing if the file already exists. Defaults to None.
 
         Returns:
-            Optional[TextModel]: The model instance representing the created file.
+            tuple[Optional[TextModel], Any]:
+                - The model instance representing the created file / 创建的文件模型实例
+                - Diagnostics result after creation / 创建后的诊断结果
         """
         self._assert_not_closed()
         if not uri.startswith("file://"):
@@ -619,7 +671,7 @@ class PyWorkspace(BaseWorkspace):
         # Check if the file already exists
         if os.path.exists(file_path):
             if ignore_if_exists:
-                return None  # Do nothing as the file exists and we should ignore this situation
+                return None, None  # Do nothing as the file exists and we should ignore this situation
             if not overwrite:
                 raise FileExistsError(f"The file at {file_path} already exists and overwrite is not set to True.")
             # Overwrite is True, delete the file before creating a new one
@@ -663,10 +715,14 @@ class PyWorkspace(BaseWorkspace):
             self.models.append(tm)
             self.active_model(tm.m_id)
             self.send_lsp_msg("workspace/didCreateFiles", {"files": [{"uri": uri}]})
-            return tm
+
+            # 创建文件后主动拉取诊断信息 / Pull diagnostics after file creation
+            diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+
+            return tm, diagnostics
         except FileExistsError:
             # If overwrite was True, we already deleted the file, so this should not happen
-            return None  # pragma: no cover
+            return None, None  # pragma: no cover
         except Exception as e:
             # Handle other possible exceptions, such as permission errors
             raise OSError(f"Failed to create file at {uri}: {str(e)}") from e

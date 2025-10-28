@@ -321,25 +321,6 @@ class BaseWorkspace(gym.Env, ABC):
             time.sleep(0.1)
         return None
 
-    def inspect_grammar_err(self, uris: list[str]) -> str:
-        """
-        检查语法错误 / Check grammar errors
-
-        Args:
-            uris (list[str]): 文件URI列表 / List of file URIs
-
-        Returns:
-            str: 错误信息 / Error information
-        """
-        errors = []
-        for uri in uris:
-            diagnostics = self.read_notification(method="textDocument/publishDiagnostics", uri=uri, timeout=0.05)
-            if diagnostics:
-                dig_dict = json.loads(diagnostics)
-                if dig_list := dig_dict.get("params", {}).get("diagnostics"):
-                    errors.append(f"文件{uri}有语法异常: {str(dig_list)}")
-        return "\n".join(errors)
-
     def pull_diagnostics(
         self,
         uri: str | None = None,

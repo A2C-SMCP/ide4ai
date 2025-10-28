@@ -28,7 +28,6 @@ TEXT_DOCUMENT_ACTIONS: set[str] = {  # text_document
     "insert_cursor",
     "delete_cursor",
     "clear_cursors",
-    "inspect_grammar_err",
 }
 
 WORKSPACE_ACTIONS: set[str] = {

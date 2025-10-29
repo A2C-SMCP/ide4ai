@@ -37,7 +37,7 @@ from ide4ai.schema import (
     IDEObs,
     LanguageId,
 )
-from ide4ai.utils import list_directory_tree, render_symbols
+from ide4ai.utils import render_symbols
 
 
 def default_python_header_generator(workspace: BaseWorkspace, file_path: str) -> str:
@@ -477,26 +477,38 @@ class PyWorkspace(BaseWorkspace):
             case _:
                 raise ValueError(f"不支持的动作 {ide_action.action_name}")  # pragma: no cover
 
-    def render(self) -> str:  # type: ignore
+    def render(self, *, verbose: bool = False) -> str:  # type: ignore
         """
         渲染当前工作区状态，主要提取active_models相关信息，最后一个active_models取其view全部内容，之前的active_models取其symbols信息
+        Render current workspace state, extract active_models info, show full view for last model and symbols for others
+
+        Args:
+            verbose (bool): 是否使用详细模式。True时返回包含Python包/模块描述的丰富信息，False时返回简化版本
+                           | Whether to use verbose mode. True returns rich info with Python package/module descriptions,
+                           False returns simplified version
 
         Returns:
-            str: 以字符串的形式来返回渲染结果
+            str: 以字符串的形式来返回渲染结果 | Render result as string
         """
         self._assert_not_closed()
 
         # 1. 渲染最小化展开的目录树 | Render minimally expanded directory tree
-        from ide4ai.utils import get_minimal_expanded_tree
+        # 根据verbose参数选择使用简化版本或丰富版本 | Choose simplified or rich version based on verbose parameter
+        if verbose:
+            from ide4ai.python_ide.utils import get_minimal_expanded_tree_with_desc as get_minimal_tree
+            from ide4ai.python_ide.utils import list_directory_tree_with_desc as list_dir_tree
+        else:
+            from ide4ai.utils import get_minimal_expanded_tree as get_minimal_tree  # type: ignore[assignment]
+            from ide4ai.utils import list_directory_tree as list_dir_tree  # type: ignore[assignment]
 
         if self.active_models:
             # 获取最后一个active_model的文件路径 | Get the last active_model's file path
             last_model = self.active_models[-1]
             target_file = str(last_model.uri).replace("file://", "")
-            dir_info = get_minimal_expanded_tree(self.root_dir, target_file, indent="")
+            dir_info = get_minimal_tree(self.root_dir, target_file, indent="- ")
         else:
             # 如果没有active_models，使用普通的目录树 | Use normal directory tree if no active_models
-            dir_info = list_directory_tree(self.root_dir, include_dirs=self.expand_folders, recursive=True, indent="- ")
+            dir_info = list_dir_tree(self.root_dir, include_dirs=self.expand_folders, recursive=True, indent="- ")
 
         view = f"当前工作区: {self.project_name}\n\n项目目录结构:\n{dir_info}\n"
 

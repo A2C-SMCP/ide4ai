@@ -561,3 +561,374 @@ def test_main():
 
             finally:
                 workspace.close()
+
+
+class TestRenderVerboseMode:
+    """verbose模式测试 | Verbose mode tests"""
+
+    @pytest.fixture
+    def temp_python_project(self) -> Generator[tuple[str, PyWorkspace], Any, None]:
+        """
+        创建带Python包结构的临时项目 | Create temporary project with Python package structure
+
+        Returns:
+            tuple[str, PyWorkspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 创建包结构 | Create package structure
+            # project/
+            #   mypackage/
+            #     __init__.py (with docstring and __all__)
+            #     core.py (with docstring and __all__)
+            #     utils/
+            #       __init__.py (with docstring and __all__)
+            #       helpers.py
+            #   tests/
+            #     test_core.py
+            #   README.md
+
+            # 创建mypackage包 | Create mypackage package
+            pkg_dir = os.path.join(temp_dir, "mypackage")
+            os.makedirs(pkg_dir)
+
+            with open(os.path.join(pkg_dir, "__init__.py"), "w", encoding="utf-8") as f:
+                f.write('''"""
+我的包 | My Package
+
+这是一个测试包，用于演示verbose模式
+This is a test package for demonstrating verbose mode
+"""
+
+__all__ = ["core", "utils"]
+''')
+
+            with open(os.path.join(pkg_dir, "core.py"), "w", encoding="utf-8") as f:
+                f.write('''"""
+核心模块 | Core Module
+
+提供核心功能
+Provides core functionality
+"""
+
+__all__ = ["process", "validate"]
+
+def process(data):
+    """处理数据 | Process data"""
+    return data
+
+def validate(data):
+    """验证数据 | Validate data"""
+    return True
+''')
+
+            # 创建utils子包 | Create utils subpackage
+            utils_dir = os.path.join(pkg_dir, "utils")
+            os.makedirs(utils_dir)
+
+            with open(os.path.join(utils_dir, "__init__.py"), "w", encoding="utf-8") as f:
+                f.write('''"""
+工具包 | Utils Package
+
+提供辅助工具函数
+Provides utility functions
+"""
+
+__all__ = ["helpers"]
+''')
+
+            with open(os.path.join(utils_dir, "helpers.py"), "w", encoding="utf-8") as f:
+                f.write('''"""辅助函数模块 | Helper functions module"""
+
+def helper_func():
+    """辅助函数 | Helper function"""
+    pass
+''')
+
+            # 创建tests目录 | Create tests directory
+            tests_dir = os.path.join(temp_dir, "tests")
+            os.makedirs(tests_dir)
+
+            with open(os.path.join(tests_dir, "test_core.py"), "w", encoding="utf-8") as f:
+                f.write('''"""测试核心模块 | Test core module"""
+
+def test_process():
+    assert True
+''')
+
+            # 创建README | Create README
+            with open(os.path.join(temp_dir, "README.md"), "w", encoding="utf-8") as f:
+                f.write("# Test Project\n\nThis is a test project.\n")
+
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="verbose_test_project")
+            yield temp_dir, workspace
+            workspace.close()
+
+    def test_render_verbose_false_default(self, temp_python_project):
+        """
+        测试默认的简化模式（verbose=False）| Test default simplified mode (verbose=False)
+
+        简化模式应该：
+        - 目录树部分只显示目录结构，不包含包/模块描述
+        - 不包含描述分隔符 "---"
+        - 当前打开文件的内容正常显示（这部分不受verbose影响）
+
+        Simplified mode should:
+        - Directory tree shows only structure, no package/module descriptions
+        - No description separator "---"
+        - Current open file content displays normally (not affected by verbose)
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 打开一个文件 | Open a file
+        test_file = os.path.join(temp_dir, "mypackage", "core.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        # 使用默认模式（verbose=False）| Use default mode (verbose=False)
+        render_output = workspace.render()
+
+        # 验证包含基本目录结构 | Verify contains basic directory structure
+        assert "项目目录结构" in render_output
+        assert "mypackage/" in render_output
+        assert "core.py" in render_output
+
+        # 验证目录树部分不包含描述分隔符 | Verify directory tree doesn't contain description separator
+        # 注意：分隔符 "---" 只在verbose=True时出现在目录树后
+        # Note: Separator "---" only appears after directory tree when verbose=True
+        lines = render_output.split("\n")
+        dir_tree_section = []
+        for i, line in enumerate(lines):
+            if "项目目录结构" in line:
+                # 收集目录树部分（到"当前打开的文件内容"之前）
+                for j in range(i, len(lines)):
+                    if "当前打开的文件内容" in lines[j]:
+                        break
+                    dir_tree_section.append(lines[j])
+                break
+
+        dir_tree_text = "\n".join(dir_tree_section)
+
+        # 验证目录树部分不包含描述信息 | Verify directory tree section doesn't contain descriptions
+        assert "---" not in dir_tree_text  # 描述分隔符不在目录树部分
+        assert "**mypackage/**" not in dir_tree_text  # 包描述格式不在目录树部分
+
+    def test_render_verbose_true_with_descriptions(self, temp_python_project):
+        """
+        测试详细模式（verbose=True）| Test verbose mode (verbose=True)
+
+        详细模式应该：
+        - 显示目录结构
+        - 包含Python包/模块的描述信息
+        - 包含__all__定义
+
+        Verbose mode should:
+        - Show directory structure
+        - Include Python package/module descriptions
+        - Include __all__ definitions
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 打开一个文件 | Open a file
+        test_file = os.path.join(temp_dir, "mypackage", "core.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        # 使用详细模式 | Use verbose mode
+        render_output = workspace.render(verbose=True)
+
+        # 验证包含基本目录结构 | Verify contains basic directory structure
+        assert "项目目录结构" in render_output
+        assert "mypackage/" in render_output
+        assert "core.py" in render_output
+
+        # 验证包含描述分隔符 | Verify contains description separator
+        assert "---" in render_output
+
+        # 验证包含包的描述信息 | Verify contains package descriptions
+        assert "**mypackage/**" in render_output
+        assert "我的包" in render_output or "My Package" in render_output
+
+        # 验证包含__all__信息 | Verify contains __all__ info
+        assert "__all__" in render_output
+        assert '["core", "utils"]' in render_output or "core" in render_output
+
+    def test_render_verbose_comparison(self, temp_python_project):
+        """
+        测试verbose=False和verbose=True的对比 | Test comparison between verbose=False and verbose=True
+
+        验证两种模式的输出确实不同
+        Verify the outputs of two modes are indeed different
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 打开一个文件 | Open a file
+        test_file = os.path.join(temp_dir, "mypackage", "utils", "helpers.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        # 获取两种模式的输出 | Get outputs from both modes
+        simple_output = workspace.render(verbose=False)
+        verbose_output = workspace.render(verbose=True)
+
+        # 验证两种输出不同 | Verify outputs are different
+        assert simple_output != verbose_output
+
+        # 验证verbose输出更长（包含更多信息）| Verify verbose output is longer (contains more info)
+        assert len(verbose_output) > len(simple_output)
+
+        # 提取目录树部分进行对比 | Extract directory tree sections for comparison
+        def extract_dir_tree_section(output):
+            lines = output.split("\n")
+            for i, line in enumerate(lines):
+                if "项目目录结构" in line:
+                    for j in range(i, len(lines)):
+                        if "当前打开的文件内容" in lines[j] or "项目快捷命令" in lines[j]:
+                            return "\n".join(lines[i:j])
+                    return "\n".join(lines[i:])
+            return ""
+
+        simple_tree = extract_dir_tree_section(simple_output)
+        verbose_tree = extract_dir_tree_section(verbose_output)
+
+        # 验证简化版本的目录树不包含描述 | Verify simplified version's tree doesn't contain descriptions
+        assert "**mypackage/**" not in simple_tree
+        assert "**utils/**" not in simple_tree
+
+        # 验证详细版本的目录树包含描述 | Verify verbose version's tree contains descriptions
+        assert "**mypackage/**" in verbose_tree
+        assert "我的包" in verbose_tree or "My Package" in verbose_tree
+
+    def test_render_verbose_without_active_models(self, temp_python_project):
+        """
+        测试没有active_models时的verbose模式 | Test verbose mode without active_models
+
+        验证在没有打开文件时，verbose模式也能正常工作
+        Verify verbose mode works correctly even without open files
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 不打开任何文件，直接render | Don't open any files, render directly
+        simple_output = workspace.render(verbose=False)
+        verbose_output = workspace.render(verbose=True)
+
+        # 两种模式都应该包含基本信息 | Both modes should contain basic info
+        assert "当前工作区" in simple_output
+        assert "当前工作区" in verbose_output
+
+        # 验证verbose模式包含描述信息 | Verify verbose mode contains descriptions
+        assert "---" in verbose_output
+        assert "**mypackage/**" in verbose_output
+        assert "我的包" in verbose_output or "My Package" in verbose_output
+
+        # 验证简化模式不包含描述 | Verify simplified mode doesn't contain descriptions
+        assert "---" not in simple_output
+        assert "**mypackage/**" not in simple_output
+
+    def test_render_verbose_with_nested_packages(self, temp_python_project):
+        """
+        测试嵌套包的verbose模式 | Test verbose mode with nested packages
+
+        验证能够正确显示嵌套包的描述信息
+        Verify correctly displays descriptions for nested packages
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 打开嵌套包中的文件 | Open file in nested package
+        test_file = os.path.join(temp_dir, "mypackage", "utils", "helpers.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        render_output = workspace.render(verbose=True)
+
+        # 验证包含父包的描述 | Verify contains parent package description
+        assert "**mypackage/**" in render_output
+        assert "我的包" in render_output or "My Package" in render_output
+
+        # 验证包含子包的描述 | Verify contains subpackage description
+        assert "**utils/**" in render_output or "mypackage/utils/" in render_output
+        assert "工具包" in render_output or "Utils Package" in render_output
+
+    def test_render_verbose_minimal_expanded_tree(self, temp_python_project):
+        """
+        测试verbose模式下的最小化展开目录树 | Test minimally expanded tree in verbose mode
+
+        验证verbose模式使用get_minimal_expanded_tree_with_desc
+        Verify verbose mode uses get_minimal_expanded_tree_with_desc
+        """
+        temp_dir, workspace = temp_python_project
+
+        # 打开深层文件 | Open deep file
+        test_file = os.path.join(temp_dir, "mypackage", "utils", "helpers.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        render_output = workspace.render(verbose=True)
+
+        # 验证路径被正确展开 | Verify path is correctly expanded
+        assert "mypackage/" in render_output
+        assert "utils/" in render_output
+        assert "helpers.py" in render_output
+
+        # 验证标记了当前文件 | Verify current file is marked
+        assert "当前文件" in render_output or "Current file" in render_output
+
+        # 验证包含描述信息 | Verify contains descriptions
+        assert "---" in render_output
+        assert "工具包" in render_output or "Utils Package" in render_output
+
+    def test_render_verbose_idempotent(self, temp_python_project):
+        """
+        测试verbose模式的幂等性 | Test idempotence of verbose mode
+
+        多次调用应该返回相同结果
+        Multiple calls should return same result
+        """
+        temp_dir, workspace = temp_python_project
+
+        test_file = os.path.join(temp_dir, "mypackage", "core.py")
+        workspace.open_file(uri=f"file://{test_file}")
+
+        # 多次调用verbose模式 | Call verbose mode multiple times
+        output1 = workspace.render(verbose=True)
+        output2 = workspace.render(verbose=True)
+        output3 = workspace.render(verbose=True)
+
+        # 验证结果一致 | Verify results are consistent
+        assert output1 == output2
+        assert output2 == output3
+
+        # 多次调用简化模式 | Call simplified mode multiple times
+        simple1 = workspace.render(verbose=False)
+        simple2 = workspace.render(verbose=False)
+
+        # 验证简化模式结果一致 | Verify simplified mode results are consistent
+        assert simple1 == simple2
+
+    def test_render_verbose_with_empty_package(self):
+        """
+        测试包含空包的verbose模式 | Test verbose mode with empty packages
+
+        验证空包（没有docstring和__all__）不会导致错误
+        Verify empty packages (no docstring and __all__) don't cause errors
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 创建空包 | Create empty package
+            pkg_dir = os.path.join(temp_dir, "empty_pkg")
+            os.makedirs(pkg_dir)
+
+            with open(os.path.join(pkg_dir, "__init__.py"), "w", encoding="utf-8") as f:
+                f.write("")  # 空的__init__.py
+
+            test_file = os.path.join(pkg_dir, "module.py")
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write("# Empty module\npass\n")
+
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_pkg_test")
+            try:
+                workspace.open_file(uri=f"file://{test_file}")
+
+                # verbose模式不应该报错 | Verbose mode should not error
+                render_output = workspace.render(verbose=True)
+
+                # 验证基本信息存在 | Verify basic info exists
+                assert "项目目录结构" in render_output
+                assert "empty_pkg/" in render_output
+                assert "module.py" in render_output
+
+            finally:
+                workspace.close()

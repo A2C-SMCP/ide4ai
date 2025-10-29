@@ -691,7 +691,19 @@ class BaseWorkspace(gym.Env, ABC):
         return super().reset(seed=seed)
 
     @abstractmethod
-    def render(self) -> RenderFrame | list[RenderFrame] | None: ...
+    def render(self, *, verbose: bool = False) -> RenderFrame | list[RenderFrame] | None:
+        """
+        渲染当前工作区状态 | Render current workspace state
+
+        Args:
+            verbose (bool): 是否使用详细模式。True时返回包含Python包/模块描述的丰富信息，False时返回简化版本
+                           | Whether to use verbose mode. True returns rich info with Python package/module descriptions,
+                           False returns simplified version
+
+        Returns:
+            RenderFrame | list[RenderFrame] | None: 渲染结果 | Render result
+        """
+        ...
 
     def close(self) -> None:
         """

@@ -29,19 +29,9 @@ from ide4ai.dtos.base_protocol import LSPResponseMessage
 from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, PreviousResultId, WorkspaceDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.model import TextModel
-from ide4ai.environment.workspace.schema import (
-    Position,
-    Range,
-    SearchResult,
-    SingleEditOperation,
-    TextEdit,
-)
+from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
 from ide4ai.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
-from ide4ai.utils import (
-    is_subdirectory,
-    list_directory_tree,
-    render_symbols,
-)
+from ide4ai.utils import is_subdirectory, list_directory_tree, render_symbols
 
 
 class BaseWorkspace(gym.Env, ABC):
@@ -456,9 +446,7 @@ class BaseWorkspace(gym.Env, ABC):
         else:
             # 工作区诊断模式 / Workspace diagnostics mode
             params = WorkspaceDiagnosticParams(
-                previousResultIds=[
-                    PreviousResultId(uri=item["uri"], value=item["value"]) for item in (previous_result_ids or [])
-                ],
+                previousResultIds=[PreviousResultId(uri=item["uri"], value=item["value"]) for item in (previous_result_ids or [])],
             ).model_dump(exclude_none=True)
             method = "workspace/diagnostic"
 
@@ -921,18 +909,10 @@ class BaseWorkspace(gym.Env, ABC):
         """
         tm: TextModel | None = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
         if tm:
-            return (
-                tm.get_view(with_line_num, code_range)
-                if not self._enable_simple_view_mode
-                else tm.get_simple_view(code_range)
-            )
+            return tm.get_view(with_line_num, code_range) if not self._enable_simple_view_mode else tm.get_simple_view(code_range)
         else:
             tm = self.open_file(uri=uri)
-            return (
-                tm.get_view(with_line_num, code_range)
-                if not self._enable_simple_view_mode
-                else tm.get_simple_view(code_range)
-            )
+            return tm.get_view(with_line_num, code_range) if not self._enable_simple_view_mode else tm.get_simple_view(code_range)
 
     def expand_folder(self, *, uri: str) -> str:
         """
@@ -1077,10 +1057,7 @@ class BaseWorkspace(gym.Env, ABC):
                 return res_model.error.message
             symbols = res_model.result
             res = render_symbols(cast(list[dict], symbols), kinds)
-            return (
-                res
-                + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
-            )
+            return res + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
         else:
             return "获取文件符号失败"
 

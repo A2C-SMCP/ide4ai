@@ -270,9 +270,9 @@ class PythonIDEMCPServer:
                 await server.serve()
 
 
-async def main() -> None:
+async def async_main() -> None:
     """
-    主函数 | Main function
+    异步主函数 | Async main function
 
     使用 confz 从环境变量和命令行参数读取配置并启动 MCP Server
     Use confz to read configuration from environment variables and command-line arguments, then start MCP Server
@@ -327,3 +327,15 @@ async def main() -> None:
     # 创建并运行 server | Create and run server
     server = PythonIDEMCPServer(config)
     await server.run()
+
+
+def main() -> None:
+    """
+    同步入口函数 | Synchronous entry point
+
+    用于命令行调用，内部使用 asyncio.run() 运行异步主函数
+    For command-line invocation, internally uses asyncio.run() to run the async main function
+    """
+    import asyncio
+
+    asyncio.run(async_main())

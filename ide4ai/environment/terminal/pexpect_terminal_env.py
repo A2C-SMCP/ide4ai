@@ -115,30 +115,27 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         初始化持久的 shell 会话 | Initialize persistent shell session
 
         启动一个 shell 进程并进行必要的配置:
-        1. 切换到工作目录
+        1. 在工作目录中启动 shell
         2. 设置 PS1 提示符以便识别命令完成
         3. 如果指定了虚拟环境,激活它
 
         Start a shell process and perform necessary configuration:
-        1. Change to working directory
+        1. Start shell in working directory
         2. Set PS1 prompt for command completion detection
         3. Activate virtual environment if specified
         """
         try:
-            # 启动 shell 进程 | Start shell process
+            # 启动 shell 进程,直接在工作目录中启动 | Start shell process directly in working directory
             self.shell = pexpect.spawn(
                 self.shell_path,
                 encoding="utf-8",
                 echo=False,
                 timeout=self.timeout,
+                cwd=self.work_dir,
             )
 
             # 设置简单的提示符以便于匹配 | Set simple prompt for easy matching
             self.shell.sendline('export PS1="PEXPECT_PROMPT> "')
-            self.shell.expect("PEXPECT_PROMPT>", timeout=5)
-
-            # 切换到工作目录 | Change to working directory
-            self.shell.sendline(f'cd "{self.work_dir}"')
             self.shell.expect("PEXPECT_PROMPT>", timeout=5)
 
             # 激活虚拟环境(如果指定) | Activate virtual environment (if specified)

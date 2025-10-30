@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
 # filename: mcp_server_example.py
-# @Time    : 2025/10/29 12:01
+# @Time    : 2025/10/30 11:54
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 """
-MCP Server 使用示例 | MCP Server Usage Example
+MCP Server stdio 传输模式示例 | MCP Server stdio Transport Mode Example
 
-演示如何启动和使用 Python IDE MCP Server
-Demonstrates how to start and use Python IDE MCP Server
+演示如何使用默认的 stdio 模式启动 MCP Server
+Demonstrates how to start MCP Server with default stdio mode
+
+运行方式 | How to Run:
+    python examples/mcp_server_example.py
+
+注意 | Note:
+    stdio 模式适合本地进程间通信，如 Claude Desktop 集成
+    stdio mode is suitable for local inter-process communication, e.g., Claude Desktop integration
 """
 
 import asyncio

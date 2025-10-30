@@ -30,13 +30,20 @@ ide4ai/python_ide/mcp/
 
 ## 核心特性 | Core Features
 
-### 1. 单例模式 | Singleton Pattern
+### 1. 多种传输模式 | Multiple Transport Modes
+
+支持三种传输模式 | Supports three transport modes:
+- **stdio**: 标准输入输出，适合本地进程间通信 | Standard I/O, suitable for local inter-process communication
+- **SSE (Server-Sent Events)**: 服务器推送事件，适合 Web 应用 | Server-Sent Events, suitable for web applications
+- **Streamable HTTP**: 流式 HTTP，支持双向通信和流式响应 | Streamable HTTP, supports bidirectional communication and streaming responses
+
+### 2. 单例模式 | Singleton Pattern
 
 使用 `PyIDESingleton` 确保在 MCP Server 生命周期内 IDE 实例的唯一性和状态一致性。
 
 Uses `PyIDESingleton` to ensure IDE instance uniqueness and state consistency throughout MCP Server lifecycle.
 
-### 2. 工具封装 | Tool Encapsulation
+### 3. 工具封装 | Tool Encapsulation
 
 每个工具独立实现，继承自 `BaseTool`，提供：
 - 标准化的输入验证 | Standardized input validation
@@ -48,7 +55,7 @@ Each tool is independently implemented, inheriting from `BaseTool`, providing:
 - Unified error handling
 - Clear interface definition
 
-### 3. Schema 定义 | Schema Definition
+### 4. Schema 定义 | Schema Definition
 
 使用 Pydantic 模型定义所有工具的输入输出 Schema，确保类型安全。
 
@@ -108,6 +115,7 @@ py-ide4ai-mcp
 
 #### 使用命令行工具 | Using CLI Tool
 
+**默认使用 stdio 模式 | Default stdio mode:**
 ```bash
 # 如果已安装 | If installed
 py-ide4ai-mcp
@@ -117,6 +125,24 @@ uv run py-ide4ai-mcp
 
 # 使用 Python 模块 | Using Python module
 python -m ide4ai.python_ide.mcp.server
+```
+
+**使用 SSE 模式 | Using SSE mode:**
+```bash
+# 使用环境变量 | Using environment variable
+TRANSPORT=sse HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+
+# 使用命令行参数 | Using command-line arguments
+py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+```
+
+**使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
+```bash
+# 使用环境变量 | Using environment variable
+TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+
+# 使用命令行参数 | Using command-line arguments
+py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 ### 在代码中使用 | Use in Code
@@ -142,26 +168,63 @@ if __name__ == "__main__":
 
 #### 方式 2: 通过代码直接指定配置 | Method 2: Specify Configuration Directly in Code
 
+**使用 stdio 模式 | Using stdio mode:**
 ```python
 import asyncio
 from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
-    # 直接在代码中指定配置参数 | Specify configuration parameters directly in code
-    # 这会覆盖环境变量和命令行参数 | This will override environment variables and command-line arguments
     config = MCPServerConfig(
+        transport="stdio",  # 默认模式 | Default mode
         cmd_white_list=["ls", "pwd", "echo", "cat"],
         root_dir="/path/to/project",
         project_name="my-project",
-        cmd_time_out=30,
-        render_with_symbols=True,
-        max_active_models=5,
-        enable_simple_view_mode=True,
     )
     
-    # 创建并运行 server | Create and run server
     server = PythonIDEMCPServer(config)
     await server.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**使用 SSE 模式 | Using SSE mode:**
+```python
+import asyncio
+from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+
+async def main():
+    config = MCPServerConfig(
+        transport="sse",
+        host="0.0.0.0",
+        port=8000,
+        root_dir="/path/to/project",
+        project_name="my-project",
+    )
+    
+    server = PythonIDEMCPServer(config)
+    await server.run()  # 启动 HTTP 服务器 | Start HTTP server
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
+```python
+import asyncio
+from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+
+async def main():
+    config = MCPServerConfig(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=8000,
+        root_dir="/path/to/project",
+        project_name="my-project",
+    )
+    
+    server = PythonIDEMCPServer(config)
+    await server.run()  # 启动 HTTP 服务器 | Start HTTP server
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -246,6 +309,9 @@ Add to MCP client configuration file:
 
 | 参数名 Parameter | 环境变量 Environment Variable | 命令行参数 CLI Argument | 默认值 Default | 说明 Description |
 |-----------------|------------------------------|------------------------|---------------|------------------|
+| transport | TRANSPORT | --transport | "stdio" | 传输模式 \| Transport mode (stdio/sse/streamable-http) |
+| host | HOST | --host | "127.0.0.1" | 服务器主机 \| Server host (for sse/streamable-http) |
+| port | PORT | --port | 8000 | 服务器端口 \| Server port (for sse/streamable-http) |
 | root_dir | PROJECT_ROOT | --root-dir | "." | 项目根目录 \| Project root directory |
 | project_name | PROJECT_NAME | --project-name | "mcp-project" | 项目名称 \| Project name |
 | cmd_white_list | CMD_WHITE_LIST | --cmd-white-list | ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"] | 命令白名单（逗号分隔）\| Command whitelist (comma separated) |
@@ -259,6 +325,28 @@ Add to MCP client configuration file:
 命令行参数 > 环境变量 > 默认值
 Command-line Arguments > Environment Variables > Default Values
 ```
+
+### 传输模式说明 | Transport Mode Description
+
+#### stdio (默认 | Default)
+- **适用场景 | Use Cases**: 本地进程间通信，如 Claude Desktop 集成 | Local inter-process communication, e.g., Claude Desktop integration
+- **优点 | Advantages**: 简单、高效、无需网络配置 | Simple, efficient, no network configuration needed
+- **缺点 | Disadvantages**: 仅限本地使用 | Local use only
+
+#### SSE (Server-Sent Events)
+- **适用场景 | Use Cases**: Web 应用、需要服务器主动推送的场景 | Web applications, scenarios requiring server-initiated push
+- **优点 | Advantages**: 支持远程访问、适合 Web 集成 | Supports remote access, suitable for web integration
+- **缺点 | Disadvantages**: 单向推送，客户端需要通过 POST 发送消息 | One-way push, client needs to send messages via POST
+- **端点 | Endpoints**:
+  - `GET /sse`: SSE 连接端点 | SSE connection endpoint
+  - `POST /messages/`: 客户端消息发送端点 | Client message sending endpoint
+
+#### Streamable HTTP
+- **适用场景 | Use Cases**: 复杂的双向通信场景、需要流式响应 | Complex bidirectional communication, streaming responses needed
+- **优点 | Advantages**: 支持双向通信、流式响应、适合复杂交互 | Supports bidirectional communication, streaming responses, suitable for complex interactions
+- **缺点 | Disadvantages**: 相对复杂 | Relatively complex
+- **端点 | Endpoints**:
+  - `POST /message`: 消息处理端点 | Message handling endpoint
 
 #### 使用已安装的命令 | Using Installed Command
 

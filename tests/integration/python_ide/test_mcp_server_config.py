@@ -322,3 +322,131 @@ class TestCommandLineArguments:
                     assert config.render_with_symbols is False
                     assert config.max_active_models == 7
                     assert config.enable_simple_view_mode is False
+
+    def test_transport_mode_config(self) -> None:
+        """
+        测试传输模式配置 | Test transport mode configuration
+        """
+        # 测试默认传输模式 | Test default transport mode
+        with MCPServerConfig.change_config_sources(DataSource(data={})):
+            config = MCPServerConfig()
+            assert config.transport == "stdio"
+            assert config.host == "127.0.0.1"
+            assert config.port == 8000
+
+        # 测试 SSE 模式 | Test SSE mode
+        with MCPServerConfig.change_config_sources(
+            DataSource(
+                data={
+                    "transport": "sse",
+                    "host": "0.0.0.0",
+                    "port": 9000,
+                }
+            )
+        ):
+            config = MCPServerConfig()
+            assert config.transport == "sse"
+            assert config.host == "0.0.0.0"
+            assert config.port == 9000
+
+        # 测试 Streamable HTTP 模式 | Test Streamable HTTP mode
+        with MCPServerConfig.change_config_sources(
+            DataSource(
+                data={
+                    "transport": "streamable-http",
+                    "host": "localhost",
+                    "port": 8080,
+                }
+            )
+        ):
+            config = MCPServerConfig()
+            assert config.transport == "streamable-http"
+            assert config.host == "localhost"
+            assert config.port == 8080
+
+    def test_transport_mode_from_env(self) -> None:
+        """
+        测试从环境变量加载传输模式配置 | Test loading transport mode config from environment variables
+        """
+        env_vars = {
+            "TRANSPORT": "sse",
+            "HOST": "192.168.1.100",
+            "PORT": "7000",
+        }
+
+        with patch.dict(os.environ, env_vars, clear=False):
+            env_source = EnvSource(
+                allow_all=True,
+                prefix="",
+                remap={
+                    "TRANSPORT": "transport",
+                    "HOST": "host",
+                    "PORT": "port",
+                },
+            )
+            with MCPServerConfig.change_config_sources(env_source):
+                config = MCPServerConfig()
+                assert config.transport == "sse"
+                assert config.host == "192.168.1.100"
+                assert config.port == 7000
+
+    def test_transport_mode_from_cli(self) -> None:
+        """
+        测试从命令行参数加载传输模式配置 | Test loading transport mode config from CLI arguments
+        """
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "test",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "10.0.0.1",
+                "--port",
+                "8888",
+            ],
+        ):
+            cli_source = CLArgSource(
+                prefix="",
+                remap={
+                    "transport": "transport",
+                    "host": "host",
+                    "port": "port",
+                },
+            )
+            with MCPServerConfig.change_config_sources(cli_source):
+                config = MCPServerConfig()
+                assert config.transport == "streamable-http"
+                assert config.host == "10.0.0.1"
+                assert config.port == 8888
+
+    def test_mixed_config_with_transport(self) -> None:
+        """
+        测试混合配置（传输模式 + IDE 配置）| Test mixed configuration (transport + IDE config)
+        """
+        with MCPServerConfig.change_config_sources(
+            DataSource(
+                data={
+                    "transport": "sse",
+                    "host": "0.0.0.0",
+                    "port": 8000,
+                    "root_dir": "/test/project",
+                    "project_name": "mixed-test",
+                    "cmd_white_list": ["ls", "pwd", "echo"],
+                    "cmd_time_out": 20,
+                }
+            )
+        ):
+            config = MCPServerConfig()
+
+            # 验证传输配置 | Verify transport config
+            assert config.transport == "sse"
+            assert config.host == "0.0.0.0"
+            assert config.port == 8000
+
+            # 验证 IDE 配置 | Verify IDE config
+            assert config.root_dir == "/test/project"
+            assert config.project_name == "mixed-test"
+            assert config.cmd_white_list == ["ls", "pwd", "echo"]
+            assert config.cmd_time_out == 20

@@ -10,7 +10,7 @@ MCP Server 配置管理 | MCP Server Configuration Management
 This module manages MCP Server configuration, including IDE instance initialization parameters
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from confz import BaseConfig, CLArgSource, EnvSource
 from confz.base_config import BaseConfigMetaclass
@@ -27,6 +27,9 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     Supports loading configuration from environment variables and command-line arguments
 
     Attributes:
+        transport: 传输模式 | Transport mode (stdio, sse, streamable-http)
+        host: 服务器主机地址 | Server host address (for sse/streamable-http)
+        port: 服务器端口 | Server port (for sse/streamable-http)
         cmd_white_list: 命令白名单 | Command whitelist
         root_dir: 根目录 | Root directory
         project_name: 项目名称 | Project name
@@ -37,6 +40,9 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         workspace_setting: 工作区设置 | Workspace settings
 
     环境变量映射 | Environment Variable Mapping:
+        - TRANSPORT -> transport
+        - HOST -> host
+        - PORT -> port
         - PROJECT_ROOT -> root_dir
         - PROJECT_NAME -> project_name
         - CMD_WHITE_LIST -> cmd_white_list (逗号分隔 | comma separated)
@@ -46,6 +52,9 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         - ENABLE_SIMPLE_VIEW_MODE -> enable_simple_view_mode
 
     命令行参数映射 | Command-line Argument Mapping:
+        - --transport -> transport
+        - --host -> host
+        - --port -> port
         - --root-dir -> root_dir
         - --project-name -> project_name
         - --cmd-white-list -> cmd_white_list (逗号分隔 | comma separated)
@@ -62,6 +71,9 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
             allow_all=True,
             prefix="",  # 不使用前缀，直接使用环境变量名 | No prefix, use environment variable name directly
             remap={
+                "TRANSPORT": "transport",
+                "HOST": "host",
+                "PORT": "port",
                 "PROJECT_ROOT": "root_dir",
                 "PROJECT_NAME": "project_name",
                 "CMD_WHITE_LIST": "cmd_white_list",
@@ -74,6 +86,9 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         CLArgSource(
             prefix="",  # 不使用前缀 | No prefix
             remap={
+                "transport": "transport",
+                "host": "host",
+                "port": "port",
                 "root-dir": "root_dir",
                 "project-name": "project_name",
                 "cmd-white-list": "cmd_white_list",
@@ -85,6 +100,22 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         ),
     ]
 
+    # 传输模式配置 | Transport mode configuration
+    transport: Literal["stdio", "sse", "streamable-http"] = Field(
+        default="stdio",
+        description="传输模式：stdio(标准输入输出), sse(Server-Sent Events), streamable-http(Streamable HTTP) | "
+        "Transport mode: stdio, sse, streamable-http",
+    )
+    host: str = Field(
+        default="127.0.0.1",
+        description="服务器主机地址(仅用于 sse 和 streamable-http 模式) | Server host (only for sse and streamable-http)",
+    )
+    port: int = Field(
+        default=8000,
+        description="服务器端口(仅用于 sse 和 streamable-http 模式) | Server port (only for sse and streamable-http)",
+    )
+
+    # IDE 配置 | IDE configuration
     cmd_white_list: list[str] = Field(
         default_factory=lambda: ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"],
         description="命令白名单，逗号分隔的字符串会被自动解析为列表 | Command whitelist, comma-separated string will be "

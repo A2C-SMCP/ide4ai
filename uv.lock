@@ -522,6 +522,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "regex" },
     { name = "simple-parsing" },
+    { name = "sse-starlette" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -560,6 +563,9 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
     { name = "regex", specifier = ">=2025.10.23" },
     { name = "simple-parsing", specifier = ">=0.1.5" },
+    { name = "sse-starlette", specifier = ">=2.0.0" },
+    { name = "starlette", specifier = ">=0.27.0" },
+    { name = "uvicorn", specifier = ">=0.23.0" },
 ]
 
 [package.metadata.requires-dev]

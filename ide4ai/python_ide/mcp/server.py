@@ -10,13 +10,17 @@ MCP Server 主入口 | MCP Server Main Entry Point
 Implements MCP protocol server, wrapping PythonIDE capabilities
 """
 
-import asyncio
 from typing import Any
 
 from loguru import logger
 from mcp.server import Server
+from mcp.server.sse import SseServerTransport
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http import StreamableHTTPServerTransport
 from mcp.types import Tool
+from starlette.applications import Starlette
+from starlette.responses import Response
+from starlette.routing import Mount, Route
 
 from ide4ai.ides import PyIDESingleton
 from ide4ai.python_ide.mcp.config import MCPServerConfig
@@ -144,17 +148,126 @@ class PythonIDEMCPServer:
         """
         运行 MCP Server | Run MCP Server
 
-        使用 stdio 传输协议
-        Uses stdio transport protocol
+        根据配置选择传输协议：stdio, sse 或 streamable-http
+        Choose transport protocol based on configuration: stdio, sse or streamable-http
         """
-        logger.info("启动 MCP Server | Starting MCP Server...")
+        transport = self.config.transport
+        logger.info(f"启动 MCP Server | Starting MCP Server with transport: {transport}")
 
+        if transport == "stdio":
+            await self._run_stdio()
+        elif transport == "sse":
+            await self._run_sse()
+        elif transport == "streamable-http":
+            await self._run_streamable_http()
+        else:
+            raise ValueError(f"不支持的传输模式 | Unsupported transport mode: {transport}")
+
+    async def _run_stdio(self) -> None:
+        """
+        使用 stdio 传输运行 | Run with stdio transport
+        """
+        logger.info("使用 stdio 传输模式 | Using stdio transport")
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
                 read_stream,
                 write_stream,
                 self.server.create_initialization_options(),
             )
+
+    async def _run_sse(self) -> None:
+        """
+        使用 SSE 传输运行 | Run with SSE transport
+
+        SSE (Server-Sent Events) 适用于需要服务器主动推送的场景
+        SSE is suitable for scenarios requiring server-initiated push
+        """
+        import uvicorn
+
+        logger.info(
+            f"使用 SSE 传输模式 | Using SSE transport: http://{self.config.host}:{self.config.port}",
+        )
+
+        # 创建 SSE 传输 | Create SSE transport
+        sse = SseServerTransport("/messages/")
+
+        # 定义 SSE 处理器 | Define SSE handler
+        async def handle_sse(request: Any) -> Response:
+            async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+                await self.server.run(
+                    streams[0],
+                    streams[1],
+                    self.server.create_initialization_options(),
+                )
+            return Response()
+
+        # 创建路由 | Create routes
+        routes = [
+            Route("/sse", endpoint=handle_sse, methods=["GET"]),
+            Mount("/messages/", app=sse.handle_post_message),
+        ]
+
+        # 创建并运行 Starlette 应用 | Create and run Starlette app
+        app = Starlette(routes=routes)
+        config = uvicorn.Config(
+            app,
+            host=self.config.host,
+            port=self.config.port,
+            log_level="info",
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
+    async def _run_streamable_http(self) -> None:
+        """
+        使用 Streamable HTTP 传输运行 | Run with Streamable HTTP transport
+
+        Streamable HTTP 支持双向通信和流式响应，适合复杂交互场景
+        Streamable HTTP supports bidirectional communication and streaming responses
+        """
+        import anyio
+        import uvicorn
+
+        logger.info(
+            f"使用 Streamable HTTP 传输模式 | Using Streamable HTTP transport: http://{self.config.host}:{self.config.port}",
+        )
+
+        # 创建 Streamable HTTP 传输 | Create Streamable HTTP transport
+        http_transport = StreamableHTTPServerTransport("/message")
+
+        # 初始化服务器连接 | Initialize server connection
+        async with http_transport.connect() as (read_stream, write_stream):
+            # 在后台运行 MCP 服务器 | Run MCP server in background
+            async def run_server() -> None:
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    self.server.create_initialization_options(),
+                )
+
+            # 定义 ASGI 应用 | Define ASGI application
+            async def app(scope: dict, receive: Any, send: Any) -> None:
+                """
+                ASGI 应用入口 | ASGI application entry point
+
+                直接使用 StreamableHTTPServerTransport.handle_request 处理请求
+                Directly use StreamableHTTPServerTransport.handle_request to handle requests
+                """
+                await http_transport.handle_request(scope, receive, send)
+
+            # 启动 MCP 服务器任务 | Start MCP server task
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(run_server)
+
+                # 启动 HTTP 服务器 | Start HTTP server
+                config = uvicorn.Config(
+                    app=app,
+                    host=self.config.host,
+                    port=self.config.port,
+                    log_level="info",
+                )
+                server = uvicorn.Server(config)
+                await server.serve()
 
 
 async def main() -> None:
@@ -169,6 +282,9 @@ async def main() -> None:
         Command-line arguments > Environment variables > Default values
 
     环境变量 | Environment Variables:
+        - TRANSPORT: 传输模式 | Transport mode (default: "stdio")
+        - HOST: 服务器主机地址 | Server host (default: "127.0.0.1")
+        - PORT: 服务器端口 | Server port (default: 8000)
         - PROJECT_ROOT: 项目根目录 | Project root directory (default: ".")
         - PROJECT_NAME: 项目名称 | Project name (default: "mcp-project")
         - CMD_WHITE_LIST: 命令白名单，逗号分隔 | Command whitelist, comma separated
@@ -178,6 +294,9 @@ async def main() -> None:
         - ENABLE_SIMPLE_VIEW_MODE: 是否启用简化视图模式 | Whether to enable simple view mode (default: true)
 
     命令行参数 | Command-line Arguments:
+        - --transport: 传输模式 | Transport mode
+        - --host: 服务器主机地址 | Server host
+        - --port: 服务器端口 | Server port
         - --root-dir: 项目根目录 | Project root directory
         - --project-name: 项目名称 | Project name
         - --cmd-white-list: 命令白名单，逗号分隔 | Command whitelist, comma separated
@@ -193,6 +312,9 @@ async def main() -> None:
 
     logger.info(
         f"启动 MCP Server | Starting MCP Server: "
+        f"transport={config.transport}, "
+        f"host={config.host}, "
+        f"port={config.port}, "
         f"root_dir={config.root_dir}, "
         f"project_name={config.project_name}, "
         f"cmd_white_list={config.cmd_white_list}, "
@@ -205,8 +327,3 @@ async def main() -> None:
     # 创建并运行 server | Create and run server
     server = PythonIDEMCPServer(config)
     await server.run()
-
-
-if __name__ == "__main__":
-    # 运行 server | Run server
-    asyncio.run(main())

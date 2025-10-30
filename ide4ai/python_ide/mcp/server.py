@@ -161,14 +161,45 @@ async def main() -> None:
     """
     主函数 | Main function
 
-    示例：如何启动 MCP Server
-    Example: How to start MCP Server
+    使用 confz 从环境变量和命令行参数读取配置并启动 MCP Server
+    Use confz to read configuration from environment variables and command-line arguments, then start MCP Server
+
+    配置优先级 | Configuration Priority:
+        命令行参数 > 环境变量 > 默认值
+        Command-line arguments > Environment variables > Default values
+
+    环境变量 | Environment Variables:
+        - PROJECT_ROOT: 项目根目录 | Project root directory (default: ".")
+        - PROJECT_NAME: 项目名称 | Project name (default: "mcp-project")
+        - CMD_WHITE_LIST: 命令白名单，逗号分隔 | Command whitelist, comma separated
+        - CMD_TIMEOUT: 命令超时时间(秒) | Command timeout in seconds (default: 10)
+        - RENDER_WITH_SYMBOLS: 是否渲染符号 | Whether to render symbols (default: true)
+        - MAX_ACTIVE_MODELS: 最大活跃模型数 | Maximum active models (default: 3)
+        - ENABLE_SIMPLE_VIEW_MODE: 是否启用简化视图模式 | Whether to enable simple view mode (default: true)
+
+    命令行参数 | Command-line Arguments:
+        - --root-dir: 项目根目录 | Project root directory
+        - --project-name: 项目名称 | Project name
+        - --cmd-white-list: 命令白名单，逗号分隔 | Command whitelist, comma separated
+        - --cmd-timeout: 命令超时时间(秒) | Command timeout in seconds
+        - --render-with-symbols: 是否渲染符号 | Whether to render symbols
+        - --max-active-models: 最大活跃模型数 | Maximum active models
+        - --enable-simple-view-mode: 是否启用简化视图模式 | Whether to enable simple view mode
     """
-    # 创建配置 | Create configuration
-    config = MCPServerConfig(
-        cmd_white_list=["ls", "pwd", "echo", "cat", "grep"],  # 示例白名单 | Example whitelist
-        root_dir=".",
-        project_name="example-project",
+    # 使用 confz 加载配置 | Load configuration using confz
+    # confz 会自动从环境变量和命令行参数中读取配置
+    # confz will automatically read configuration from environment variables and command-line arguments
+    config = MCPServerConfig()
+
+    logger.info(
+        f"启动 MCP Server | Starting MCP Server: "
+        f"root_dir={config.root_dir}, "
+        f"project_name={config.project_name}, "
+        f"cmd_white_list={config.cmd_white_list}, "
+        f"cmd_timeout={config.cmd_time_out}, "
+        f"render_with_symbols={config.render_with_symbols}, "
+        f"max_active_models={config.max_active_models}, "
+        f"enable_simple_view_mode={config.enable_simple_view_mode}",
     )
 
     # 创建并运行 server | Create and run server

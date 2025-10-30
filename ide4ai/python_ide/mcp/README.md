@@ -84,24 +84,79 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ## 使用方法 | Usage
 
-### 作为独立服务运行 | Run as Standalone Service
+### 安装 | Installation
+
+#### 使用 uvx (推荐) | Using uvx (Recommended)
 
 ```bash
+# 直接运行，无需安装 | Run directly without installation
+uvx ide4ai py-ide4ai-mcp
+
+# 或者安装到全局 | Or install globally
+uv tool install ide4ai
+py-ide4ai-mcp
+```
+
+#### 使用 pip | Using pip
+
+```bash
+pip install ide4ai
+py-ide4ai-mcp
+```
+
+### 作为独立服务运行 | Run as Standalone Service
+
+#### 使用命令行工具 | Using CLI Tool
+
+```bash
+# 如果已安装 | If installed
+py-ide4ai-mcp
+
+# 使用 uv run (开发环境) | Using uv run (development)
+uv run py-ide4ai-mcp
+
+# 使用 Python 模块 | Using Python module
 python -m ide4ai.python_ide.mcp.server
 ```
 
 ### 在代码中使用 | Use in Code
+
+#### 方式 1: 使用默认配置（从环境变量和命令行参数加载）| Method 1: Use Default Configuration (Load from Environment Variables and Command-line Arguments)
 
 ```python
 import asyncio
 from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
-    # 创建配置 | Create configuration
+    # 自动从环境变量和命令行参数加载配置 | Automatically load configuration from environment variables and command-line arguments
+    # 优先级：命令行参数 > 环境变量 > 默认值 | Priority: Command-line arguments > Environment variables > Default values
+    config = MCPServerConfig()
+    
+    # 创建并运行 server | Create and run server
+    server = PythonIDEMCPServer(config)
+    await server.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+#### 方式 2: 通过代码直接指定配置 | Method 2: Specify Configuration Directly in Code
+
+```python
+import asyncio
+from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+
+async def main():
+    # 直接在代码中指定配置参数 | Specify configuration parameters directly in code
+    # 这会覆盖环境变量和命令行参数 | This will override environment variables and command-line arguments
     config = MCPServerConfig(
         cmd_white_list=["ls", "pwd", "echo", "cat"],
         root_dir="/path/to/project",
         project_name="my-project",
+        cmd_time_out=30,
+        render_with_symbols=True,
+        max_active_models=5,
+        enable_simple_view_mode=True,
     )
     
     # 创建并运行 server | Create and run server
@@ -118,6 +173,133 @@ if __name__ == "__main__":
 
 Add to MCP client configuration file:
 
+#### 使用 uvx (推荐) | Using uvx (Recommended)
+
+##### 方式 1: 通过环境变量配置 | Method 1: Configure via Environment Variables
+
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "uvx",
+      "args": ["ide4ai", "py-ide4ai-mcp"],
+      "env": {
+        "PROJECT_ROOT": "/path/to/project",
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "CMD_TIMEOUT": "30",
+        "RENDER_WITH_SYMBOLS": "true",
+        "MAX_ACTIVE_MODELS": "3",
+        "ENABLE_SIMPLE_VIEW_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+##### 方式 2: 通过命令行参数配置 | Method 2: Configure via Command-line Arguments
+
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "uvx",
+      "args": [
+        "ide4ai",
+        "py-ide4ai-mcp",
+        "--root-dir", "/path/to/project",
+        "--project-name", "my-project",
+        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "--cmd-timeout", "30",
+        "--render-with-symbols", "true",
+        "--max-active-models", "3",
+        "--enable-simple-view-mode", "true"
+      ]
+    }
+  }
+}
+```
+
+##### 方式 3: 混合配置（命令行参数优先级更高）| Method 3: Mixed Configuration (Command-line Arguments Have Higher Priority)
+
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "uvx",
+      "args": [
+        "ide4ai",
+        "py-ide4ai-mcp",
+        "--root-dir", "/path/to/project",
+        "--cmd-timeout", "60"
+      ],
+      "env": {
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat"
+      }
+    }
+  }
+}
+```
+
+**配置参数说明 | Configuration Parameters:**
+
+| 参数名 Parameter | 环境变量 Environment Variable | 命令行参数 CLI Argument | 默认值 Default | 说明 Description |
+|-----------------|------------------------------|------------------------|---------------|------------------|
+| root_dir | PROJECT_ROOT | --root-dir | "." | 项目根目录 \| Project root directory |
+| project_name | PROJECT_NAME | --project-name | "mcp-project" | 项目名称 \| Project name |
+| cmd_white_list | CMD_WHITE_LIST | --cmd-white-list | ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"] | 命令白名单（逗号分隔）\| Command whitelist (comma separated) |
+| cmd_time_out | CMD_TIMEOUT | --cmd-timeout | 10 | 命令超时时间(秒) \| Command timeout (seconds) |
+| render_with_symbols | RENDER_WITH_SYMBOLS | --render-with-symbols | true | 是否渲染符号 \| Whether to render symbols |
+| max_active_models | MAX_ACTIVE_MODELS | --max-active-models | 3 | 最大活跃模型数 \| Maximum active models |
+| enable_simple_view_mode | ENABLE_SIMPLE_VIEW_MODE | --enable-simple-view-mode | true | 是否启用简化视图模式 \| Whether to enable simple view mode |
+
+**配置优先级 | Configuration Priority:**
+```
+命令行参数 > 环境变量 > 默认值
+Command-line Arguments > Environment Variables > Default Values
+```
+
+#### 使用已安装的命令 | Using Installed Command
+
+通过环境变量配置 | Configure via Environment Variables:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "py-ide4ai-mcp",
+      "args": [],
+      "env": {
+        "PROJECT_ROOT": "/path/to/project",
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "CMD_TIMEOUT": "30"
+      }
+    }
+  }
+}
+```
+
+通过命令行参数配置 | Configure via Command-line Arguments:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "py-ide4ai-mcp",
+      "args": [
+        "--root-dir", "/path/to/project",
+        "--project-name", "my-project",
+        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "--cmd-timeout", "30"
+      ]
+    }
+  }
+}
+```
+
+#### 使用 Python 模块 | Using Python Module
+
+通过环境变量配置 | Configure via Environment Variables:
 ```json
 {
   "mcpServers": {
@@ -126,8 +308,28 @@ Add to MCP client configuration file:
       "args": ["-m", "ide4ai.python_ide.mcp.server"],
       "env": {
         "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project"
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "CMD_TIMEOUT": "30"
       }
+    }
+  }
+}
+```
+
+通过命令行参数配置 | Configure via Command-line Arguments:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "python",
+      "args": [
+        "-m", "ide4ai.python_ide.mcp.server",
+        "--root-dir", "/path/to/project",
+        "--project-name", "my-project",
+        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "--cmd-timeout", "30"
+      ]
     }
   }
 }

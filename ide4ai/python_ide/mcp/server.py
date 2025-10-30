@@ -16,7 +16,7 @@ from loguru import logger
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 from mcp.server.stdio import stdio_server
-from mcp.server.streamable_http import StreamableHTTPServerTransport
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import Tool
 from starlette.applications import Starlette
 from starlette.responses import Response
@@ -224,50 +224,67 @@ class PythonIDEMCPServer:
 
         Streamable HTTP 支持双向通信和流式响应，适合复杂交互场景
         Streamable HTTP supports bidirectional communication and streaming responses
+
+        参考官方示例实现 | Reference official example implementation:
+        - tests/shared/test_streamable_http.py::create_app
         """
-        import anyio
         import uvicorn
 
         logger.info(
-            f"使用 Streamable HTTP 传输模式 | Using Streamable HTTP transport: http://{self.config.host}:{self.config.port}",
+            f"使用 Streamable HTTP 传输模式 | Using Streamable HTTP transport: "
+            f"http://{self.config.host}:{self.config.port}/mcp",
         )
 
-        # 创建 Streamable HTTP 传输 | Create Streamable HTTP transport
-        http_transport = StreamableHTTPServerTransport("/message")
+        # 创建会话管理器 | Create session manager
+        # stateless=True: 每个请求都是独立的，不维护会话状态
+        # stateless=True: Each request is independent, no session state is maintained
+        session_manager = StreamableHTTPSessionManager(
+            app=self.server,
+            stateless=True,  # 无状态模式，适合简单场景 | Stateless mode, suitable for simple scenarios
+            json_response=False,  # 使用 SSE 流式响应 | Use SSE streaming response
+        )
 
-        # 初始化服务器连接 | Initialize server connection
-        async with http_transport.connect() as (read_stream, write_stream):
-            # 在后台运行 MCP 服务器 | Run MCP server in background
-            async def run_server() -> None:
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    self.server.create_initialization_options(),
-                )
+        # 创建 ASGI 应用包装器类 | Create ASGI app wrapper class
+        # 参考 FastMCP 的 StreamableHTTPASGIApp 实现
+        # Reference FastMCP's StreamableHTTPASGIApp implementation
+        class StreamableHTTPASGIApp:
+            """ASGI 应用包装器 | ASGI application wrapper"""
 
-            # 定义 ASGI 应用 | Define ASGI application
-            async def app(scope: dict, receive: Any, send: Any) -> None:
-                """
-                ASGI 应用入口 | ASGI application entry point
+            def __init__(self, manager: StreamableHTTPSessionManager) -> None:
+                self.session_manager = manager
 
-                直接使用 StreamableHTTPServerTransport.handle_request 处理请求
-                Directly use StreamableHTTPServerTransport.handle_request to handle requests
-                """
-                await http_transport.handle_request(scope, receive, send)
+            async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+                await self.session_manager.handle_request(scope, receive, send)
 
-            # 启动 MCP 服务器任务 | Start MCP server task
-            async with anyio.create_task_group() as tg:
-                tg.start_soon(run_server)
+        # 创建 ASGI 应用实例 | Create ASGI app instance
+        streamable_http_app = StreamableHTTPASGIApp(session_manager)
 
-                # 启动 HTTP 服务器 | Start HTTP server
-                config = uvicorn.Config(
-                    app=app,
-                    host=self.config.host,
-                    port=self.config.port,
-                    log_level="info",
-                )
-                server = uvicorn.Server(config)
-                await server.serve()
+        # 创建 Starlette 应用 | Create Starlette application
+        # 参考 FastMCP 实现：使用 Route 配合 ASGI 应用类
+        # Reference FastMCP implementation: Use Route with ASGI app class
+        app = Starlette(
+            debug=False,
+            routes=[
+                # 使用 Route 处理 /mcp 端点（官方标准端点）
+                # Use Route to handle /mcp endpoint (official standard endpoint)
+                Route(
+                    "/mcp",
+                    endpoint=streamable_http_app,
+                    methods=["GET", "POST", "DELETE"],
+                ),
+            ],
+            lifespan=lambda app: session_manager.run(),
+        )
+
+        # 启动 HTTP 服务器 | Start HTTP server
+        config = uvicorn.Config(
+            app=app,
+            host=self.config.host,
+            port=self.config.port,
+            log_level="info",
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
 
 
 async def async_main() -> None:

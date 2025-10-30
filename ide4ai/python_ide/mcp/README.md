@@ -236,9 +236,11 @@ if __name__ == "__main__":
 
 Add to MCP client configuration file:
 
-#### 使用 uvx (推荐) | Using uvx (Recommended)
+#### stdio 模式（默认，推荐用于本地集成）| stdio Mode (Default, Recommended for Local Integration)
 
-##### 方式 1: 通过环境变量配置 | Method 1: Configure via Environment Variables
+##### 使用 uvx (推荐) | Using uvx (Recommended)
+
+###### 方式 1: 通过环境变量配置 | Method 1: Configure via Environment Variables
 
 ```json
 {
@@ -247,6 +249,7 @@ Add to MCP client configuration file:
       "command": "uvx",
       "args": ["ide4ai", "py-ide4ai-mcp"],
       "env": {
+        "TRANSPORT": "stdio",
         "PROJECT_ROOT": "/path/to/project",
         "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
@@ -260,7 +263,7 @@ Add to MCP client configuration file:
 }
 ```
 
-##### 方式 2: 通过命令行参数配置 | Method 2: Configure via Command-line Arguments
+###### 方式 2: 通过命令行参数配置 | Method 2: Configure via Command-line Arguments
 
 ```json
 {
@@ -270,6 +273,7 @@ Add to MCP client configuration file:
       "args": [
         "ide4ai",
         "py-ide4ai-mcp",
+        "--transport", "stdio",
         "--root-dir", "/path/to/project",
         "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
@@ -283,7 +287,7 @@ Add to MCP client configuration file:
 }
 ```
 
-##### 方式 3: 混合配置（命令行参数优先级更高）| Method 3: Mixed Configuration (Command-line Arguments Have Higher Priority)
+###### 方式 3: 混合配置（命令行参数优先级更高）| Method 3: Mixed Configuration (Command-line Arguments Have Higher Priority)
 
 ```json
 {
@@ -297,6 +301,7 @@ Add to MCP client configuration file:
         "--cmd-timeout", "60"
       ],
       "env": {
+        "TRANSPORT": "stdio",
         "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat"
       }
@@ -304,6 +309,170 @@ Add to MCP client configuration file:
   }
 }
 ```
+
+##### 使用已安装的命令 | Using Installed Command
+
+通过环境变量配置 | Configure via Environment Variables:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "py-ide4ai-mcp",
+      "args": [],
+      "env": {
+        "TRANSPORT": "stdio",
+        "PROJECT_ROOT": "/path/to/project",
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "CMD_TIMEOUT": "30"
+      }
+    }
+  }
+}
+```
+
+通过命令行参数配置 | Configure via Command-line Arguments:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "py-ide4ai-mcp",
+      "args": [
+        "--transport", "stdio",
+        "--root-dir", "/path/to/project",
+        "--project-name", "my-project",
+        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "--cmd-timeout", "30"
+      ]
+    }
+  }
+}
+```
+
+##### 使用 Python 模块 | Using Python Module
+
+通过环境变量配置 | Configure via Environment Variables:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "python",
+      "args": ["-m", "ide4ai.python_ide.mcp.server"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "PROJECT_ROOT": "/path/to/project",
+        "PROJECT_NAME": "my-project",
+        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "CMD_TIMEOUT": "30"
+      }
+    }
+  }
+}
+```
+
+通过命令行参数配置 | Configure via Command-line Arguments:
+```json
+{
+  "mcpServers": {
+    "python-ide": {
+      "command": "python",
+      "args": [
+        "-m", "ide4ai.python_ide.mcp.server",
+        "--transport", "stdio",
+        "--root-dir", "/path/to/project",
+        "--project-name", "my-project",
+        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
+        "--cmd-timeout", "30"
+      ]
+    }
+  }
+}
+```
+
+#### SSE 模式（用于 Web 应用和远程访问）| SSE Mode (For Web Applications and Remote Access)
+
+SSE 模式需要先启动服务器，然后客户端通过 HTTP 连接。
+
+SSE mode requires starting the server first, then the client connects via HTTP.
+
+##### 启动服务器 | Start Server
+
+```bash
+# 使用 uvx | Using uvx
+uvx ide4ai py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+
+# 使用已安装的命令 | Using installed command
+py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+
+# 使用环境变量 | Using environment variables
+TRANSPORT=sse HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+```
+
+##### 客户端连接 | Client Connection
+
+**连接端点 | Connection Endpoints:**
+- `GET http://host:port/sse` - SSE 连接端点 | SSE connection endpoint
+- `POST http://host:port/messages/` - 客户端消息发送端点 | Client message sending endpoint
+
+**MCP 客户端配置示例（如果客户端支持 SSE）| MCP Client Configuration Example (If Client Supports SSE):**
+
+```json
+{
+  "mcpServers": {
+    "python-ide-sse": {
+      "url": "http://localhost:8000/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+**注意 | Note:** 大多数 MCP 客户端（如 Claude Desktop）默认只支持 stdio 模式。SSE 模式主要用于自定义客户端或 Web 应用集成。
+
+Most MCP clients (like Claude Desktop) only support stdio mode by default. SSE mode is mainly for custom clients or web application integration.
+
+#### Streamable HTTP 模式（用于复杂双向通信）| Streamable HTTP Mode (For Complex Bidirectional Communication)
+
+Streamable HTTP 模式需要先启动服务器，然后客户端通过 HTTP 连接。
+
+Streamable HTTP mode requires starting the server first, then the client connects via HTTP.
+
+##### 启动服务器 | Start Server
+
+```bash
+# 使用 uvx | Using uvx
+uvx ide4ai py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+
+# 使用已安装的命令 | Using installed command
+py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+
+# 使用环境变量 | Using environment variables
+TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+```
+
+##### 客户端连接 | Client Connection
+
+**连接端点 | Connection Endpoint:**
+- `POST http://host:port/message` - 消息处理端点（支持流式响应）| Message handling endpoint (supports streaming responses)
+
+**MCP 客户端配置示例（如果客户端支持 Streamable HTTP）| MCP Client Configuration Example (If Client Supports Streamable HTTP):**
+
+```json
+{
+  "mcpServers": {
+    "python-ide-http": {
+      "url": "http://localhost:8000/message",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+**注意 | Note:** 大多数 MCP 客户端（如 Claude Desktop）默认只支持 stdio 模式。Streamable HTTP 模式主要用于自定义客户端或需要流式响应的场景。
+
+Most MCP clients (like Claude Desktop) only support stdio mode by default. Streamable HTTP mode is mainly for custom clients or scenarios requiring streaming responses.
+
+---
 
 **配置参数说明 | Configuration Parameters:**
 
@@ -326,102 +495,16 @@ Add to MCP client configuration file:
 Command-line Arguments > Environment Variables > Default Values
 ```
 
-### 传输模式说明 | Transport Mode Description
+### 传输模式对比 | Transport Mode Comparison
 
-#### stdio (默认 | Default)
-- **适用场景 | Use Cases**: 本地进程间通信，如 Claude Desktop 集成 | Local inter-process communication, e.g., Claude Desktop integration
-- **优点 | Advantages**: 简单、高效、无需网络配置 | Simple, efficient, no network configuration needed
-- **缺点 | Disadvantages**: 仅限本地使用 | Local use only
-
-#### SSE (Server-Sent Events)
-- **适用场景 | Use Cases**: Web 应用、需要服务器主动推送的场景 | Web applications, scenarios requiring server-initiated push
-- **优点 | Advantages**: 支持远程访问、适合 Web 集成 | Supports remote access, suitable for web integration
-- **缺点 | Disadvantages**: 单向推送，客户端需要通过 POST 发送消息 | One-way push, client needs to send messages via POST
-- **端点 | Endpoints**:
-  - `GET /sse`: SSE 连接端点 | SSE connection endpoint
-  - `POST /messages/`: 客户端消息发送端点 | Client message sending endpoint
-
-#### Streamable HTTP
-- **适用场景 | Use Cases**: 复杂的双向通信场景、需要流式响应 | Complex bidirectional communication, streaming responses needed
-- **优点 | Advantages**: 支持双向通信、流式响应、适合复杂交互 | Supports bidirectional communication, streaming responses, suitable for complex interactions
-- **缺点 | Disadvantages**: 相对复杂 | Relatively complex
-- **端点 | Endpoints**:
-  - `POST /message`: 消息处理端点 | Message handling endpoint
-
-#### 使用已安装的命令 | Using Installed Command
-
-通过环境变量配置 | Configure via Environment Variables:
-```json
-{
-  "mcpServers": {
-    "python-ide": {
-      "command": "py-ide4ai-mcp",
-      "args": [],
-      "env": {
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
-        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
-        "CMD_TIMEOUT": "30"
-      }
-    }
-  }
-}
-```
-
-通过命令行参数配置 | Configure via Command-line Arguments:
-```json
-{
-  "mcpServers": {
-    "python-ide": {
-      "command": "py-ide4ai-mcp",
-      "args": [
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
-        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
-        "--cmd-timeout", "30"
-      ]
-    }
-  }
-}
-```
-
-#### 使用 Python 模块 | Using Python Module
-
-通过环境变量配置 | Configure via Environment Variables:
-```json
-{
-  "mcpServers": {
-    "python-ide": {
-      "command": "python",
-      "args": ["-m", "ide4ai.python_ide.mcp.server"],
-      "env": {
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
-        "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
-        "CMD_TIMEOUT": "30"
-      }
-    }
-  }
-}
-```
-
-通过命令行参数配置 | Configure via Command-line Arguments:
-```json
-{
-  "mcpServers": {
-    "python-ide": {
-      "command": "python",
-      "args": [
-        "-m", "ide4ai.python_ide.mcp.server",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
-        "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
-        "--cmd-timeout", "30"
-      ]
-    }
-  }
-}
-```
+| 特性 Feature | stdio | SSE | Streamable HTTP |
+|-------------|-------|-----|-----------------|
+| **适用场景 Use Cases** | 本地进程间通信<br/>Local IPC | Web 应用、远程访问<br/>Web apps, remote access | 复杂双向通信<br/>Complex bidirectional communication |
+| **连接方式 Connection** | 标准输入输出<br/>Standard I/O | HTTP (GET + POST) | HTTP (POST) |
+| **优点 Advantages** | 简单、高效、无需网络配置<br/>Simple, efficient, no network config | 支持远程访问、适合 Web 集成<br/>Remote access, web integration | 双向通信、流式响应<br/>Bidirectional, streaming |
+| **缺点 Disadvantages** | 仅限本地使用<br/>Local only | 单向推送<br/>One-way push | 相对复杂<br/>More complex |
+| **端点 Endpoints** | N/A | `GET /sse`<br/>`POST /messages/` | `POST /message` |
+| **推荐用于 Recommended For** | Claude Desktop 等本地客户端<br/>Local clients like Claude Desktop | 自定义 Web 客户端<br/>Custom web clients | 需要流式响应的场景<br/>Scenarios requiring streaming |
 
 ## 开发指南 | Development Guide
 

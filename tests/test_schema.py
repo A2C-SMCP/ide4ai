@@ -8,8 +8,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from ai_ide.environment.workspace.schema import Position, Range
-from ai_ide.schema import ACTION_NAME_MAP, IDEAction, IDEObs
+from ide4ai.environment.workspace.schema import Position, Range
+from ide4ai.schema import ACTION_NAME_MAP, IDEAction, IDEObs
 
 
 def test_ide_obs_created_at() -> None:

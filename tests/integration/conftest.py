@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from ai_ide.python_ide.ide import PythonIDE
+from ide4ai.python_ide.ide import PythonIDE
 
 
 @pytest.fixture(scope="module")

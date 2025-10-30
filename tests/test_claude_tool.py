@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from pydantic import AnyUrl
 
-from ai_ide.environment.workspace.model import TextModel
-from ai_ide.schema import LanguageId
+from ide4ai.environment.workspace.model import TextModel
+from ide4ai.schema import LanguageId
 
 
 @pytest.fixture

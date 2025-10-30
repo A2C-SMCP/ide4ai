@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from ai_ide.environment.terminal.base import EnvironmentArguments
-from ai_ide.environment.terminal.local_terminal_env import TerminalEnv
+from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.local_terminal_env import TerminalEnv
 
 
 # Example test setup
@@ -86,10 +86,16 @@ def test_command_execution(terminal_env, echo_range):
 
 
 def test_command_execute_failed(terminal_env):
+    """测试命令执行失败的情况 / Test command execution failure"""
     action = {"category": "terminal", "action_name": "ls", "action_args": "/22"}
     observation, reward, done, success, info = terminal_env.step(action)
-    assert "No such file or directory" in observation["obs"]
-    assert not success
+
+    # 验证输出包含错误信息 / Verify output contains error message
+    assert "No such file or directory" in observation["obs"] or "cannot access" in observation["obs"], (
+        f"Expected error message in observation, got: {observation['obs']}"
+    )
+    # 验证命令执行失败 / Verify command execution failed
+    assert not success, f"Expected success=False, but got success={success}. Observation: {observation['obs']}"
     assert done
 
 

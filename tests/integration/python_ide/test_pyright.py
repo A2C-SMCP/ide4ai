@@ -88,33 +88,34 @@ def receive_message(process: subprocess.Popen, expected_id: int, cache: TTLCache
     return cache[expected_id]
 
 
-def handle_diagnostics(process: subprocess.Popen) -> str | None:
+def pull_diagnostics(process: subprocess.Popen, uri: str, message_id: int, cache: TTLCache) -> dict | None:
     """
-    处理诊断信息 / Handle diagnostic information
+    主动拉取诊断信息 / Pull diagnostic information
 
     Args:
         process: Pyright进程 / Pyright process
+        uri: 文档URI / Document URI
+        message_id: 消息ID / Message ID
+        cache: 响应缓存 / Response cache
 
     Returns:
-        诊断响应字符串，如果未找到则返回None / Diagnostic response string, or None if not found
+        诊断数据字典，如果未找到则返回None / Diagnostic data dict, or None if not found
 
     """
-    n = 0
-    while n < 10:
-        line = process.stdout.readline()
-        line_str = line.decode("utf-8")
-        print(line_str)
-        if "Content-Length:" in line_str:
-            length = int(line_str.split(":")[1].strip())
-            response = process.stdout.read(length + 2)  # 之所以+2，是因为还有一个换行符(\r\n)
-            response_str = response.decode("utf-8")
-            response_data = json.loads(response_str.strip())
-            pprint.pprint(response_data)
-            if response_data.get("method") == "textDocument/publishDiagnostics":
-                return response
-        else:
-            n += 1
-            continue
+    # 发送 textDocument/diagnostic 请求
+    send_message(
+        process,
+        "textDocument/diagnostic",
+        {"textDocument": {"uri": uri}},
+        message_id=message_id,
+    )
+
+    # 接收响应
+    response = receive_message(process, expected_id=message_id, cache=cache)
+    if response:
+        response_data = json.loads(response)
+        return response_data.get("result")
+    return None
 
 
 def test_pyright_process(workspace_root) -> None:
@@ -164,7 +165,8 @@ def test_pyright_process(workspace_root) -> None:
 
 def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> None:
     """
-    测试LSP对一个语法错误文件的检查机制
+    测试LSP对一个语法错误文件的检查机制（使用 Pull Diagnostics）
+    Test LSP diagnostic mechanism for a file with syntax errors (using Pull Diagnostics)
 
     Returns:
 
@@ -187,7 +189,7 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
                 "processId": None,
                 "workspaceFolders": [{"uri": f"file://{workspace_root}", "name": "ai-ide"}],
                 "initializationOptions": {
-                    "disablePullDiagnostics": True,
+                    "disablePullDiagnostics": False,  # 启用 Pull Diagnostics / Enable Pull Diagnostics
                 },
                 "capabilities": {
                     "textDocument": {
@@ -278,16 +280,17 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
             },
         )
 
-        diagnostics = handle_diagnostics(process)
-        assert diagnostics is not None, (
+        # 使用 Pull Diagnostics 主动拉取诊断信息 / Use Pull Diagnostics to actively pull diagnostic information
+        diagnostics_result = pull_diagnostics(process, f"file://{err_py_path}", message_id=2, cache=response_cache)
+        assert diagnostics_result is not None, (
             "未能获取到诊断信息，Pyright进程可能已崩溃 / Failed to get diagnostics, Pyright process may have crashed"
         )
-        assert any(
-            '"os" is not defined' in diagnostic["message"]
-            for diagnostic in json.loads(diagnostics)["params"]["diagnostics"]
-        )
 
-        # 发送诊断请求
+        # Pull Diagnostics 返回的结构与 Push Diagnostics 不同，需要从 items 中获取诊断信息
+        # Pull Diagnostics returns a different structure than Push Diagnostics, need to get diagnostics from items
+        diagnostics_items = diagnostics_result.get("items", [])
+        assert any('"os" is not defined' in diagnostic["message"] for diagnostic in diagnostics_items)
+        # 发送 codeAction 请求 / Send codeAction request
         send_message(
             process,
             "textDocument/codeAction",
@@ -297,7 +300,7 @@ def test_lsp_diagnostic_notification(workspace_root, fake_py_with_err_path) -> N
                     "start": {"line": 0, "character": 0},
                     "end": {"line": 7, "character": 14},
                 },
-                "context": {"diagnostics": json.loads(diagnostics)["params"]["diagnostics"]},
+                "context": {"diagnostics": diagnostics_items},  # 使用 Pull Diagnostics 返回的 items
             },
             message_id=3,
         )

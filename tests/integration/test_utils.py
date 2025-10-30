@@ -3,7 +3,7 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from ai_ide.utils import render_symbols
+from ide4ai.utils import render_symbols
 
 
 def test_render_symbols():

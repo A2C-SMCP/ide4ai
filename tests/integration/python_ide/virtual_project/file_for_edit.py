@@ -6,4 +6,5 @@
 
 
 class A:
-    a: str
+    b: int
+    c: int

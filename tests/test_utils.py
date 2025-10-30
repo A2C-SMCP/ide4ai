@@ -3,7 +3,7 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from ai_ide.utils import is_subdirectory, list_directory_tree
+from ide4ai.utils import is_subdirectory, list_directory_tree
 
 
 def test_list_directory_tree_all_recursive(fs):

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: __init__.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ
@@ -10,6 +9,7 @@ Python IDE MCP Server 封装 | Python IDE MCP Server Wrapper
 将 PythonIDE 的能力封装为 MCP Server 对外提供服务
 Wraps PythonIDE capabilities as MCP Server for external services
 """
+
 from ide4ai.python_ide.mcp.config import MCPServerConfig
 from ide4ai.python_ide.mcp.server import PythonIDEMCPServer
 

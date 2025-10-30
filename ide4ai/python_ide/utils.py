@@ -94,6 +94,7 @@ def _format_descriptions(descriptions: dict) -> str:
     for name, info in sorted(descriptions.items()):
         desc_lines.append(f"**{name}**")
 
+        # 在尾部显示__all__和docstring | Show __all__ and docstring in footer
         if info["__all__"]:
             desc_lines.append(f"  __all__: {json.dumps(info['__all__'], ensure_ascii=False)}")
 
@@ -115,6 +116,7 @@ def list_directory_tree_with_desc(
     indent: str = "",
     _is_root: bool = True,
     _descriptions: dict | None = None,
+    _is_last: bool = True,
 ) -> str:
     """
     递归或非递归列出目录树结构，并附带Python包/模块的描述信息 | List directory tree with Python package/module descriptions
@@ -127,6 +129,7 @@ def list_directory_tree_with_desc(
         indent (str): 当前递归层的缩进，用于格式化输出 | Current indentation for formatting
         _is_root (bool): 内部参数，标识是否为根调用 | Internal param, indicates if root call
         _descriptions (dict | None): 内部参数，收集描述信息 | Internal param, collects descriptions
+        _is_last (bool): 内部参数，标识是否为最后一项 | Internal param, indicates if last item
 
     Returns:
         str: 格式化的目录树字符串，包含描述信息 | Formatted directory tree with descriptions
@@ -140,17 +143,35 @@ def list_directory_tree_with_desc(
         _descriptions = {}
 
     with os.scandir(path) as entries:
-        for entry in entries:
+        entries_list = sorted(entries, key=lambda e: (not e.is_dir(), e.name))
+        total = len(entries_list)
+
+        for idx, entry in enumerate(entries_list):
+            is_last = idx == total - 1
             entry_path = os.path.join(path, entry.name)
 
-            if entry.is_dir(follow_symlinks=False):
-                output.append(f"{indent}{entry.name}/")
+            # 确定前缀符号 | Determine prefix symbol
+            if _is_root:
+                prefix = ""
+                connector = ""
+            else:
+                prefix = "└── " if is_last else "├── "
+                connector = "    " if is_last else "│   "
 
+            if entry.is_dir(follow_symlinks=False):
                 # 检查是否为Python包（包含__init__.py）| Check if it's a Python package
                 _collect_package_info(entry_path, entry.name, _descriptions)
 
+                # 构建目录行，如果有__all__则添加为行内注释 | Build dir line with inline __all__ comment
+                dir_key = f"{entry.name}/"
+                dir_line = f"{indent}{prefix}{dir_key}"
+                if dir_key in _descriptions and _descriptions[dir_key]["__all__"]:
+                    all_str = json.dumps(_descriptions[dir_key]["__all__"], ensure_ascii=False)
+                    dir_line += f"  # __all__: {all_str}"
+                output.append(dir_line)
+
                 if include_dirs == "all" or entry.name in include_dirs:
-                    new_indent = "  " + indent
+                    new_indent = indent + connector
                     output.append(
                         list_directory_tree_with_desc(
                             entry_path,
@@ -159,17 +180,23 @@ def list_directory_tree_with_desc(
                             new_indent,
                             _is_root=False,
                             _descriptions=_descriptions,
+                            _is_last=is_last,
                         ),
                     )
 
             elif entry.is_file(follow_symlinks=False):
-                output.append(f"{indent}{entry.name}")
-
                 # 如果是Python文件，提取信息 | If it's a Python file, extract info
                 if entry.name.endswith(".py"):
                     info = _extract_module_info(entry_path)
                     if info["docstring"] or info["__all__"]:
                         _descriptions[entry.name] = info
+
+                # 构建文件行，如果有__all__则添加为行内注释 | Build file line with inline __all__ comment
+                file_line = f"{indent}{prefix}{entry.name}"
+                if entry.name in _descriptions and _descriptions[entry.name]["__all__"]:
+                    all_str = json.dumps(_descriptions[entry.name]["__all__"], ensure_ascii=False)
+                    file_line += f"  # __all__: {all_str}"
+                output.append(file_line)
 
     tree_output = "\n".join(output)
 
@@ -225,19 +252,37 @@ def get_minimal_expanded_tree_with_desc(
     # 遍历当前目录 | Traverse current directory
     try:
         with os.scandir(root_dir) as entries:
-            for entry in entries:
+            entries_list = sorted(entries, key=lambda e: (not e.is_dir(), e.name))
+            total = len(entries_list)
+
+            for idx, entry in enumerate(entries_list):
+                is_last = idx == total - 1
                 entry_path = os.path.join(root_dir, entry.name)
 
-                if entry.is_dir(follow_symlinks=False):
-                    output.append(f"{indent}{entry.name}/")
+                # 确定前缀符号 | Determine prefix symbol
+                if _is_root:
+                    prefix = ""
+                    connector = ""
+                else:
+                    prefix = "└── " if is_last else "├── "
+                    connector = "    " if is_last else "│   "
 
+                if entry.is_dir(follow_symlinks=False):
                     # 检查是否为Python包 | Check if it's a Python package
                     _collect_package_info(entry_path, entry.name, _descriptions)
+
+                    # 构建目录行，如果有__all__则添加为行内注释 | Build dir line with inline __all__ comment
+                    dir_key = f"{entry.name}/"
+                    dir_line = f"{indent}{prefix}{dir_key}"
+                    if dir_key in _descriptions and _descriptions[dir_key]["__all__"]:
+                        all_str = json.dumps(_descriptions[dir_key]["__all__"], ensure_ascii=False)
+                        dir_line += f"  # __all__: {all_str}"
+                    output.append(dir_line)
 
                     # 检查这个目录是否在目标文件的路径上 | Check if this dir is on target file path
                     if path_parts and entry.name == path_parts[0]:
                         # 这个目录在目标路径上，递归展开 | This dir is on target path, expand recursively
-                        new_indent = "  " + indent
+                        new_indent = indent + connector
                         next_target = os.path.join(root_dir, *path_parts)
                         output.append(
                             get_minimal_expanded_tree_with_desc(
@@ -250,7 +295,7 @@ def get_minimal_expanded_tree_with_desc(
                         )
                     else:
                         # 不在目标路径上，只显示一级 | Not on target path, show only first level
-                        new_indent = "  " + indent
+                        new_indent = indent + connector
                         output.append(
                             list_directory_tree_with_desc(
                                 entry_path,
@@ -263,17 +308,23 @@ def get_minimal_expanded_tree_with_desc(
                         )
 
                 elif entry.is_file(follow_symlinks=False):
-                    # 如果是目标文件，标记它 | Mark target file
-                    if entry_path == target_file_path:
-                        output.append(f"{indent}{entry.name} ← 当前文件 | Current file")
-                    else:
-                        output.append(f"{indent}{entry.name}")
-
                     # 如果是Python文件，提取信息 | If it's a Python file, extract info
                     if entry.name.endswith(".py"):
                         info = _extract_module_info(entry_path)
                         if info["docstring"] or info["__all__"]:
                             _descriptions[entry.name] = info
+
+                    # 构建文件行，如果有__all__则添加为行内注释 | Build file line with inline __all__ comment
+                    file_line = f"{indent}{prefix}{entry.name}"
+
+                    # 如果是目标文件，标记它 | Mark target file
+                    if entry_path == target_file_path:
+                        file_line += " ← 当前文件 | Current file"
+                    elif entry.name in _descriptions and _descriptions[entry.name]["__all__"]:
+                        all_str = json.dumps(_descriptions[entry.name]["__all__"], ensure_ascii=False)
+                        file_line += f"  # __all__: {all_str}"
+
+                    output.append(file_line)
 
     except PermissionError:
         output.append(f"{indent}[权限不足 | Permission denied]")

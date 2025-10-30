@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: config.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ

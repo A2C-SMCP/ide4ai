@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: server.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ
@@ -82,7 +81,7 @@ class PythonIDEMCPServer:
         设置 MCP 协议处理器 | Setup MCP protocol handlers
         """
 
-        @self.server.list_tools()
+        @self.server.list_tools()  # type: ignore[no-untyped-call]
         async def list_tools() -> list[Tool]:
             """
             列出所有可用工具 | List all available tools

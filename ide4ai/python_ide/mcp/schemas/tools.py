@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: tools.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ

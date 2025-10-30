@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: test_mcp_bash_tool.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ
@@ -12,6 +11,7 @@ Tests basic functionality of Bash tool
 """
 
 import pytest
+from pydantic import ValidationError
 
 from ide4ai.ides import PyIDESingleton
 from ide4ai.python_ide.mcp.tools.bash import BashTool
@@ -74,10 +74,12 @@ async def test_bash_tool_execute_simple_command(bash_tool):
         bash_tool: Bash 工具实例 | Bash tool instance
     """
     # 执行 echo 命令 | Execute echo command
-    result = await bash_tool.execute({
-        "command": "echo",
-        "description": "Test echo command",
-    })
+    result = await bash_tool.execute(
+        {
+            "command": "echo",
+            "description": "Test echo command",
+        }
+    )
 
     # 验证结果 | Verify result
     assert isinstance(result, dict)
@@ -93,11 +95,13 @@ async def test_bash_tool_execute_with_timeout(bash_tool):
     Args:
         bash_tool: Bash 工具实例 | Bash tool instance
     """
-    result = await bash_tool.execute({
-        "command": "pwd",
-        "timeout": 5000,  # 5 秒 | 5 seconds
-        "description": "Get current directory",
-    })
+    result = await bash_tool.execute(
+        {
+            "command": "pwd",
+            "timeout": 5000,  # 5 秒 | 5 seconds
+            "description": "Get current directory",
+        }
+    )
 
     assert isinstance(result, dict)
     assert "success" in result
@@ -140,5 +144,5 @@ def test_bash_tool_input_schema_validation(bash_tool):
     assert valid_input_with_timeout.timeout == 10000
 
     # 无效超时（超过最大值）| Invalid timeout (exceeds max)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         BashInput(command="ls", timeout=700000)  # 超过 600000 | Exceeds 600000

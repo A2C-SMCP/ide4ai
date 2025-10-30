@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: base.py
 # @Time    : 2025/10/29 12:01
 # @Author  : JQQ
@@ -12,11 +11,14 @@ Defines base interface and common functionality for all tools
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
 from ide4ai.python_ide.ide import PythonIDE
+
+# 泛型类型变量 | Generic type variable
+T = TypeVar("T", bound=BaseModel)
 
 
 class BaseTool(ABC):
@@ -82,7 +84,7 @@ class BaseTool(ABC):
         """
         pass
 
-    def validate_input(self, arguments: dict[str, Any], model: type[BaseModel]) -> BaseModel:
+    def validate_input(self, arguments: dict[str, Any], model: type[T]) -> T:
         """
         验证输入参数 | Validate input arguments
 
@@ -91,7 +93,7 @@ class BaseTool(ABC):
             model: Pydantic 模型类 | Pydantic model class
 
         Returns:
-            BaseModel: 验证后的模型实例 | Validated model instance
+            T: 验证后的模型实例 | Validated model instance
 
         Raises:
             ValueError: 参数验证失败 | Argument validation failed

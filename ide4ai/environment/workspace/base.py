@@ -64,6 +64,7 @@ class BaseWorkspace(gym.Env, ABC):
         enable_simple_view_mode: bool = False,
         header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
         shortcut_commands: dict[str, list[str]] | None = None,
+        diagnostics_timeout: float = 10.0,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -88,6 +89,8 @@ class BaseWorkspace(gym.Env, ABC):
         self.lsp_output_monitor_thread: threading.Thread | None = None
         # LSP输出缓冲区，用于累积未完整的消息 / LSP output buffer for accumulating incomplete messages
         self._lsp_buffer: str = ""
+        # 诊断信息拉取超时时间（秒）/ Diagnostics pull timeout in seconds
+        self._diagnostics_timeout = diagnostics_timeout
         # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
         # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，
         # 比如diagnostic。

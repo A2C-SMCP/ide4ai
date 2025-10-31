@@ -56,11 +56,7 @@ def test_py_workspace_read_file(project_root_dir, py_workspace) -> None:
     with open(test_file_path) as f:
         read_res = f.read()
     assert read_res[:20] in content  # 因为文件较大，直接使用in判断会比较慢，所以截取20个字符做判断
-    import tiktoken
-
-    enc = tiktoken.get_encoding("cl100k_base")
-    tokens = enc.encode(content)
-    print(f"内容长度: {len(tokens)}")
+    print(f"内容长度: {len(content)}")
 
 
 def test_py_workspace_render(project_root_dir, py_workspace) -> None:

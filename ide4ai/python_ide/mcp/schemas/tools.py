@@ -19,6 +19,10 @@ class BashInput(BaseModel):
     """Bash 工具输入 Schema | Bash Tool Input Schema"""
 
     command: str = Field(..., description="要执行的命令 | The command to execute")
+    args: str | list[str] | None = Field(
+        None,
+        description="命令参数，可以是字符串或字符串列表 | Command arguments, can be a string or list of strings",
+    )
     timeout: int | None = Field(
         None,
         description="超时时间(毫秒)，最大 600000 | Optional timeout in milliseconds (max 600000)",

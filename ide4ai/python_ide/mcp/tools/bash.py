@@ -78,10 +78,14 @@ class BashTool(BaseTool):
 
         try:
             # 构造 IDE action
+            # action_args 必须是 str 或 list[str]，不能是 dict
+            # action_args must be str or list[str], not dict
             action = {
                 "category": "terminal",
                 "action_name": bash_input.command,
-                "action_args": {},
+                "action_args": bash_input.args
+                if bash_input.args is not None
+                else "",  # 使用传入的 args 或空字符串 | Use provided args or empty string
             }
 
             # 如果设置了超时，转换为秒 | Convert timeout to seconds if set

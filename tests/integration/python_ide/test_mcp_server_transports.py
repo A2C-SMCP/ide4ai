@@ -325,7 +325,7 @@ class TestMCPServerStreamableHTTPTransport:
                     try:
                         # 发送一个简单的测试请求 | Send a simple test request
                         response = await client.post(
-                            f"http://{config.host}:{config.port}/message",
+                            f"http://{config.host}:{config.port}/mcp",
                             json={"test": "data"},
                             headers={"Content-Type": "application/json"},
                         )

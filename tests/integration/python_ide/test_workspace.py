@@ -26,7 +26,12 @@ def project_root_dir() -> str:
 
 @pytest.fixture
 def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_python_workspace")
+    # 使用更长的超时时间以适应低配置电脑 / Use longer timeout for low-spec computers
+    workspace = PyWorkspace(
+        root_dir=project_root_dir,
+        project_name="test_python_workspace",
+        diagnostics_timeout=15.0,  # 增加到15秒 / Increase to 15 seconds
+    )
     yield workspace
     workspace.close()
 
@@ -841,7 +846,11 @@ def valid_function():
         temp_file_path = f.name
 
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_replace_diagnostics")
+    workspace = PyWorkspace(
+        root_dir=project_root_dir,
+        project_name="test_replace_diagnostics",
+        diagnostics_timeout=15.0,  # 增加超时时间以适应低配置电脑 / Increase timeout for low-spec computers
+    )
 
     try:
         # 打开文件 / Open file

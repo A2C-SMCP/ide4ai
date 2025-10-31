@@ -627,7 +627,7 @@ class PyWorkspace(BaseWorkspace):
         )
 
         # 编辑后主动拉取诊断信息 / Pull diagnostics after editing
-        diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+        diagnostics = self.pull_diagnostics(uri=uri, timeout=self._diagnostics_timeout)
 
         return res, cast(
             DocumentDiagnosticReport | None,

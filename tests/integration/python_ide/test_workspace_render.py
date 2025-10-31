@@ -38,7 +38,11 @@ def project_root_dir() -> str:
 @pytest.fixture
 def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
     """PyWorkspace实例 | PyWorkspace instance"""
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_render_workspace")
+    workspace = PyWorkspace(
+        root_dir=project_root_dir,
+        project_name="test_render_workspace",
+        diagnostics_timeout=15.0,  # 增加超时时间以适应低配置电脑 / Increase timeout for low-spec computers
+    )
     yield workspace
     workspace.close()
 
@@ -81,7 +85,7 @@ install:
         with open(test_file, "w", encoding="utf-8") as f:
             f.write("# -*- coding: utf-8 -*-\n# Test file\ndef main():\n    pass\n")
 
-        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_makefile_workspace")
+        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_makefile_workspace", diagnostics_timeout=15.0)
         yield temp_dir, workspace
         workspace.close()
 
@@ -121,7 +125,7 @@ configure:
         with open(test_file, "w", encoding="utf-8") as f:
             f.write("# Test\nprint('hello')\n")
 
-        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_mk_workspace")
+        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_mk_workspace", diagnostics_timeout=15.0)
         yield temp_dir, workspace
         workspace.close()
 
@@ -309,6 +313,7 @@ class TestRenderShortcutCommands:
             root_dir=project_root_dir,
             project_name="test_custom_commands",
             shortcut_commands=custom_commands,
+            diagnostics_timeout=15.0,
         )
 
         try:
@@ -355,7 +360,7 @@ class TestRenderEdgeCases:
         Create an empty temporary directory as workspace
         """
         with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_workspace")
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_workspace", diagnostics_timeout=15.0)
             try:
                 render_output = workspace.render()
 
@@ -381,7 +386,7 @@ class TestRenderEdgeCases:
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Deep file\nprint('deep')\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="nested_workspace")
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="nested_workspace", diagnostics_timeout=15.0)
             try:
                 # 打开深层文件 | Open deep file
                 workspace.open_file(uri=f"file://{test_file}")
@@ -412,7 +417,7 @@ class TestRenderEdgeCases:
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Test file\nprint('test')\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="special_chars_workspace")
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="special_chars_workspace", diagnostics_timeout=15.0)
             try:
                 workspace.open_file(uri=f"file://{test_file}")
 
@@ -523,7 +528,9 @@ def test_main():
 """)
 
             # 4. 初始化workspace | Initialize workspace
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="integration_test_project")
+            workspace = PyWorkspace(
+                root_dir=temp_dir, project_name="integration_test_project", diagnostics_timeout=15.0
+            )
 
             try:
                 # 5. 打开文件 | Open files
@@ -659,7 +666,7 @@ def test_process():
             with open(os.path.join(temp_dir, "README.md"), "w", encoding="utf-8") as f:
                 f.write("# Test Project\n\nThis is a test project.\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="verbose_test_project")
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="verbose_test_project", diagnostics_timeout=15.0)
             yield temp_dir, workspace
             workspace.close()
 
@@ -918,7 +925,7 @@ def test_process():
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Empty module\npass\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_pkg_test")
+            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_pkg_test", diagnostics_timeout=15.0)
             try:
                 workspace.open_file(uri=f"file://{test_file}")
 

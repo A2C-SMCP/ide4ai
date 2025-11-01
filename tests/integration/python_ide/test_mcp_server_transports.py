@@ -113,10 +113,13 @@ class TestMCPServerTransportModes:
             config = MCPServerConfig()
 
             server = PythonIDEMCPServer(config)
-            assert server.config.transport == "stdio"
-            assert server.server is not None
-            assert server.ide is not None
-            assert len(server.tools) > 0  # 应该有注册的工具 | Should have registered tools
+            try:
+                assert server.config.transport == "stdio"
+                assert server.server is not None
+                assert server.ide is not None
+                assert len(server.tools) > 0  # 应该有注册的工具 | Should have registered tools
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
     def test_server_initialization_sse(self) -> None:
         """
@@ -136,9 +139,12 @@ class TestMCPServerTransportModes:
             config = MCPServerConfig()
 
             server = PythonIDEMCPServer(config)
-            assert server.config.transport == "sse"
-            assert server.config.host == "127.0.0.1"
-            assert server.config.port == 8003
+            try:
+                assert server.config.transport == "sse"
+                assert server.config.host == "127.0.0.1"
+                assert server.config.port == 8003
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
     def test_server_initialization_streamable_http(self) -> None:
         """
@@ -158,9 +164,12 @@ class TestMCPServerTransportModes:
             config = MCPServerConfig()
 
             server = PythonIDEMCPServer(config)
-            assert server.config.transport == "streamable-http"
-            assert server.config.host == "127.0.0.1"
-            assert server.config.port == 8004
+            try:
+                assert server.config.transport == "streamable-http"
+                assert server.config.host == "127.0.0.1"
+                assert server.config.port == 8004
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
 
 @pytest.mark.asyncio
@@ -188,19 +197,22 @@ class TestMCPServerSSETransport:
             config = MCPServerConfig()
             server = PythonIDEMCPServer(config)
 
-            # 创建一个任务来运行服务器 | Create a task to run the server
-            server_task = asyncio.create_task(server.run())
-
-            # 等待一小段时间让服务器启动 | Wait a bit for server to start
-            await asyncio.sleep(0.5)
-
-            # 取消服务器任务 | Cancel server task
-            server_task.cancel()
-
             try:
-                await server_task
-            except asyncio.CancelledError:
-                pass  # 预期的取消 | Expected cancellation
+                # 创建一个任务来运行服务器 | Create a task to run the server
+                server_task = asyncio.create_task(server.run())
+
+                # 等待一小段时间让服务器启动 | Wait a bit for server to start
+                await asyncio.sleep(0.5)
+
+                # 取消服务器任务 | Cancel server task
+                server_task.cancel()
+
+                try:
+                    await server_task
+                except asyncio.CancelledError:
+                    pass  # 预期的取消 | Expected cancellation
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
     @pytest.mark.timeout(10)
     async def test_sse_server_endpoints_accessible(self) -> None:
@@ -254,6 +266,7 @@ class TestMCPServerSSETransport:
                     await server_task
                 except asyncio.CancelledError:
                     pass
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
 
 @pytest.mark.asyncio
@@ -278,19 +291,22 @@ class TestMCPServerStreamableHTTPTransport:
             config = MCPServerConfig()
             server = PythonIDEMCPServer(config)
 
-            # 创建一个任务来运行服务器 | Create a task to run the server
-            server_task = asyncio.create_task(server.run())
-
-            # 等待一小段时间让服务器启动 | Wait a bit for server to start
-            await asyncio.sleep(0.5)
-
-            # 取消服务器任务 | Cancel server task
-            server_task.cancel()
-
             try:
-                await server_task
-            except asyncio.CancelledError:
-                pass  # 预期的取消 | Expected cancellation
+                # 创建一个任务来运行服务器 | Create a task to run the server
+                server_task = asyncio.create_task(server.run())
+
+                # 等待一小段时间让服务器启动 | Wait a bit for server to start
+                await asyncio.sleep(0.5)
+
+                # 取消服务器任务 | Cancel server task
+                server_task.cancel()
+
+                try:
+                    await server_task
+                except asyncio.CancelledError:
+                    pass  # 预期的取消 | Expected cancellation
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
     @pytest.mark.timeout(10)
     async def test_streamable_http_server_endpoints_accessible(self) -> None:
@@ -343,6 +359,7 @@ class TestMCPServerStreamableHTTPTransport:
                     await server_task
                 except asyncio.CancelledError:
                     pass
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up
 
 
 @pytest.mark.asyncio
@@ -362,7 +379,10 @@ class TestMCPServerTransportIntegration:
         ):
             config_stdio = MCPServerConfig()
             server_stdio = PythonIDEMCPServer(config_stdio)
-            assert server_stdio.config.transport == "stdio"
+            try:
+                assert server_stdio.config.transport == "stdio"
+            finally:
+                server_stdio.close()
 
         # 测试 SSE 模式 | Test SSE mode
         with MCPServerConfig.change_config_sources(
@@ -378,7 +398,10 @@ class TestMCPServerTransportIntegration:
         ):
             config_sse = MCPServerConfig()
             server_sse = PythonIDEMCPServer(config_sse)
-            assert server_sse.config.transport == "sse"
+            try:
+                assert server_sse.config.transport == "sse"
+            finally:
+                server_sse.close()
 
         # 测试 Streamable HTTP 模式 | Test Streamable HTTP mode
         with MCPServerConfig.change_config_sources(
@@ -394,7 +417,10 @@ class TestMCPServerTransportIntegration:
         ):
             config_http = MCPServerConfig()
             server_http = PythonIDEMCPServer(config_http)
-            assert server_http.config.transport == "streamable-http"
+            try:
+                assert server_http.config.transport == "streamable-http"
+            finally:
+                server_http.close()
 
     async def test_invalid_transport_mode_raises_error(self) -> None:
         """
@@ -413,6 +439,9 @@ class TestMCPServerTransportIntegration:
 
             server = PythonIDEMCPServer(config)
 
-            # 运行服务器应该抛出 ValueError | Running server should raise ValueError
-            with pytest.raises(ValueError, match="不支持的传输模式|Unsupported transport mode"):
-                await server.run()
+            try:
+                # 运行服务器应该抛出 ValueError | Running server should raise ValueError
+                with pytest.raises(ValueError, match="不支持的传输模式|Unsupported transport mode"):
+                    await server.run()
+            finally:
+                server.close()  # 确保清理资源 | Ensure resources are cleaned up

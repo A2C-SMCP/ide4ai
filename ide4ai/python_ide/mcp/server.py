@@ -63,6 +63,35 @@ class PythonIDEMCPServer:
             f"Python IDE MCP Server 初始化完成 | Python IDE MCP Server initialized: project={config.project_name}, root={config.root_dir}",
         )
 
+    def close(self) -> None:
+        """
+        关闭 MCP Server 并清理资源 | Close MCP Server and cleanup resources
+
+        释放 IDE 和 workspace 资源，关闭 LSP 进程
+        Release IDE and workspace resources, close LSP process
+        """
+        try:
+            if self.ide:
+                # 调用 IDE 的 close 方法，由 IDE 负责清理其内部资源
+                # Call IDE's close method, let IDE handle its internal resource cleanup
+                self.ide.close()
+                logger.info(
+                    f"MCP Server 资源已清理 | MCP Server resources cleaned up: project={self.config.project_name}"
+                )
+        except Exception as e:
+            logger.error(f"关闭 MCP Server 时出错 | Error closing MCP Server: {e}")
+
+    def __del__(self) -> None:
+        """
+        析构函数，确保资源被清理 | Destructor to ensure resources are cleaned up
+        """
+        try:
+            self.close()
+        except Exception as e:
+            # 在析构函数中捕获所有异常，避免影响垃圾回收
+            # Catch all exceptions in destructor to avoid affecting garbage collection
+            logger.error(f"析构时关闭环境出错 / Error closing environment in destructor: {e}")
+
     def _register_tools(self) -> None:
         """
         注册所有工具 | Register all tools

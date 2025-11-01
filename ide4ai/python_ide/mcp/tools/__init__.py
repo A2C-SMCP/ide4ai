@@ -8,5 +8,6 @@ MCP 工具实现 | MCP Tools Implementation
 """
 
 from ide4ai.python_ide.mcp.tools.bash import BashTool
+from ide4ai.python_ide.mcp.tools.glob import GlobTool
 
-__all__ = ["BashTool"]
+__all__ = ["BashTool", "GlobTool"]

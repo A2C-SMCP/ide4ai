@@ -27,7 +27,7 @@ def ide_instance():
     """
     ide_singleton = PyIDESingleton(
         cmd_white_list=["ls", "pwd", "echo"],
-        root_dir=".",
+        root_dir="../..",
         project_name="test-project",
     )
     return ide_singleton.ide

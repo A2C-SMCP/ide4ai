@@ -24,7 +24,7 @@ from starlette.routing import Mount, Route
 
 from ide4ai.ides import PyIDESingleton
 from ide4ai.python_ide.mcp.config import MCPServerConfig
-from ide4ai.python_ide.mcp.tools import BashTool
+from ide4ai.python_ide.mcp.tools import BashTool, GlobTool
 from ide4ai.python_ide.mcp.tools.base import BaseTool
 
 
@@ -100,10 +100,13 @@ class PythonIDEMCPServer:
         bash_tool = BashTool(self.ide)
         self.tools[bash_tool.name] = bash_tool
 
+        # 注册 Glob 工具 | Register Glob tool
+        glob_tool = GlobTool(self.ide)
+        self.tools[glob_tool.name] = glob_tool
+
         logger.info(f"已注册工具 | Registered tools: {list(self.tools.keys())}")
 
         # TODO: 注册其他工具 | Register other tools
-        # - GlobTool
         # - GrepTool
         # - ReadTool
         # - EditTool

@@ -65,6 +65,21 @@ class GlobInput(BaseModel):
     )
 
 
+class GlobOutput(BaseModel):
+    """Glob 工具输出 Schema | Glob Tool Output Schema"""
+
+    success: bool = Field(..., description="是否成功执行 | Whether the operation was successful")
+    files: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="匹配的文件列表 | List of matched files with path and metadata",
+    )
+    error: str | None = Field(default=None, description="错误信息(如果有) | Error message (if any)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="额外的元数据 | Additional metadata",
+    )
+
+
 class GrepInput(BaseModel):
     """Grep 工具输入 Schema | Grep Tool Input Schema"""
 

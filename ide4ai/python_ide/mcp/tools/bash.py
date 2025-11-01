@@ -26,6 +26,9 @@ class BashTool(BaseTool):
     Executes Bash commands through PythonIDE's terminal environment
     """
 
+    # 输出字符数限制 | Output character limit
+    MAX_OUTPUT_LENGTH = 30000
+
     @property
     def name(self) -> str:
         return "Bash"
@@ -128,10 +131,22 @@ cd /foo/bar && pytest tests
             # 执行命令 | Execute command
             obs, reward, done, success, info = self.ide.step(action)
 
+            # 获取输出并进行截断处理 | Get output and truncate if necessary
+            raw_output = str(obs.get("obs", ""))
+            output_text = raw_output
+            truncated = False
+
+            if len(raw_output) > self.MAX_OUTPUT_LENGTH:
+                output_text = raw_output[: self.MAX_OUTPUT_LENGTH]
+                truncated = True
+                logger.warning(
+                    f"输出被截断 | Output truncated: {len(raw_output)} -> {self.MAX_OUTPUT_LENGTH} 字符 | characters"
+                )
+
             # 构造输出 | Construct output
             output = BashOutput(
                 success=bool(success),
-                output=str(obs.get("obs", "")),
+                output=output_text,
                 error=str(obs.get("error", "")) if "error" in obs else None,
                 exit_code=info.get("exit_code"),
                 metadata={
@@ -139,6 +154,8 @@ cd /foo/bar && pytest tests
                     "done": done,
                     "description": bash_input.description,
                     "run_in_background": bash_input.run_in_background,
+                    "truncated": truncated,
+                    "original_length": len(raw_output) if truncated else None,
                 },
             )
 

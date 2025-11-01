@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 
 
@@ -33,12 +34,14 @@ class TestPexpectTerminalEnv:
     def basic_env(self, temp_work_dir):
         """创建基础测试环境 | Create basic test environment"""
         args = EnvironmentArguments(image_name="local", timeout=10)
-        white_list = ["echo", "pwd", "ls", "cat", "python", "python3", "uv", "poetry"]
+        cmd_filter = CommandFilterConfig.from_white_list(
+            ["echo", "pwd", "ls", "cat", "python", "python3", "uv", "poetry"]
+        )
 
         env = PexpectTerminalEnv(
             args=args,
-            white_list=white_list,
             work_dir=temp_work_dir,
+            cmd_filter=cmd_filter,
         )
 
         yield env
@@ -97,7 +100,7 @@ class TestPexpectTerminalEnv:
             "action_args": ["-rf", "/"],
         }
 
-        with pytest.raises(ValueError, match="not in white list"):
+        with pytest.raises(ValueError, match="not in whitelist"):
             basic_env.step(action)
 
     def test_render(self, basic_env):
@@ -156,7 +159,7 @@ class TestPexpectTerminalEnvWithVenv:
     def test_init_with_venv_command(self, temp_work_dir_with_venv):
         """测试使用虚拟环境初始化命令 | Test initialization with venv command"""
         args = EnvironmentArguments(image_name="local", timeout=10)
-        white_list = ["python", "python3", "pip", "which"]
+        cmd_filter = CommandFilterConfig.from_white_list(["python", "python3", "pip", "which"])
 
         # 这里演示如何传入虚拟环境激活命令
         # This demonstrates how to pass venv activation command
@@ -165,8 +168,8 @@ class TestPexpectTerminalEnvWithVenv:
 
         env = PexpectTerminalEnv(
             args=args,
-            white_list=white_list,
             work_dir=temp_work_dir_with_venv,
+            cmd_filter=cmd_filter,
             active_venv_cmd=None,  # 如果有虚拟环境,这里传入激活命令 | Pass activation command if venv exists
         )
 
@@ -182,12 +185,12 @@ class TestPexpectTerminalEnvWithVenv:
     def test_python_version_in_venv(self, temp_work_dir_with_venv):
         """测试在虚拟环境中检查 Python 版本 | Test checking Python version in venv"""
         args = EnvironmentArguments(image_name="local", timeout=10)
-        white_list = ["python", "python3", "which"]
+        cmd_filter = CommandFilterConfig.from_white_list(["python", "python3", "which"])
 
         env = PexpectTerminalEnv(
             args=args,
-            white_list=white_list,
             work_dir=temp_work_dir_with_venv,
+            cmd_filter=cmd_filter,
         )
 
         # 检查 Python 版本 | Check Python version
@@ -211,24 +214,24 @@ class TestPexpectTerminalEnvEdgeCases:
     def test_invalid_work_dir(self):
         """测试无效工作目录 | Test invalid working directory"""
         args = EnvironmentArguments(image_name="local", timeout=10)
-        white_list = ["echo"]
+        cmd_filter = CommandFilterConfig.from_white_list(["echo"])
 
         with pytest.raises(ValueError, match="does not exist"):
             PexpectTerminalEnv(
                 args=args,
-                white_list=white_list,
                 work_dir="/nonexistent/directory",
+                cmd_filter=cmd_filter,
             )
 
     def test_command_timeout(self, tmp_path):
         """测试命令超时 | Test command timeout"""
         args = EnvironmentArguments(image_name="local", timeout=2)  # 短超时 | Short timeout
-        white_list = ["sleep"]
+        cmd_filter = CommandFilterConfig.from_white_list(["sleep"])
 
         env = PexpectTerminalEnv(
             args=args,
-            white_list=white_list,
             work_dir=str(tmp_path),
+            cmd_filter=cmd_filter,
         )
 
         # 执行一个会超时的命令 | Execute a command that will timeout
@@ -248,12 +251,12 @@ class TestPexpectTerminalEnvEdgeCases:
     def test_close_already_closed(self, tmp_path):
         """测试关闭已关闭的环境 | Test closing already closed environment"""
         args = EnvironmentArguments(image_name="local", timeout=10)
-        white_list = ["echo"]
+        cmd_filter = CommandFilterConfig.from_white_list(["echo"])
 
         env = PexpectTerminalEnv(
             args=args,
-            white_list=white_list,
             work_dir=str(tmp_path),
+            cmd_filter=cmd_filter,
         )
 
         env.close()
@@ -270,6 +273,124 @@ class TestPexpectTerminalEnvEdgeCases:
                     "action_args": ["test"],
                 },
             )
+
+
+class TestCommandFilterConfig:
+    """测试黑白名单功能 | Test blacklist/whitelist functionality"""
+
+    def test_whitelist_mode(self, tmp_path):
+        """测试白名单模式 | Test whitelist mode"""
+        args = EnvironmentArguments(image_name="local", timeout=10)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls"])
+
+        env = PexpectTerminalEnv(
+            args=args,
+            work_dir=str(tmp_path),
+            cmd_filter=cmd_filter,
+        )
+
+        # 白名单中的命令应该成功 | Whitelisted command should succeed
+        action = {
+            "category": "terminal",
+            "action_name": "echo",
+            "action_args": ["test"],
+        }
+        obs, reward, done, success, _ = env.step(action)
+        assert success is True
+
+        # 不在白名单中的命令应该失败 | Non-whitelisted command should fail
+        action = {
+            "category": "terminal",
+            "action_name": "pwd",
+            "action_args": [],
+        }
+        with pytest.raises(ValueError, match="not in whitelist"):
+            env.step(action)
+
+        env.close()
+
+    def test_blacklist_mode(self, tmp_path):
+        """测试黑名单模式 | Test blacklist mode"""
+        args = EnvironmentArguments(image_name="local", timeout=10)
+        # 仅使用黑名单,不使用白名单 | Only use blacklist, no whitelist
+        cmd_filter = CommandFilterConfig.allow_all_except(["rm", "dd"])
+
+        env = PexpectTerminalEnv(
+            args=args,
+            work_dir=str(tmp_path),
+            cmd_filter=cmd_filter,
+        )
+
+        # 不在黑名单中的命令应该成功 | Non-blacklisted command should succeed
+        action = {
+            "category": "terminal",
+            "action_name": "echo",
+            "action_args": ["test"],
+        }
+        obs, reward, done, success, _ = env.step(action)
+        assert success is True
+
+        # 在黑名单中的命令应该失败 | Blacklisted command should fail
+        action = {
+            "category": "terminal",
+            "action_name": "rm",
+            "action_args": ["-rf", "/"],
+        }
+        with pytest.raises(ValueError, match="in blacklist"):
+            env.step(action)
+
+        env.close()
+
+    def test_default_blacklist(self, tmp_path):
+        """测试默认黑名单 | Test default blacklist"""
+        args = EnvironmentArguments(image_name="local", timeout=10)
+        # 不指定任何过滤器,使用默认黑名单 | No filter specified, use default blacklist
+        env = PexpectTerminalEnv(
+            args=args,
+            work_dir=str(tmp_path),
+        )
+
+        # 普通命令应该成功 | Normal command should succeed
+        action = {
+            "category": "terminal",
+            "action_name": "echo",
+            "action_args": ["test"],
+        }
+        obs, reward, done, success, _ = env.step(action)
+        assert success is True
+
+        # 默认黑名单中的危险命令应该失败 | Dangerous command in default blacklist should fail
+        action = {
+            "category": "terminal",
+            "action_name": "rm",
+            "action_args": ["-rf", "/"],
+        }
+        with pytest.raises(ValueError, match="in blacklist"):
+            env.step(action)
+
+        env.close()
+
+    def test_allow_all_mode(self, tmp_path):
+        """测试允许所有命令模式(不推荐) | Test allow all mode (not recommended)"""
+        args = EnvironmentArguments(image_name="local", timeout=10)
+        cmd_filter = CommandFilterConfig.allow_all()
+
+        env = PexpectTerminalEnv(
+            args=args,
+            work_dir=str(tmp_path),
+            cmd_filter=cmd_filter,
+        )
+
+        # 任何命令都应该被允许(但可能执行失败) | Any command should be allowed (but may fail to execute)
+        action = {
+            "category": "terminal",
+            "action_name": "echo",
+            "action_args": ["test"],
+        }
+        obs, reward, done, success, _ = env.step(action)
+        assert success is True
+
+        env.close()
 
 
 if __name__ == "__main__":

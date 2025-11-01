@@ -13,6 +13,7 @@ Tests basic functionality of Bash tool
 import pytest
 from pydantic import ValidationError
 
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.ides import PyIDESingleton
 from ide4ai.python_ide.mcp.tools.bash import BashTool
 
@@ -26,9 +27,9 @@ def ide_instance():
         PythonIDE: IDE 实例 | IDE instance
     """
     ide_singleton = PyIDESingleton(
-        cmd_white_list=["ls", "pwd", "echo"],
         root_dir="../..",
         project_name="test-project",
+        cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )
     return ide_singleton.ide
 

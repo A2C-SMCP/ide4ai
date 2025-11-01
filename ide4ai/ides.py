@@ -7,6 +7,7 @@ import threading
 from typing import Any
 
 from ide4ai.base import WorkspaceSetting
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.python_ide.ide import PythonIDE
 
 
@@ -33,27 +34,25 @@ class PyIDESingleton(metaclass=IDESingleton):
 
     def __init__(
         self,
-        cmd_white_list: list[str],
         root_dir: str,
         project_name: str,
+        cmd_filter: CommandFilterConfig | None = None,
         render_with_symbols: bool = True,
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
         workspace_setting: WorkspaceSetting | None = None,
-        *args: Any,
         **kwargs: Any,
     ) -> None:
         self._ide: PythonIDE = PythonIDE(
-            cmd_white_list,
-            root_dir,
-            project_name,
-            render_with_symbols,
-            max_active_models,
-            cmd_time_out,
-            enable_simple_view_mode,
-            workspace_setting,
-            *args,
+            root_dir=root_dir,
+            project_name=project_name,
+            cmd_filter=cmd_filter,
+            render_with_symbols=render_with_symbols,
+            max_active_models=max_active_models,
+            cmd_time_out=cmd_time_out,
+            enable_simple_view_mode=enable_simple_view_mode,
+            workspace_setting=workspace_setting,
             **kwargs,
         )
 

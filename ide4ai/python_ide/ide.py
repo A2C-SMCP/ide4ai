@@ -7,6 +7,7 @@ from typing import Any, ClassVar, SupportsFloat
 
 from ide4ai.base import IDE, WorkspaceSetting
 from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 from ide4ai.exceptions import IDEExecutionError
 from ide4ai.python_ide.workspace import PyWorkspace
@@ -35,28 +36,26 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
 
     def __init__(
         self,
-        cmd_white_list: list[str],
         root_dir: str,
         project_name: str,
+        cmd_filter: CommandFilterConfig | None = None,
         render_with_symbols: bool = True,
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
         workspace_setting: WorkspaceSetting | None = None,
         active_venv_cmd: str | None = None,
-        *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            cmd_white_list,
-            root_dir,
-            project_name,
-            render_with_symbols,
-            max_active_models,
-            cmd_time_out,
-            enable_simple_view_mode,
-            workspace_setting,
-            *args,
+            root_dir=root_dir,
+            project_name=project_name,
+            cmd_filter=cmd_filter,
+            render_with_symbols=render_with_symbols,
+            max_active_models=max_active_models,
+            cmd_time_out=cmd_time_out,
+            enable_simple_view_mode=enable_simple_view_mode,
+            workspace_setting=workspace_setting,
             **kwargs,
         )
         self.active_venv_cmd = active_venv_cmd
@@ -81,9 +80,9 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
         """
 
         return PexpectTerminalEnv(
-            EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
-            self.cmd_white_list,
-            self.root_dir,
+            args=EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
+            work_dir=self.root_dir,
+            cmd_filter=self.cmd_filter,
             active_venv_cmd=self.active_venv_cmd,
         )
 
@@ -101,8 +100,9 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
             ValueError: 如果动作不在支持的动作集合中 | If the action is not in the supported action set
         """
         ide_action = IDEAction.model_validate(action)
-        if ide_action.category == "terminal" and ide_action.action_name not in self.cmd_white_list:
-            err = f"Action not in white list: {ide_action.action_args}. Can't run this command now."
+        if ide_action.category == "terminal" and not self.cmd_filter.is_allowed(ide_action.action_name):
+            reason = self.cmd_filter.get_rejection_reason(ide_action.action_name)
+            err = f"{reason}. Can't run this command now."
             raise IDEExecutionError(message=err, detail_for_llm=err)
         return ide_action
 

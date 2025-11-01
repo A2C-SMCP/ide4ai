@@ -11,7 +11,7 @@ from ide4ai.exceptions import IDEExecutionError
 def test_initialization(python_ide):
     assert python_ide.root_dir
     assert python_ide.project_name == "ai_editor_for_test"
-    assert "echo" in python_ide.cmd_white_list
+    assert python_ide.cmd_filter.is_allowed("echo")
 
 
 def test_construct_action_valid(python_ide):

@@ -13,6 +13,7 @@ from gymnasium.core import RenderFrame
 from typing_extensions import TypedDict
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.schema import IDEObs
 
@@ -60,19 +61,25 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
 
     def __init__(
         self,
-        cmd_white_list: list[str],
         root_dir: str,
         project_name: str,
+        cmd_filter: CommandFilterConfig | None = None,
         render_with_symbols: bool = True,
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
         workspace_setting: WorkspaceSetting | None = None,
-        *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        self.cmd_white_list = cmd_white_list
+        super().__init__(**kwargs)
+
+        # 处理命令过滤配置 | Handle command filter config
+        if cmd_filter is not None:
+            self.cmd_filter = cmd_filter
+        else:
+            # 默认使用黑名单模式 | Default to blacklist mode
+            self.cmd_filter = CommandFilterConfig.allow_all_except()
+
         self.cmd_time_out = cmd_time_out
         self.root_dir = root_dir
         self.project_name = project_name

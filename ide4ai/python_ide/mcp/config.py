@@ -17,6 +17,7 @@ from confz.base_config import BaseConfigMetaclass
 from pydantic import Field, field_validator
 
 from ide4ai.base import WorkspaceSetting
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 
 
 class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
@@ -163,8 +164,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         Returns:
             dict: IDE 初始化参数字典 | IDE initialization parameters dict
         """
+        # 将 cmd_white_list 转换为 CommandFilterConfig
+        # Convert cmd_white_list to CommandFilterConfig
+        cmd_filter = CommandFilterConfig.from_white_list(self.cmd_white_list)
+
         return {
-            "cmd_white_list": self.cmd_white_list,
+            "cmd_filter": cmd_filter,
             "root_dir": self.root_dir,
             "project_name": self.project_name,
             "render_with_symbols": self.render_with_symbols,

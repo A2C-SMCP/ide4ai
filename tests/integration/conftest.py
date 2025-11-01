@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.python_ide.ide import PythonIDE
 
 
@@ -20,7 +21,7 @@ def temp_dir():
 
 @pytest.fixture(scope="module")
 def python_ide(temp_dir) -> Generator[PythonIDE, Any, None]:
-    cmd_white_list = ["echo", "ls"]  # Safe commands
-    ide = PythonIDE(cmd_white_list, temp_dir, "ai_editor_for_test")
+    cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls"])  # Safe commands
+    ide = PythonIDE(root_dir=temp_dir, project_name="ai_editor_for_test", cmd_filter=cmd_filter)
     yield ide
     ide.close()

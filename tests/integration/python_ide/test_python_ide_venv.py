@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from ide4ai.environment.terminal import PexpectTerminalEnv
+from ide4ai.environment.terminal import CommandFilterConfig, PexpectTerminalEnv
 from ide4ai.python_ide.ide import PythonIDE
 
 
@@ -29,9 +29,9 @@ class TestPythonIDEVenv:
     def test_python_ide_without_venv(self, temp_project_dir):
         """测试不使用虚拟环境的 PythonIDE | Test PythonIDE without virtual environment"""
         ide = PythonIDE(
-            cmd_white_list=["echo", "python", "python3"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "python", "python3"]),
             cmd_time_out=10,
         )
 
@@ -67,9 +67,9 @@ class TestPythonIDEVenv:
 
         # 使用虚拟环境初始化 IDE | Initialize IDE with virtual environment
         ide = PythonIDE(
-            cmd_white_list=["echo", "python", "python3", "which"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "python", "python3", "which"]),
             cmd_time_out=10,
             active_venv_cmd=f"source {venv_path}/bin/activate",
         )
@@ -98,9 +98,9 @@ class TestPythonIDEVenv:
         """测试使用无效虚拟环境命令的 PythonIDE | Test PythonIDE with invalid venv command"""
         # 使用不存在的虚拟环境路径 | Use non-existent venv path
         ide = PythonIDE(
-            cmd_white_list=["echo", "python"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "python"]),
             cmd_time_out=10,
             active_venv_cmd="source /nonexistent/venv/bin/activate",
         )
@@ -127,9 +127,9 @@ class TestPythonIDEVenv:
         """测试使用错误语法的虚拟环境命令 | Test PythonIDE with wrong venv command syntax"""
         # 使用错误的命令语法 | Use wrong command syntax
         ide = PythonIDE(
-            cmd_white_list=["echo", "ls"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "ls"]),
             cmd_time_out=10,
             active_venv_cmd="this is not a valid command",
         )
@@ -166,9 +166,9 @@ class TestPythonIDEVenv:
             pytest.skip(f"无法创建虚拟环境 | Cannot create venv: {result.stderr}")
 
         ide = PythonIDE(
-            cmd_white_list=["echo", "python3", "which"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "python3", "which"]),
             cmd_time_out=10,
             active_venv_cmd=f"source {venv_path}/bin/activate",
         )
@@ -204,9 +204,9 @@ class TestPythonIDEVenv:
             pytest.skip(f"无法创建虚拟环境 | Cannot create venv: {result.stderr}")
 
         ide = PythonIDE(
-            cmd_white_list=["echo", "which"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo", "which"]),
             cmd_time_out=10,
             active_venv_cmd=f"source {venv_path}/bin/activate",
         )
@@ -244,9 +244,9 @@ class TestPythonIDEVenv:
     def test_python_ide_venv_status_accessible(self, temp_project_dir):
         """测试可以访问虚拟环境状态 | Test venv status is accessible"""
         ide = PythonIDE(
-            cmd_white_list=["echo"],
             root_dir=temp_project_dir,
             project_name="test_project",
+            cmd_filter=CommandFilterConfig.from_white_list(["echo"]),
             cmd_time_out=10,
             active_venv_cmd="source /nonexistent/venv/bin/activate",
         )

@@ -12,6 +12,7 @@ Tests basic functionality of Glob tool
 
 import pytest
 
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.ides import PyIDESingleton
 from ide4ai.python_ide.mcp.tools.glob import GlobTool
 
@@ -25,9 +26,9 @@ def ide_instance():
         PythonIDE: IDE 实例 | IDE instance
     """
     ide_singleton = PyIDESingleton(
-        cmd_white_list=["ls", "pwd", "echo"],
         root_dir="../..",
         project_name="test-project",
+        cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )
     return ide_singleton.ide
 

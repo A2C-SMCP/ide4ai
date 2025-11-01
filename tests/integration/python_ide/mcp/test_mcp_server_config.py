@@ -51,7 +51,7 @@ class TestMCPServerConfig:
 
             assert kwargs["root_dir"] == "."
             assert kwargs["project_name"] == "mcp-project"
-            assert "cmd_white_list" in kwargs
+            assert "cmd_filter" in kwargs
             assert "cmd_time_out" in kwargs
             assert "render_with_symbols" in kwargs
 

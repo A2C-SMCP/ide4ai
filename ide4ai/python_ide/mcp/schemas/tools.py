@@ -102,6 +102,19 @@ class GrepInput(BaseModel):
     multiline: bool = Field(default=False, description="启用多行模式 | Enable multiline mode")
 
 
+class GrepOutput(BaseModel):
+    """Grep 工具输出 Schema | Grep Tool Output Schema"""
+
+    success: bool = Field(..., description="是否成功执行 | Whether the operation was successful")
+    output: str = Field(default="", description="搜索输出结果 | Search output result")
+    matched: bool = Field(default=False, description="是否找到匹配 | Whether matches were found")
+    error: str | None = Field(default=None, description="错误信息(如果有) | Error message (if any)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="额外的元数据 | Additional metadata",
+    )
+
+
 class ReadInput(BaseModel):
     """Read 工具输入 Schema | Read Tool Input Schema"""
 

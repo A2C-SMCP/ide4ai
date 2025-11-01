@@ -33,6 +33,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 安装系统依赖（ripgrep）
+      # Install system dependencies (ripgrep)
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
       # 安装 uv（快速的 Python 包管理器）
       # Install uv (fast Python package manager)
       - name: Install uv

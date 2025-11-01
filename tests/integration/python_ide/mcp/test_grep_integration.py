@@ -370,3 +370,389 @@ class MyClass:
                 assert "def" in result["output"]
             finally:
                 server.close()
+
+
+class TestGrepContextOptions:
+    """测试 Grep 上下文选项组合 | Test Grep context options combinations"""
+
+    @pytest.fixture(scope="function")
+    def context_server(self):
+        """
+        创建包含多行上下文的测试服务器 | Create test server with multi-line context
+        """
+        from ide4ai.ides import PyIDESingleton
+
+        PyIDESingleton._instances.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 创建包含丰富上下文的测试文件
+            test_content = """# Python Module
+import os
+import sys
+from typing import List, Dict
+
+# Configuration section
+DEBUG = True
+VERSION = "1.0.0"
+
+def setup_logging():
+    \"\"\"Setup logging configuration\"\"\"
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    return logging.getLogger(__name__)
+
+class DataProcessor:
+    \"\"\"Process data with various methods\"\"\"
+
+    def __init__(self, config: Dict):
+        self.config = config
+        self.logger = setup_logging()
+
+    def process(self, data: List):
+        \"\"\"Main processing method\"\"\"
+        # TODO: Implement data validation
+        self.logger.info("Processing data")
+        result = []
+        for item in data:
+            # FIXME: Handle edge cases
+            processed = self._transform(item)
+            result.append(processed)
+        return result
+
+    def _transform(self, item):
+        \"\"\"Transform single item\"\"\"
+        return item.strip().lower()
+
+def main():
+    \"\"\"Main entry point\"\"\"
+    processor = DataProcessor({'debug': DEBUG})
+    data = ['Item1', 'Item2', 'Item3']
+    # Process the data
+    result = processor.process(data)
+    print(f"Processed {len(result)} items")
+    return result
+
+if __name__ == "__main__":
+    main()
+"""
+            (Path(tmpdir) / "processor.py").write_text(test_content)
+
+            # 创建另一个测试文件
+            test_content2 = """# Test Module
+import unittest
+from processor import DataProcessor
+
+class TestDataProcessor(unittest.TestCase):
+    \"\"\"Test cases for DataProcessor\"\"\"
+
+    def setUp(self):
+        \"\"\"Setup test fixtures\"\"\"
+        self.config = {'debug': True}
+        self.processor = DataProcessor(self.config)
+
+    def test_process_empty_list(self):
+        \"\"\"Test processing empty list\"\"\"
+        result = self.processor.process([])
+        self.assertEqual(result, [])
+
+    def test_process_single_item(self):
+        \"\"\"Test processing single item\"\"\"
+        # TODO: Add more test cases
+        result = self.processor.process(['Test'])
+        self.assertEqual(len(result), 1)
+
+    def tearDown(self):
+        \"\"\"Cleanup test fixtures\"\"\"
+        self.processor = None
+"""
+            (Path(tmpdir) / "test_processor.py").write_text(test_content2)
+
+            from confz import DataSource
+
+            with MCPServerConfig.change_config_sources(
+                DataSource(data={"root_dir": tmpdir, "project_name": "test-context"})
+            ):
+                config = MCPServerConfig()
+
+            server = PythonIDEMCPServer(config)
+            yield server, tmpdir
+            server.close()
+
+    @pytest.mark.asyncio
+    async def test_grep_with_line_numbers(self, context_server):
+        """
+        测试带行号的搜索 | Test search with line numbers (-n)
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "TODO",
+                "output_mode": "content",
+                "-n": True,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 验证输出包含行号
+        assert ":" in result["output"]
+        assert "TODO" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_with_after_context(self, context_server):
+        """
+        测试带后续上下文的搜索 | Test search with after context (-A)
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "def process",
+                "output_mode": "content",
+                "-n": True,
+                "-A": 3,  # 显示匹配行后的 3 行
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        assert "def process" in result["output"]
+        # 验证包含后续上下文
+        assert "TODO" in result["output"] or "logger" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_with_before_context(self, context_server):
+        """
+        测试带前置上下文的搜索 | Test search with before context (-B)
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "FIXME",
+                "output_mode": "content",
+                "-n": True,
+                "-B": 2,  # 显示匹配行前的 2 行
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        assert "FIXME" in result["output"]
+        # 验证包含前置上下文（应该能看到循环相关代码）
+        assert "for" in result["output"] or "item" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_with_context_both_sides(self, context_server):
+        """
+        测试带双向上下文的搜索 | Test search with context on both sides (-C)
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "def main",
+                "output_mode": "content",
+                "-n": True,
+                "-C": 2,  # 显示匹配行前后各 2 行
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        assert "def main" in result["output"]
+        # 验证包含前后上下文
+        output_lines = result["output"].split("\n")
+        assert len(output_lines) > 3  # 至少有匹配行 + 前后上下文
+
+    @pytest.mark.asyncio
+    async def test_grep_with_before_and_after_context(self, context_server):
+        """
+        测试同时指定前置和后续上下文 | Test search with both -A and -B
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "class DataProcessor",
+                "output_mode": "content",
+                "-n": True,
+                "-B": 1,  # 前 1 行
+                "-A": 4,  # 后 4 行
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        assert "class DataProcessor" in result["output"]
+        # 验证包含类的文档字符串和初始化方法
+        assert "Process data" in result["output"] or "__init__" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_context_with_multiple_matches(self, context_server):
+        """
+        测试多个匹配时的上下文显示 | Test context display with multiple matches
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": r"def \w+",
+                "output_mode": "content",
+                "-n": True,
+                "-A": 2,
+                "-B": 1,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 验证包含多个函数定义
+        assert result["output"].count("def") >= 2
+
+    @pytest.mark.asyncio
+    async def test_grep_context_with_case_insensitive(self, context_server):
+        """
+        测试大小写不敏感搜索带上下文 | Test case-insensitive search with context
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "todo",
+                "output_mode": "content",
+                "-i": True,  # 大小写不敏感
+                "-n": True,
+                "-C": 2,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 验证能找到 TODO（大写）
+        assert "TODO" in result["output"] or "todo" in result["output"].lower()
+
+    @pytest.mark.asyncio
+    async def test_grep_context_with_type_filter(self, context_server):
+        """
+        测试文件类型过滤带上下文 | Test file type filter with context
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "import",
+                "type": "py",
+                "output_mode": "content",
+                "-n": True,
+                "-A": 1,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        assert "import" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_context_with_glob_pattern(self, context_server):
+        """
+        测试 glob 模式匹配带上下文 | Test glob pattern with context
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "test",
+                "glob": "test_*.py",
+                "output_mode": "content",
+                "-i": True,
+                "-n": True,
+                "-B": 1,
+                "-A": 2,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 应该只匹配 test_processor.py 文件
+        assert "test" in result["output"].lower()
+
+    @pytest.mark.asyncio
+    async def test_grep_large_context(self, context_server):
+        """
+        测试大量上下文行 | Test large context lines
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "def process",
+                "output_mode": "content",
+                "-n": True,
+                "-A": 10,  # 大量后续上下文
+                "-B": 5,  # 较多前置上下文
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 验证输出包含大量上下文
+        output_lines = result["output"].split("\n")
+        assert len(output_lines) > 10
+
+    @pytest.mark.asyncio
+    async def test_grep_context_regex_pattern(self, context_server):
+        """
+        测试正则表达式模式带上下文 | Test regex pattern with context
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": r"def \w+\(self",
+                "output_mode": "content",
+                "-n": True,
+                "-C": 3,
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 应该匹配类方法
+        assert "def" in result["output"]
+        assert "self" in result["output"]
+
+    @pytest.mark.asyncio
+    async def test_grep_context_with_max_count(self, context_server):
+        """
+        测试限制匹配数量带上下文 | Test max count with context
+        """
+        server, tmpdir = context_server
+        grep_tool = server.tools["Grep"]
+
+        result = await grep_tool.execute(
+            {
+                "pattern": "def",
+                "output_mode": "content",
+                "-n": True,
+                "-A": 2,
+                "-m": 2,  # 最多匹配 2 次
+            }
+        )
+
+        assert result["success"] is True
+        assert result["matched"] is True
+        # 验证结果被限制
+        assert "def" in result["output"]

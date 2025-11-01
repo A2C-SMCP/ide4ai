@@ -24,6 +24,47 @@ IDE4AI 的核心设计理念是为 AI Agent 提供一个**高内聚、低耦合*
 
 ## 📦 安装
 
+### ⚠️ 系统依赖要求
+
+**在安装 IDE4AI 之前，请先安装 ripgrep（用于代码搜索功能）：**
+
+<details>
+<summary><b>📥 ripgrep 安装指南（点击展开）</b></summary>
+
+#### macOS
+```bash
+brew install ripgrep
+```
+
+#### Ubuntu/Debian
+```bash
+sudo apt-get install ripgrep
+```
+
+#### Fedora/RHEL
+```bash
+sudo dnf install ripgrep
+```
+
+#### Arch Linux
+```bash
+sudo pacman -S ripgrep
+```
+
+#### Windows
+```bash
+# 使用 Chocolatey
+choco install ripgrep
+
+# 或使用 Scoop
+scoop install ripgrep
+```
+
+#### 其他平台
+请访问 [ripgrep 官方安装文档](https://github.com/BurntSushi/ripgrep#installation)
+
+</details>
+
 ### 使用 uv（推荐）
 
 ```bash

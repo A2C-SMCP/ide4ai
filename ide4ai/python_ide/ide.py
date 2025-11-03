@@ -3,14 +3,13 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-from typing import Any, ClassVar, SupportsFloat
+from typing import Any, ClassVar
 
 from ide4ai.base import IDE, WorkspaceSetting
 from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
-from ide4ai.exceptions import IDEExecutionError
 from ide4ai.python_ide.workspace import PyWorkspace
-from ide4ai.schema import IDEAction, IDEObs
 
 
 class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
@@ -35,28 +34,26 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
 
     def __init__(
         self,
-        cmd_white_list: list[str],
         root_dir: str,
         project_name: str,
+        cmd_filter: CommandFilterConfig | None = None,
         render_with_symbols: bool = True,
         max_active_models: int = 3,
         cmd_time_out: int = 10,
         enable_simple_view_mode: bool = True,
         workspace_setting: WorkspaceSetting | None = None,
         active_venv_cmd: str | None = None,
-        *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            cmd_white_list,
-            root_dir,
-            project_name,
-            render_with_symbols,
-            max_active_models,
-            cmd_time_out,
-            enable_simple_view_mode,
-            workspace_setting,
-            *args,
+            root_dir=root_dir,
+            project_name=project_name,
+            cmd_filter=cmd_filter,
+            render_with_symbols=render_with_symbols,
+            max_active_models=max_active_models,
+            cmd_time_out=cmd_time_out,
+            enable_simple_view_mode=enable_simple_view_mode,
+            workspace_setting=workspace_setting,
             **kwargs,
         )
         self.active_venv_cmd = active_venv_cmd
@@ -81,88 +78,8 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
         """
 
         return PexpectTerminalEnv(
-            EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
-            self.cmd_white_list,
-            self.root_dir,
+            args=EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
+            work_dir=self.root_dir,
+            cmd_filter=self.cmd_filter,
             active_venv_cmd=self.active_venv_cmd,
         )
-
-    def construct_action(self, action: dict) -> IDEAction:
-        """
-        构建 IDEAction 对象
-
-        Args:
-            action (dict): 动作字典 | Action dictionary
-
-        Returns:
-            IDEAction: IDEAction 对象 | IDEAction object
-
-        Raises:
-            ValueError: 如果动作不在支持的动作集合中 | If the action is not in the supported action set
-        """
-        ide_action = IDEAction.model_validate(action)
-        if ide_action.category == "terminal" and ide_action.action_name not in self.cmd_white_list:
-            err = f"Action not in white list: {ide_action.action_args}. Can't run this command now."
-            raise IDEExecutionError(message=err, detail_for_llm=err)
-        return ide_action
-
-    def step(self, action: dict) -> tuple[dict, SupportsFloat, bool, bool, dict[str, Any]]:
-        """
-        执行一个动作
-
-        观察返回：
-        1. OpenFile: 返回打开文件的内容
-        2. ApplyEdit: 返回编辑的变更记录
-
-        奖励机制：
-        1. OpenFile: 成功打印返回100，打开失败返回0
-        2. ApplyEdit: 变更成功返回100，失败返回0
-
-        Args:
-            action (dict): 动作字典 | Action dictionary
-
-        Returns:
-            tuple[dict, SupportsFloat, bool, bool, dict[str, Any]]: 观察、奖励、是否结束、是否成功、额外信息 |
-                Observation, Reward, Done, Success, Extra info
-
-        Raises:
-            ValueError: 如果工作区尚未正常初始化 | If the workspace has not been initialized properly
-        """
-        ide_action = self.construct_action(action)
-        if ide_action.category == "terminal":
-            return self.terminal.step(action)
-        else:
-            if self.workspace:
-                return self.workspace.step(action)
-            else:
-                raise IDEExecutionError(
-                    "Workspace is not initialized",
-                    detail_for_llm="Workspace is not initialized, initialize workspace first",
-                )
-
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,
-    ) -> tuple[IDEObs, dict[str, Any]]:
-        if self.workspace:
-            self.workspace.reset(seed=seed, options=options)
-        if self.terminals:
-            for terminal in self.terminals:
-                terminal.reset(seed=seed, options=options)
-        return IDEObs(obs="Reset IDE successfully"), {}
-
-    def render(self) -> str:  # type: ignore
-        """
-        渲染
-
-        Returns:
-            str: 渲染结果 | Render result
-        """
-        content = "IDE Content:\n"
-        if self.workspace:
-            content += f"当前工作区内容如下:\n{self.workspace.render()}\n"
-        if self.active_terminal_index is not None:
-            content += f"当前终端内容如下:\n{self.terminal.render()}\n"
-        return content

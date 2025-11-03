@@ -15,6 +15,7 @@ import gymnasium as gym
 from typing_extensions import SupportsFloat
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.schema import IDEAction, IDEObs
 
 
@@ -24,7 +25,7 @@ class TerminalEnv(BaseTerminalEnv):
 
     Attributes:
         name (str): The name of the environment.
-        white_list (list[str]): The white list of the environment. | 可执行的命令白名单
+        cmd_filter (CommandFilterConfig): 命令过滤配置(黑白名单) | Command filter configuration (blacklist/whitelist)
         work_dir (str): The work directory of the environment. | 工作目录
         current_dir (str): The current directory of the environment. | 当前目录
     """
@@ -32,10 +33,21 @@ class TerminalEnv(BaseTerminalEnv):
     name: ClassVar[str] = "TerminalEnv"
     metadata: dict[str, Any] = {"render_modes": ["ansi"]}
 
-    def __init__(self, args: EnvironmentArguments, white_list: list[str], work_dir: str) -> None:
+    def __init__(
+        self,
+        args: EnvironmentArguments,
+        work_dir: str,
+        cmd_filter: CommandFilterConfig | None = None,
+    ) -> None:
         super().__init__()
         self.args = args
-        self.white_list = white_list
+
+        # 处理命令过滤配置 | Handle command filter config
+        if cmd_filter is not None:
+            self.cmd_filter = cmd_filter
+        else:
+            # 默认使用黑名单模式 | Default to blacklist mode
+            self.cmd_filter = CommandFilterConfig.allow_all_except()
         if os.path.exists(work_dir) and os.path.isdir(work_dir):
             self.work_dir = self.current_dir = os.path.expanduser(work_dir)
         else:
@@ -83,8 +95,9 @@ class TerminalEnv(BaseTerminalEnv):
         ide_action = IDEAction.model_validate(action)
         match ide_action.category:
             case "terminal":
-                if ide_action.action_name not in self.white_list:
-                    raise ValueError(f"Action not in white list: {ide_action.action_args}")
+                if not self.cmd_filter.is_allowed(ide_action.action_name):
+                    reason = self.cmd_filter.get_rejection_reason(ide_action.action_name)
+                    raise ValueError(reason)
                 elif not isinstance(ide_action.action_args, list) and not isinstance(ide_action.action_args, str):
                     raise ValueError(
                         f"Unsupported action arguments: {ide_action.action_args}, args should be str or list[str]",

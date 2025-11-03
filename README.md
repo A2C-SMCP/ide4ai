@@ -3,39 +3,46 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**IDE4AI** 是一个专为 AI Agent 设计的强大 IDE 环境，提供代码导航、编辑、LSP 支持和终端执行等完整功能。
+**IDE4AI** 是为 AI Agent 打造的代码工作环境，提供代码导航、精确编辑、LSP 支持与终端执行等核心能力，便于集成到各类 Agent 系统中。
 
 ## ✨ 特性
 
-- 🔍 **智能代码导航** - 基于 LSP 的代码跳转、符号搜索和引用查找
-- ✏️ **精确代码编辑** - 支持基于位置的精确编辑操作，带完整的撤销/重做功能
-- 🔧 **LSP 集成** - 完整的 Language Server Protocol 支持（Python、TypeScript 等）
-- 🖥️ **终端环境** - 本地和 Docker 容器内的命令执行
-- 📁 **工作区管理** - 文件系统操作、目录树浏览
-- 🎯 **为 AI 优化** - 专门设计的接口，方便 AI Agent 理解和操作代码
+- 🔍 **智能代码导航**：LSP 加持的跳转、符号搜索、引用查找
+- ✏️ **精确代码编辑**：位置级编辑 + 撤销/重做
+- 🔧 **LSP 集成**：Python 等语言的 LSP 能力
+- 🖥️ **终端环境**：本地/Docker 命令执行
+- 📁 **工作区管理**：文件操作与目录树
+- 🤖 **A2C-SMCP/MCP 兼容**：接口清晰，易于自动化编排
 
 ## 🎯 设计目标
 
 IDE4AI 的核心设计理念是为 AI Agent 提供一个**高内聚、低耦合**的代码操作环境：
 
-- **高内聚**：所有 IDE 功能（编辑、导航、LSP、终端）都集中在统一的接口中
-- **低耦合**：独立于任何特定的 AI 框架，可以轻松集成到不同的 Agent 系统
-- **Gymnasium 兼容**：实现了 Gymnasium Env 接口，可作为强化学习环境使用
+- **高内聚**：编辑、导航、LSP、终端统一接口
+- **低耦合**：独立于具体 AI 框架，易于集成
+- **Gymnasium 兼容**：实现 Env 接口，可用于强化学习
 
-## 📦 安装
+## 📦 安装（使用者）
+
+### ⚠️ 强制依赖：ripgrep (rg)
+
+IDE4AI 的代码搜索工具基于 rg（ripgrep）。未安装 rg 将导致搜索相关能力不可用。
+
+- macOS: `brew install ripgrep`
+- Ubuntu/Debian: `sudo apt-get install ripgrep`
+- Fedora/RHEL: `sudo dnf install ripgrep`
+- Arch: `sudo pacman -S ripgrep`
+- Windows: `choco install ripgrep` 或 `scoop install ripgrep`
+
+更多平台与安装方式：见 ripgrep 官方文档
+https://github.com/BurntSushi/ripgrep#installation
 
 ### 使用 uv（推荐）
 
 ```bash
-# 克隆仓库
 git clone https://github.com/JQQ/ide4ai.git
 cd ide4ai
-
-# 安装依赖
 uv sync
-
-# 开发模式安装
-uv sync --all-extras
 ```
 
 ### 使用 pip
@@ -44,72 +51,87 @@ uv sync --all-extras
 pip install ide4ai
 ```
 
-## 🚀 快速开始
+## 🚀 快速开始（使用者）
 
-### 基础使用
+### 基础用法（最小示例）
 
 ```python
 from ide4ai import PythonIDE, IDEAction
 
-# 创建 Python IDE 实例
-ide = PythonIDE(
-    cmd_white_list=["poetry", "pytest"],
-    root_dir="/path/to/your/project",
-    project_name="my_project",
-    render_with_symbols=True,
-    max_active_models=3,
-)
+ide = PythonIDE(root_dir="/path/to/project", project_name="my_project")
 
-# 打开文件
-action = IDEAction(
-    category="workspace",
-    action_name="open_file",
-    action_args={"uri": "file:///path/to/file.py"}
-)
-obs, reward, done, truncated, info = ide.step(action.model_dump())
+# 打开并编辑
+open_file = IDEAction(category="workspace", action_name="open_file", action_args={"uri": "file:///path/to/app.py"})
+ide.step(open_file.model_dump())
 
-# 编辑文件
-edit_action = IDEAction(
-    category="workspace",
-    action_name="edit_file",
-    action_args={
-        "uri": "file:///path/to/file.py",
-        "edits": [{
-            "range": {
-                "start_position": [10, 1],
-                "end_position": [10, 1]
-            },
-            "text": "# New comment\n"
-        }]
-    }
-)
-obs, reward, done, truncated, info = ide.step(edit_action.model_dump())
-
-# 执行命令
-cmd_action = IDEAction(
-    category="terminal",
-    action_name="run_command",
-    action_args={"command": "pytest tests/"}
-)
-obs, reward, done, truncated, info = ide.step(cmd_action.model_dump())
+edit = IDEAction(category="workspace", action_name="edit_file", action_args={"uri": "file:///path/to/app.py", "edits": [{"range": {"start_position": [1, 1], "end_position": [1, 1]}, "text": "# hello\n"}]})
+ide.step(edit.model_dump())
 ```
 
-### 使用单例模式
+更多示例（导航、终端执行、LSP 能力）请查看 `examples/` 目录与测试用例 `tests/`。
 
-```python
-from ide4ai import PyIDESingleton
+### 使用 uvx 启动与管理 MCP Server
 
-# 获取或创建 IDE 实例
-ide = PyIDESingleton(
-    root_dir="/path/to/project",
-    project_name="my_project"
-).ide
+- **脚本入口**：`py-ide4ai-mcp`（定义于 `pyproject.toml` -> `[project.scripts]`）
+- **前置要求**：已安装 `uv`（`curl -LsSf https://astral.sh/uv/install.sh | sh`）与 `ripgrep (rg)`。
 
-# 使用 IDE
-# ...
+- **从 PyPI 运行（无需安装到全局环境）**：
+```bash
+uvx py-ide4ai-mcp --help   # 查看可用参数
+uvx py-ide4ai-mcp          # 启动服务（按需添加参数）
 ```
 
-## 📚 核心概念
+- **从本地源码运行（仓库根目录）**：
+```bash
+uvx --from . py-ide4ai-mcp -- --help
+uvx --from . py-ide4ai-mcp            # 启动本地开发版
+```
+
+- **固定（或切换）版本运行**：
+```bash
+uvx --from ide4ai==<version> py-ide4ai-mcp
+```
+
+提示：`uvx` 会为命令创建隔离环境并缓存依赖，便于快速升级/回滚。生产环境可配合进程管理器（如 systemd、supervisor、tmux/screen）做守护与重启策略。
+
+#### 常用启动参数（CLI 与环境变量）
+
+- **传输模式**：`--transport`（默认 `stdio`）
+  - 取值：`stdio` | `sse` | `streamable-http`
+  - 环境变量：`TRANSPORT`
+- **主机/端口**：`--host`（默认 `127.0.0.1`）、`--port`（默认 `8000`）
+  - 仅用于 `sse` 与 `streamable-http`
+  - 环境变量：`HOST`、`PORT`
+- **项目根目录/名称**：`--root-dir`（默认 `.`）、`--project-name`（默认 `mcp-project`）
+  - 环境变量：`PROJECT_ROOT`、`PROJECT_NAME`
+- **命令白名单**：`--cmd-white-list`（逗号分隔）
+  - 默认：`["ls","pwd","echo","cat","grep","find","head","tail","wc"]`
+  - 环境变量：`CMD_WHITE_LIST`
+- **命令超时(秒)**：`--cmd-timeout`（默认 `10`）
+  - 环境变量：`CMD_TIMEOUT`
+- **渲染符号**：`--render-with-symbols`（默认 `true`）
+  - 环境变量：`RENDER_WITH_SYMBOLS`
+- **最大活跃模型数**：`--max-active-models`（默认 `3`）
+  - 环境变量：`MAX_ACTIVE_MODELS`
+- **简化视图模式**：`--enable-simple-view-mode`（默认 `true`）
+  - 环境变量：`ENABLE_SIMPLE_VIEW_MODE`
+
+说明：命令行参数优先级高于环境变量，高于默认值。
+
+#### 示例
+
+- **SSE 模式（本地 8000 端口）**：
+```bash
+uvx py-ide4ai-mcp --transport sse --host 127.0.0.1 --port 8000 \
+  --root-dir "/path/to/proj" --project-name my_proj
+```
+
+- **标准输入输出（默认）+ 自定义白名单与超时**：
+```bash
+uvx py-ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
+```
+
+## 📚 核心概念（使用者）
 
 ### IDE Actions
 
@@ -142,149 +164,75 @@ IDE4AI 支持两类操作：
 - **DockerTerminalEnv** - Docker 容器内执行
 - 命令白名单机制，确保安全性
 
-## 🛠️ 开发
+## 🛠️ 开发（开发者）
 
 ### 环境设置
 
 ```bash
-# 安装开发依赖
-uv sync
-
-# 或使用 poe 任务
-poe install-dev
+uv sync --all-groups  # 安装依赖
+poe install-dev       # 可选：开发工具安装
 ```
 
-### 常用命令
-
-项目使用 [poethepoet](https://github.com/nat-n/poethepoet) 管理开发任务：
+### 常用命令（精简）
 
 ```bash
-# 代码检查
-poe lint              # 运行 ruff 检查
-poe lint-fix          # 自动修复 lint 问题
-poe format            # 格式化代码
-poe format-check      # 检查代码格式
-
-# 类型检查
-poe typecheck         # 运行 mypy 类型检查
-
-# 测试
-poe test              # 运行所有测试
-poe test-unit         # 仅运行单元测试
-poe test-integration  # 仅运行集成测试
-poe test-cov          # 运行测试并生成覆盖率报告
-poe test-verbose      # 详细模式运行测试
-
-# 组合任务
-poe check             # 运行所有检查（lint + format-check + typecheck）
-poe fix               # 自动修复问题（lint-fix + format）
-poe pre-commit        # 提交前检查（format + lint-fix + typecheck + test）
-
-# 清理
-poe clean             # 清理缓存和临时文件
-poe clean-pyc         # 清理 Python 缓存
-poe clean-cov         # 清理覆盖率报告
+poe format       # 格式化
+poe lint         # Lint 检查
+poe typecheck    # 类型检查
+poe test         # 运行测试
 ```
+
+更多任务请运行 `poe -h` 或查看 `pyproject.toml`。
 
 ### 运行测试
 
 ```bash
-# 运行所有测试
 poe test
-
-# 运行特定测试
-pytest tests/test_workspace.py -v
-
-# 生成覆盖率报告
-poe test-cov
+pytest -k "your_case" -v   # 按需选择
 ```
 
 ### 代码规范
 
-项目使用以下工具确保代码质量：
+- **Ruff**：linter + formatter
+- **MyPy**：静态类型
+- **Pytest**：测试框架
 
-- **Ruff** - 快速的 Python linter 和 formatter
-- **MyPy** - 静态类型检查
-- **Pytest** - 测试框架
+提交前建议运行：`poe pre-commit`
 
-提交代码前请运行：
+## 🏗️ 架构设计（开发者）
 
-```bash
-poe pre-commit
-```
+整体目录与模块说明请参见项目内文档与源码注释：
+- `ide4ai/python_ide/`：Python IDE 实现
+- `ide4ai/environment/`：终端与工作区环境
+- `ide4ai/dtos/`：LSP 数据模型
+- `examples/` 与 `tests/`：使用示例与行为参考
 
-## 🏗️ 架构设计
+## 🔌 扩展集成（使用者/开发者）
 
-```
-ai_ide/
-├── base.py                 # IDE 基类
-├── schema.py              # 数据模型定义
-├── exceptions.py          # 异常类
-├── ides.py               # IDE 单例管理
-├── utils.py              # 工具函数
-├── dtos/                 # LSP 数据传输对象
-│   ├── base_protocol.py
-│   ├── commands.py
-│   ├── file_resource.py
-│   ├── text_documents.py
-│   └── workspace_edit.py
-├── environment/          # 环境实现
-│   ├── terminal/        # 终端环境
-│   │   ├── base.py
-│   │   ├── local_terminal_env.py
-│   │   └── docker_terminal_env.py
-│   └── workspace/       # 工作区
-│       ├── base.py
-│       ├── model.py     # 文本模型
-│       ├── schema.py    # 工作区数据模型
-│       └── utils.py
-├── python_ide/          # Python IDE 实现
-│   ├── ide.py
-│   ├── workspace.py     # Python 工作区（LSP 集成）
-│   └── const.py
-└── extensions/          # 可选扩展
-    ├── tfrobot_tool.py  # TFRobot 集成（需要单独安装 tfrobot）
-    └── tfrobot_claude_tool.py
-```
-
-## 🔌 扩展集成
-
-IDE4AI 提供了扩展机制，可以轻松集成到不同的 AI 框架中。
-
-### TFRobot 集成示例
-
-```python
-# 需要先安装 tfrobot
-# pip install tfrobot
-
-from ide4ai.extensions.tfrobot_tool import IDETool
-
-tool = IDETool(
-    root_dir="/path/to/project",
-    project_name="my_project"
-)
-
-# 在 TFRobot 中使用
-# ...
-```
+通过工具封装可集成到外部 Agent 系统。示例与最佳实践请参考 `examples/` 与对应扩展源码注释。
 
 ## 📖 文档
 
-- [API 文档](docs/api.md)（待完善）
-- [架构设计](docs/architecture.md)（待完善）
-- [扩展开发指南](docs/extensions.md)（待完善）
+- API 文档（待完善）
+- 架构设计（待完善）
+- 扩展开发指南（待完善）
+ - 代码搜索与 grep 工具用法：`docs/grep_tool_usage.md`
 
-## 🤝 贡献
+## 🤝 贡献（开发者）
 
-欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)（待创建）了解详情。
+欢迎贡献！本仓库遵循简单直观的协作流程：
 
-### 贡献流程
+- 提交前：确保通过 `poe format`、`poe lint`、`poe typecheck`、`poe test`
+- 提交信息：清晰描述动机与影响（建议英文前缀：feat/fix/docs/chore/test/refactor）
+- 变更范围：尽量小步提交，并附带必要测试
+
+### 流程
 
 1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 开启 Pull Request
+2. 基于 `main` 创建分支：`git checkout -b feat/<topic>`
+3. 开发与自测：`poe pre-commit`
+4. 提交与推送：`git push origin feat/<topic>`
+5. 打开 Pull Request，模板中说明背景、变化、测试与影响面
 
 ## 📄 许可证
 
@@ -302,14 +250,14 @@ tool = IDETool(
 - Email：jqq1716@gmail.com
 - GitHub：[@JQQ](https://github.com/JQQ)
 
-## 🗺️ 路线图
+## 🗺️ 路线图（简要）
 
-- [ ] 完善文档和示例
-- [ ] 支持更多编程语言（TypeScript、Java、Go 等）
-- [ ] 添加更多 LSP 功能（重命名、代码格式化等）
-- [ ] 提供 Web UI 界面
-- [ ] 性能优化和大型项目支持
-- [ ] 更多 AI 框架集成示例
+- [ ] 完善文档与示例
+- [ ] 支持更多语言（TypeScript、Java、Go 等）
+- [ ] 更多 LSP 能力（重命名、格式化等）
+- [ ] 提供 Web UI
+- [ ] 性能优化与大仓支持
+- [ ] 扩展更多 AI 框架示例
 
 ---
 

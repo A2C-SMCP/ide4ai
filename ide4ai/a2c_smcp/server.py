@@ -1,15 +1,16 @@
 # filename: server.py
-# @Time    : 2025/10/29 12:01
+# @Time    : 2025/11/03 20:28
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 """
-MCP Server 主入口 | MCP Server Main Entry Point
+MCP Server 基类 | MCP Server Base Class
 
-实现 MCP 协议的服务器，封装 PythonIDE 的能力
-Implements MCP protocol server, wrapping PythonIDE capabilities
+提供通用的 MCP 协议服务器实现，支持多语言 IDE 扩展
+Provides generic MCP protocol server implementation, supporting multi-language IDE extensions
 """
 
+from abc import ABC, abstractmethod
 from typing import Any
 
 from loguru import logger
@@ -22,33 +23,35 @@ from starlette.applications import Starlette
 from starlette.responses import Response
 from starlette.routing import Mount, Route
 
-from ide4ai.ides import PyIDESingleton
-from ide4ai.python_ide.mcp.config import MCPServerConfig
-from ide4ai.python_ide.mcp.tools import BashTool
-from ide4ai.python_ide.mcp.tools.base import BaseTool
+from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.tools.base import BaseTool
+from ide4ai.base import IDE
 
 
-class PythonIDEMCPServer:
+class BaseMCPServer(ABC):
     """
-    Python IDE MCP Server
+    MCP Server 基类 | MCP Server Base Class
 
-    封装 PythonIDE 为 MCP Server，提供工具和资源
-    Wraps PythonIDE as MCP Server, providing tools and resources
+    封装 IDE 为 MCP Server，提供工具和资源
+    Wraps IDE as MCP Server, providing tools and resources
+
+    所有语言的 MCP Server 都应该继承此类
+    All language-specific MCP Servers should inherit from this class
     """
 
-    def __init__(self, config: MCPServerConfig) -> None:
+    def __init__(self, config: MCPServerConfig, server_name: str) -> None:
         """
         初始化 MCP Server | Initialize MCP Server
 
         Args:
             config: MCP Server 配置 | MCP Server configuration
+            server_name: 服务器名称 | Server name
         """
         self.config = config
-        self.server = Server("python-ide-mcp")
+        self.server = Server(server_name)
 
-        # 使用 PyIDESingleton 获取 IDE 实例 | Get IDE instance using PyIDESingleton
-        ide_singleton = PyIDESingleton(**config.to_ide_kwargs())
-        self.ide = ide_singleton.ide
+        # 初始化 IDE 实例（由子类实现）| Initialize IDE instance (implemented by subclass)
+        self.ide: IDE = self._create_ide_instance()
 
         # 初始化工具列表 | Initialize tools list
         self.tools: dict[str, BaseTool] = {}
@@ -60,25 +63,60 @@ class PythonIDEMCPServer:
         self._setup_handlers()
 
         logger.info(
-            f"Python IDE MCP Server 初始化完成 | Python IDE MCP Server initialized: project={config.project_name}, root={config.root_dir}",
+            f"MCP Server 初始化完成 | MCP Server initialized: server={server_name}, project={config.project_name}, root={config.root_dir}",
         )
 
+    @abstractmethod
+    def _create_ide_instance(self) -> IDE:
+        """
+        创建 IDE 实例 | Create IDE instance
+
+        由子类实现，根据具体的 IDE 类型创建实例
+        Implemented by subclass to create instance based on specific IDE type
+
+        Returns:
+            IDE: IDE 实例 | IDE instance
+        """
+        pass
+
+    @abstractmethod
     def _register_tools(self) -> None:
         """
         注册所有工具 | Register all tools
+
+        由子类实现，注册特定语言的工具
+        Implemented by subclass to register language-specific tools
         """
-        # 注册 Bash 工具 | Register Bash tool
-        bash_tool = BashTool(self.ide)
-        self.tools[bash_tool.name] = bash_tool
+        pass
 
-        logger.info(f"已注册工具 | Registered tools: {list(self.tools.keys())}")
+    def close(self) -> None:
+        """
+        关闭 MCP Server 并清理资源 | Close MCP Server and cleanup resources
 
-        # TODO: 注册其他工具 | Register other tools
-        # - GlobTool
-        # - GrepTool
-        # - ReadTool
-        # - EditTool
-        # - WriteTool
+        释放 IDE 和 workspace 资源，关闭 LSP 进程
+        Release IDE and workspace resources, close LSP process
+        """
+        try:
+            if self.ide:
+                # 调用 IDE 的 close 方法，由 IDE 负责清理其内部资源
+                # Call IDE's close method, let IDE handle its internal resource cleanup
+                self.ide.close()
+                logger.info(
+                    f"MCP Server 资源已清理 | MCP Server resources cleaned up: project={self.config.project_name}",
+                )
+        except Exception as e:
+            logger.error(f"关闭 MCP Server 时出错 | Error closing MCP Server: {e}")
+
+    def __del__(self) -> None:
+        """
+        析构函数，确保资源被清理 | Destructor to ensure resources are cleaned up
+        """
+        try:
+            self.close()
+        except Exception as e:
+            # 在析构函数中捕获所有异常，避免影响垃圾回收
+            # Catch all exceptions in destructor to avoid affecting garbage collection
+            logger.error(f"析构时关闭环境出错 / Error closing environment in destructor: {e}")
 
     def _setup_handlers(self) -> None:
         """
@@ -231,8 +269,7 @@ class PythonIDEMCPServer:
         import uvicorn
 
         logger.info(
-            f"使用 Streamable HTTP 传输模式 | Using Streamable HTTP transport: "
-            f"http://{self.config.host}:{self.config.port}/mcp",
+            f"使用 Streamable HTTP 传输模式 | Using Streamable HTTP transport: http://{self.config.host}:{self.config.port}/mcp",
         )
 
         # 创建会话管理器 | Create session manager
@@ -285,74 +322,3 @@ class PythonIDEMCPServer:
         )
         server = uvicorn.Server(config)
         await server.serve()
-
-
-async def async_main() -> None:
-    """
-    异步主函数 | Async main function
-
-    使用 confz 从环境变量和命令行参数读取配置并启动 MCP Server
-    Use confz to read configuration from environment variables and command-line arguments, then start MCP Server
-
-    配置优先级 | Configuration Priority:
-        命令行参数 > 环境变量 > 默认值
-        Command-line arguments > Environment variables > Default values
-
-    环境变量 | Environment Variables:
-        - TRANSPORT: 传输模式 | Transport mode (default: "stdio")
-        - HOST: 服务器主机地址 | Server host (default: "127.0.0.1")
-        - PORT: 服务器端口 | Server port (default: 8000)
-        - PROJECT_ROOT: 项目根目录 | Project root directory (default: ".")
-        - PROJECT_NAME: 项目名称 | Project name (default: "mcp-project")
-        - CMD_WHITE_LIST: 命令白名单，逗号分隔 | Command whitelist, comma separated
-        - CMD_TIMEOUT: 命令超时时间(秒) | Command timeout in seconds (default: 10)
-        - RENDER_WITH_SYMBOLS: 是否渲染符号 | Whether to render symbols (default: true)
-        - MAX_ACTIVE_MODELS: 最大活跃模型数 | Maximum active models (default: 3)
-        - ENABLE_SIMPLE_VIEW_MODE: 是否启用简化视图模式 | Whether to enable simple view mode (default: true)
-
-    命令行参数 | Command-line Arguments:
-        - --transport: 传输模式 | Transport mode
-        - --host: 服务器主机地址 | Server host
-        - --port: 服务器端口 | Server port
-        - --root-dir: 项目根目录 | Project root directory
-        - --project-name: 项目名称 | Project name
-        - --cmd-white-list: 命令白名单，逗号分隔 | Command whitelist, comma separated
-        - --cmd-timeout: 命令超时时间(秒) | Command timeout in seconds
-        - --render-with-symbols: 是否渲染符号 | Whether to render symbols
-        - --max-active-models: 最大活跃模型数 | Maximum active models
-        - --enable-simple-view-mode: 是否启用简化视图模式 | Whether to enable simple view mode
-    """
-    # 使用 confz 加载配置 | Load configuration using confz
-    # confz 会自动从环境变量和命令行参数中读取配置
-    # confz will automatically read configuration from environment variables and command-line arguments
-    config = MCPServerConfig()
-
-    logger.info(
-        f"启动 MCP Server | Starting MCP Server: "
-        f"transport={config.transport}, "
-        f"host={config.host}, "
-        f"port={config.port}, "
-        f"root_dir={config.root_dir}, "
-        f"project_name={config.project_name}, "
-        f"cmd_white_list={config.cmd_white_list}, "
-        f"cmd_timeout={config.cmd_time_out}, "
-        f"render_with_symbols={config.render_with_symbols}, "
-        f"max_active_models={config.max_active_models}, "
-        f"enable_simple_view_mode={config.enable_simple_view_mode}",
-    )
-
-    # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
-    await server.run()
-
-
-def main() -> None:
-    """
-    同步入口函数 | Synchronous entry point
-
-    用于命令行调用，内部使用 asyncio.run() 运行异步主函数
-    For command-line invocation, internally uses asyncio.run() to run the async main function
-    """
-    import asyncio
-
-    asyncio.run(async_main())

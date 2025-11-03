@@ -26,7 +26,12 @@ def project_root_dir() -> str:
 
 @pytest.fixture
 def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_python_workspace")
+    # 使用更长的超时时间以适应低配置电脑 / Use longer timeout for low-spec computers
+    workspace = PyWorkspace(
+        root_dir=project_root_dir,
+        project_name="test_python_workspace",
+        diagnostics_timeout=15.0,  # 增加到15秒 / Increase to 15 seconds
+    )
     yield workspace
     workspace.close()
 
@@ -51,11 +56,7 @@ def test_py_workspace_read_file(project_root_dir, py_workspace) -> None:
     with open(test_file_path) as f:
         read_res = f.read()
     assert read_res[:20] in content  # 因为文件较大，直接使用in判断会比较慢，所以截取20个字符做判断
-    import tiktoken
-
-    enc = tiktoken.get_encoding("cl100k_base")
-    tokens = enc.encode(content)
-    print(f"内容长度: {len(tokens)}")
+    print(f"内容长度: {len(content)}")
 
 
 def test_py_workspace_render(project_root_dir, py_workspace) -> None:
@@ -63,6 +64,7 @@ def test_py_workspace_render(project_root_dir, py_workspace) -> None:
     测试PyWorkspace渲染
 
     测试激活Model，测试渲染环境
+
     Args:
         project_root_dir:
         py_workspace:
@@ -841,7 +843,11 @@ def valid_function():
         temp_file_path = f.name
 
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_replace_diagnostics")
+    workspace = PyWorkspace(
+        root_dir=project_root_dir,
+        project_name="test_replace_diagnostics",
+        diagnostics_timeout=15.0,  # 增加超时时间以适应低配置电脑 / Increase timeout for low-spec computers
+    )
 
     try:
         # 打开文件 / Open file

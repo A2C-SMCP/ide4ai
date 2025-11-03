@@ -627,7 +627,7 @@ class PyWorkspace(BaseWorkspace):
         )
 
         # 编辑后主动拉取诊断信息 / Pull diagnostics after editing
-        diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+        diagnostics = self.pull_diagnostics(uri=uri, timeout=self._diagnostics_timeout)
 
         return res, cast(
             DocumentDiagnosticReport | None,
@@ -955,6 +955,157 @@ class PyWorkspace(BaseWorkspace):
 
         # 如果既不是文件也不是文件夹 / If it's neither a file nor a folder
         raise ValueError(f"URI 必须指向文件或文件夹 / URI must point to a file or folder: {uri}")
+
+    def grep_files(
+        self,
+        *,
+        pattern: str,
+        path: str | None = None,
+        glob: str | None = None,
+        output_mode: str = "files_with_matches",
+        context_before: int | None = None,
+        context_after: int | None = None,
+        context: int | None = None,
+        line_number: bool | None = None,
+        case_insensitive: bool | None = None,
+        file_type: str | None = None,
+        head_limit: int | None = None,
+        multiline: bool = False,
+    ) -> dict[str, Any]:
+        """
+        使用 ripgrep 搜索文件内容 / Search file contents using ripgrep
+
+        Args:
+            pattern: 正则表达式模式 / Regular expression pattern
+            path: 搜索路径，默认为工作区根目录 / Search path, defaults to workspace root
+            glob: 文件过滤 Glob 模式 / Glob pattern to filter files
+            output_mode: 输出模式 / Output mode: "content", "files_with_matches", or "count"
+            context_before: 显示匹配前的行数 / Lines before match
+            context_after: 显示匹配后的行数 / Lines after match
+            context: 显示匹配前后的行数 / Lines before and after match
+            line_number: 显示行号 / Show line numbers
+            case_insensitive: 忽略大小写 / Case insensitive search
+            file_type: 文件类型 / File type to search
+            head_limit: 限制输出行数 / Limit output to first N lines
+            multiline: 启用多行模式 / Enable multiline mode
+
+        Returns:
+            dict: 搜索结果 / Search results
+
+        Examples:
+            # 搜索所有包含 "TODO" 的文件
+            workspace.grep_files(pattern="TODO")
+
+            # 搜索 Python 文件中的类定义
+            workspace.grep_files(pattern="class\\s+\\w+", file_type="py", output_mode="content")
+
+            # 多行搜索
+            workspace.grep_files(pattern="def.*\\n.*return", multiline=True)
+        """
+        self._assert_not_closed()
+
+        # 确定搜索路径 / Determine search path
+        search_path = path if path else self.root_dir
+
+        # 如果是相对路径，转换为相对于工作区根目录的绝对路径 / If relative path, convert to absolute
+        if not os.path.isabs(search_path):
+            search_path = os.path.join(self.root_dir, search_path)
+
+        # 验证路径存在 / Validate path exists
+        if not os.path.exists(search_path):
+            raise ValueError(f"搜索路径不存在 / Search path does not exist: {search_path}")
+
+        # 确保搜索路径在工作区内 / Ensure search path is within workspace
+        from ide4ai.utils import is_subdirectory
+
+        if not is_subdirectory(search_path, self.root_dir):
+            raise ValueError(f"搜索路径必须在工作区根目录内 / Search path must be within workspace root: {search_path}")
+
+        # 构建 ripgrep 命令 / Build ripgrep command
+        cmd = ["rg"]
+
+        # 添加输出模式参数 / Add output mode parameters
+        if output_mode == "files_with_matches":
+            cmd.append("--files-with-matches")
+        elif output_mode == "count":
+            cmd.append("--count")
+        # content 模式不需要额外参数 / content mode needs no extra parameters
+
+        # 添加上下文参数（仅在 content 模式下有效）/ Add context parameters (only valid in content mode)
+        if output_mode == "content":
+            if context is not None:
+                cmd.extend(["-C", str(context)])
+            else:
+                if context_before is not None:
+                    cmd.extend(["-B", str(context_before)])
+                if context_after is not None:
+                    cmd.extend(["-A", str(context_after)])
+
+            # 添加行号参数 / Add line number parameter
+            if line_number:
+                cmd.append("-n")
+
+        # 添加大小写敏感参数 / Add case sensitivity parameter
+        if case_insensitive:
+            cmd.append("-i")
+
+        # 添加文件类型参数 / Add file type parameter
+        if file_type:
+            cmd.extend(["--type", file_type])
+
+        # 添加 glob 参数 / Add glob parameter
+        if glob:
+            cmd.extend(["--glob", glob])
+
+        # 添加多行模式参数 / Add multiline mode parameters
+        if multiline:
+            cmd.extend(["-U", "--multiline-dotall"])
+
+        # 添加模式和路径 / Add pattern and path
+        cmd.append(pattern)
+        cmd.append(search_path)
+
+        try:
+            # 执行 ripgrep 命令 / Execute ripgrep command
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,  # 30秒超时 / 30 seconds timeout
+            )
+
+            # ripgrep 退出码：0=找到匹配，1=未找到匹配，2=错误
+            # ripgrep exit codes: 0=found matches, 1=no matches, 2=error
+            if result.returncode == 2:
+                raise RuntimeError(f"ripgrep 执行错误 / ripgrep execution error: {result.stderr}")
+
+            output = result.stdout
+
+            # 应用 head_limit / Apply head_limit
+            if head_limit is not None and output:
+                lines = output.splitlines()
+                output = "\n".join(lines[:head_limit])
+
+            return {
+                "success": True,
+                "output": output,
+                "matched": result.returncode == 0,
+                "metadata": {
+                    "pattern": pattern,
+                    "path": search_path,
+                    "output_mode": output_mode,
+                    "exit_code": result.returncode,
+                },
+            }
+
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("ripgrep 执行超时 / ripgrep execution timeout") from e
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                "ripgrep 未安装。请安装 ripgrep: https://github.com/BurntSushi/ripgrep#installation"
+            ) from e
+        except Exception as e:
+            raise RuntimeError(f"执行 ripgrep 时发生错误 / Error executing ripgrep: {e}") from e
 
     def apply_workspace_edit(self, *, workspace_edit: LSPWorkspaceEdit) -> Any:
         # TODO 需要实现 apply_workspace_edit 方法

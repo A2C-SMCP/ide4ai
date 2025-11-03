@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from confz import CLArgSource, DataSource, EnvSource
 
-from ide4ai.python_ide.mcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.config import MCPServerConfig
 
 
 class TestMCPServerConfig:
@@ -51,7 +51,7 @@ class TestMCPServerConfig:
 
             assert kwargs["root_dir"] == "."
             assert kwargs["project_name"] == "mcp-project"
-            assert "cmd_white_list" in kwargs
+            assert "cmd_filter" in kwargs
             assert "cmd_time_out" in kwargs
             assert "render_with_symbols" in kwargs
 
@@ -341,8 +341,8 @@ class TestCommandLineArguments:
                     "transport": "sse",
                     "host": "0.0.0.0",
                     "port": 9000,
-                }
-            )
+                },
+            ),
         ):
             config = MCPServerConfig()
             assert config.transport == "sse"
@@ -356,8 +356,8 @@ class TestCommandLineArguments:
                     "transport": "streamable-http",
                     "host": "localhost",
                     "port": 8080,
-                }
-            )
+                },
+            ),
         ):
             config = MCPServerConfig()
             assert config.transport == "streamable-http"
@@ -435,8 +435,8 @@ class TestCommandLineArguments:
                     "project_name": "mixed-test",
                     "cmd_white_list": ["ls", "pwd", "echo"],
                     "cmd_time_out": 20,
-                }
-            )
+                },
+            ),
         ):
             config = MCPServerConfig()
 

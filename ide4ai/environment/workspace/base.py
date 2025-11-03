@@ -64,6 +64,7 @@ class BaseWorkspace(gym.Env, ABC):
         enable_simple_view_mode: bool = False,
         header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
         shortcut_commands: dict[str, list[str]] | None = None,
+        diagnostics_timeout: float = 10.0,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -88,6 +89,8 @@ class BaseWorkspace(gym.Env, ABC):
         self.lsp_output_monitor_thread: threading.Thread | None = None
         # LSP输出缓冲区，用于累积未完整的消息 / LSP output buffer for accumulating incomplete messages
         self._lsp_buffer: str = ""
+        # 诊断信息拉取超时时间（秒）/ Diagnostics pull timeout in seconds
+        self._diagnostics_timeout = diagnostics_timeout
         # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
         # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，
         # 比如diagnostic。
@@ -240,6 +243,8 @@ class BaseWorkspace(gym.Env, ABC):
                         if not message_parsed:
                             # 缓冲区中没有完整消息，尝试读取更多数据 / No complete message in buffer, try to read more data
                             # 使用非阻塞select检查是否还有数据 / Use non-blocking select to check if more data is available
+                            if not self.lsp.stdout:
+                                break
                             rlist, _, _ = select.select([self.lsp.stdout], [], [], 0)
                             if not rlist:
                                 # 没有更多数据可读 / No more data to read
@@ -591,13 +596,43 @@ class BaseWorkspace(gym.Env, ABC):
         # 关闭进程
         if self.lsp:
             if self.lsp.stdin:
-                self.lsp.stdin.close()
+                try:
+                    self.lsp.stdin.close()
+                except Exception as e:
+                    logger.error(f"关闭LSP进程 stdin 时出错: {e}")
+
+            # 尝试优雅关闭
             try:
                 self.lsp.send_signal(signal.SIGINT)
                 # 设置超时时间等待进程结束
-                self.lsp.wait(timeout=10)  # 至多等待10秒
+                self.lsp.wait(timeout=2)  # 缩短到2秒，加快清理速度
+                logger.info("LSP进程已优雅关闭 / LSP process gracefully terminated")
             except subprocess.TimeoutExpired:
-                self.lsp.terminate()
+                # 优雅关闭失败，强制终止
+                logger.warning(
+                    "LSP进程未响应SIGINT，尝试SIGTERM / LSP process didn't respond to SIGINT, trying SIGTERM"
+                )
+                try:
+                    self.lsp.terminate()
+                    self.lsp.wait(timeout=2)
+                    logger.info("LSP进程已通过SIGTERM终止 / LSP process terminated via SIGTERM")
+                except subprocess.TimeoutExpired:
+                    # 强制终止也失败，使用SIGKILL
+                    logger.warning(
+                        "LSP进程未响应SIGTERM，使用SIGKILL强制终止 / LSP process didn't respond to SIGTERM, using SIGKILL"
+                    )
+                    self.lsp.kill()
+                    self.lsp.wait(timeout=1)
+                    logger.info("LSP进程已通过SIGKILL强制终止 / LSP process killed via SIGKILL")
+            except Exception as e:
+                # 捕获其他异常，确保进程被清理
+                logger.error(f"关闭LSP进程时出错 / Error closing LSP process: {e}")
+                try:
+                    self.lsp.kill()
+                    self.lsp.wait(timeout=1)
+                except Exception:
+                    pass  # 最后的尝试，忽略所有错误
+
             self.lsp = None
 
     def __del__(self) -> None:
@@ -616,7 +651,12 @@ class BaseWorkspace(gym.Env, ABC):
         None
 
         """
-        self.close()
+        try:
+            self.close()
+        except Exception as e:
+            # 在析构函数中捕获所有异常，避免影响垃圾回收
+            # Catch all exceptions in destructor to avoid affecting garbage collection
+            logger.error(f"析构时关闭环境出错 / Error closing environment in destructor: {e}")
 
     @abstractmethod
     def construct_action(self, action: dict) -> IDEAction:
@@ -705,16 +745,37 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             None
         """
+        # 防止重复关闭
+        if self._is_closed or self._is_closing:
+            return
+
         self._is_closing = True
-        for m in self.models:
-            m.dispose()
-        self.models.clear()
-        with self.lsp_mutex:
-            self.kill_lsp()
-        if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
-            self.lsp_output_monitor_thread.join()  # 确保输出监控线程已经结束
-        self._is_closed = True
-        self._is_closing = False
+
+        try:
+            # 清理所有模型
+            for m in self.models:
+                try:
+                    m.dispose()
+                except Exception as e:
+                    logger.error(f"清理模型时出错 / Error disposing model: {e}")
+            self.models.clear()
+
+            # 关闭LSP进程
+            with self.lsp_mutex:
+                self.kill_lsp()
+
+            # 等待输出监控线程结束
+            if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
+                self.lsp_output_monitor_thread.join(timeout=3)  # 设置超时避免永久阻塞
+                if self.lsp_output_monitor_thread.is_alive():
+                    logger.warning(
+                        "LSP输出监控线程未能在超时时间内结束 / LSP output monitor thread didn't finish in time"
+                    )
+        except Exception as e:
+            logger.error(f"关闭环境时出错 / Error closing environment: {e}")
+        finally:
+            self._is_closed = True
+            self._is_closing = False
 
     def _assert_not_closed(self) -> bool:
         """

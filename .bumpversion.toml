@@ -1,17 +1,16 @@
 [tool.bumpversion]
-current_version = "0.1.0"
+current_version = "0.1.0a0"
 parse = """(?x)
     (?P<major>0|[1-9]\\d*)\\.
     (?P<minor>0|[1-9]\\d*)\\.
     (?P<patch>0|[1-9]\\d*)
     (?:
-        -
-        (?P<pre_l>[a-zA-Z-]+)
-        (?P<pre_n>0|[1-9]\\d*)
+        (?P<release>a|b|rc)
+        (?P<pre>0|[1-9]\\d*)
     )?
 """
 serialize = [
-    "{major}.{minor}.{patch}-{pre_l}{pre_n}",
+    "{major}.{minor}.{patch}{release}{pre}",
     "{major}.{minor}.{patch}",
 ]
 search = "{current_version}"
@@ -29,9 +28,11 @@ message = "Bump version: {current_version} → {new_version}"
 commit_args = ""
 
 
-[tool.bumpversion.parts.pre_l]
-values = ["dev", "rc", "final"]
-optional_value = "final"
+[tool.bumpversion.parts.release]
+values = ["dev", "a", "b", "rc"]
+
+[tool.bumpversion.parts.pre]
+first_value = 0
 
 [[tool.bumpversion.files]]
 filename = "ide4ai/__init__.py"

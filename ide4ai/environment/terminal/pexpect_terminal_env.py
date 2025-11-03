@@ -24,6 +24,7 @@ from loguru import logger
 from typing_extensions import SupportsFloat
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.schema import IDEAction, IDEObs
 
 
@@ -36,7 +37,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
     Attributes:
         name (str): 环境名称 | Environment name
-        white_list (list[str]): 可执行的命令白名单 | Whitelist of executable commands
+        cmd_filter (CommandFilterConfig): 命令过滤配置(黑白名单) | Command filter configuration (blacklist/whitelist)
         work_dir (str): 工作目录 | Working directory
         active_venv_cmd (str | None): 虚拟环境初始化命令 | Virtual environment initialization command
         shell (pexpect.spawn): 持久的 shell 进程 | Persistent shell process
@@ -51,8 +52,8 @@ class PexpectTerminalEnv(BaseTerminalEnv):
     def __init__(
         self,
         args: EnvironmentArguments,
-        white_list: list[str],
         work_dir: str,
+        cmd_filter: CommandFilterConfig | None = None,
         active_venv_cmd: str | None = None,
         shell: str = "/bin/bash",
     ) -> None:
@@ -61,15 +62,22 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
         Args:
             args: 环境参数 | Environment arguments
-            white_list: 命令白名单 | Command whitelist
             work_dir: 工作目录 | Working directory
+            cmd_filter: 命令过滤配置(黑白名单) | Command filter configuration (blacklist/whitelist)
             active_venv_cmd: 虚拟环境初始化命令,例如 "source .venv/bin/activate" 或 "uv venv activate"
                       Virtual environment initialization command, e.g., "source .venv/bin/activate" or "uv venv activate"
             shell: Shell 程序路径 | Shell program path
         """
         super().__init__()
         self.args = args
-        self.white_list = white_list
+
+        # 处理命令过滤配置 | Handle command filter config
+        if cmd_filter is not None:
+            self.cmd_filter = cmd_filter
+        else:
+            # 默认使用黑名单模式 | Default to blacklist mode
+            self.cmd_filter = CommandFilterConfig.allow_all_except()
+
         self.active_venv_cmd = active_venv_cmd
         self.shell_path = shell
 
@@ -210,8 +218,9 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         if ide_action.category != "terminal":
             raise ValueError(f"Unsupported action category: {ide_action.category}")
 
-        if ide_action.action_name not in self.white_list:
-            raise ValueError(f"Action not in white list: {ide_action.action_name}")
+        if not self.cmd_filter.is_allowed(ide_action.action_name):
+            reason = self.cmd_filter.get_rejection_reason(ide_action.action_name)
+            raise ValueError(reason)
 
         if not isinstance(ide_action.action_args, (list, str)):
             raise ValueError(

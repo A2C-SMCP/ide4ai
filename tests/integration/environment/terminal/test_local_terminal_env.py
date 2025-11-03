@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.local_terminal_env import TerminalEnv
 
 
@@ -27,26 +28,26 @@ def terminal_env(temp_work_dir):
         timeout=10,
         image_name="test",
     )  # Assuming EnvironmentArguments class exists with a timeout attribute
-    white_list = ["echo", "ls"]  # Safe commands
-    return TerminalEnv(args, white_list, temp_work_dir)
+    cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls"])  # Safe commands
+    return TerminalEnv(args, temp_work_dir, cmd_filter=cmd_filter)
 
 
 # Test initialization
 def test_initialization(temp_work_dir):
     args = EnvironmentArguments(timeout=10, image_name="test")
-    white_list = ["echo", "ls"]
-    env = TerminalEnv(args, white_list, temp_work_dir)
+    cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls"])
+    env = TerminalEnv(args, temp_work_dir, cmd_filter=cmd_filter)
     assert env.work_dir == temp_work_dir
     assert env.current_dir == temp_work_dir
-    assert set(env.white_list) == {"echo", "ls"}
+    assert env.cmd_filter.white_list == ["echo", "ls"]
 
 
 # Test initialization failure with invalid directory
 def test_invalid_directory():
     args = EnvironmentArguments(timeout=10, image_name="test")
-    white_list = ["echo", "ls"]
+    cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls"])
     with pytest.raises(ValueError):
-        TerminalEnv(args, white_list, "/invalid/dir")
+        TerminalEnv(args, "/invalid/dir", cmd_filter=cmd_filter)
 
 
 # Test action construction and white list enforcement

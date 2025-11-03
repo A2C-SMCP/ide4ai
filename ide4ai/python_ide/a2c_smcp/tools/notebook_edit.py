@@ -235,16 +235,6 @@ Jupyter notebooks 是结合代码、文本和可视化的交互式文档，通�
             )
             return error_output.model_dump()
 
-        except ValueError as e:
-            # 处理验证错误 | Handle validation errors
-            logger.error(f"验证失败 | Validation failed: {e}")
-            error_output = NotebookEditOutput(
-                success=False,
-                message="",
-                error=str(e),
-            )
-            return error_output.model_dump()
-
         except json.JSONDecodeError as e:
             # 处理 JSON 解析错误 | Handle JSON decode errors
             logger.error(f"Notebook 文件格式错误 | Invalid notebook format: {e}")
@@ -252,6 +242,16 @@ Jupyter notebooks 是结合代码、文本和可视化的交互式文档，通�
                 success=False,
                 message="",
                 error=f"Notebook 文件格式错误 | Invalid notebook format: {e}",
+            )
+            return error_output.model_dump()
+
+        except ValueError as e:
+            # 处理验证错误 | Handle validation errors
+            logger.error(f"验证失败 | Validation failed: {e}")
+            error_output = NotebookEditOutput(
+                success=False,
+                message="",
+                error=str(e),
             )
             return error_output.model_dump()
 

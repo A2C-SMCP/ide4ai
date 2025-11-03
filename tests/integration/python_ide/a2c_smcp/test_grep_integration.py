@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from ide4ai.python_ide.mcp.config import MCPServerConfig
-from ide4ai.python_ide.mcp.server import PythonIDEMCPServer
+from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 class TestGrepIntegration:

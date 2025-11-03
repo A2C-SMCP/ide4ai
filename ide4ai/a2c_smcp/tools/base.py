@@ -15,7 +15,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai import IDE
 
 # 泛型类型变量 | Generic type variable
 T = TypeVar("T", bound=BaseModel)
@@ -29,7 +29,7 @@ class BaseTool(ABC):
     All MCP tools should inherit from this class and implement the execute method
     """
 
-    def __init__(self, ide: PythonIDE) -> None:
+    def __init__(self, ide: IDE) -> None:
         """
         初始化工具 | Initialize tool
 

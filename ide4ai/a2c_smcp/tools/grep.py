@@ -14,8 +14,8 @@ from typing import Any
 
 from loguru import logger
 
-from ide4ai.python_ide.mcp.schemas.tools import GrepInput, GrepOutput
-from ide4ai.python_ide.mcp.tools.base import BaseTool
+from ide4ai.a2c_smcp.schemas import GrepInput, GrepOutput
+from ide4ai.a2c_smcp.tools.base import BaseTool
 
 
 class GrepTool(BaseTool):
@@ -73,7 +73,7 @@ class GrepTool(BaseTool):
 
         logger.info(
             f"执行 Grep 搜索 | Executing Grep search: pattern={grep_input.pattern}, path={grep_input.path}, "
-            f"output_mode={grep_input.output_mode}"
+            f"output_mode={grep_input.output_mode}",
         )
 
         try:
@@ -107,7 +107,7 @@ class GrepTool(BaseTool):
             )
 
             logger.info(
-                f"Grep 搜索完成 | Grep search completed: matched={output.matched}, output_length={len(output.output)}"
+                f"Grep 搜索完成 | Grep search completed: matched={output.matched}, output_length={len(output.output)}",
             )
 
             return output.model_dump()

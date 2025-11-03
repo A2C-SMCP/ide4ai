@@ -10,12 +10,14 @@ MCP Bash 工具测试 | MCP Bash Tool Tests
 Tests basic functionality of Bash tool
 """
 
+import os
+
 import pytest
 from pydantic import ValidationError
 
+from ide4ai.a2c_smcp.tools import BashTool
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.ides import PyIDESingleton
-from ide4ai.python_ide.mcp.tools.bash import BashTool
 
 
 @pytest.fixture
@@ -26,8 +28,14 @@ def ide_instance():
     Returns:
         PythonIDE: IDE 实例 | IDE instance
     """
+    # 获取 virtual_project 的绝对路径
+    # Get absolute path to virtual_project
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(test_dir, "../../integration/python_ide/virtual_project")
+    root_dir = os.path.abspath(root_dir)
+
     ide_singleton = PyIDESingleton(
-        root_dir="../..",
+        root_dir=root_dir,
         project_name="test-project",
         cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )
@@ -79,7 +87,7 @@ async def test_bash_tool_execute_simple_command(bash_tool):
         {
             "command": "echo",
             "description": "Test echo command",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -101,7 +109,7 @@ async def test_bash_tool_execute_with_timeout(bash_tool):
             "command": "pwd",
             "timeout": 5000,  # 5 秒 | 5 seconds
             "description": "Get current directory",
-        }
+        },
     )
 
     assert isinstance(result, dict)
@@ -133,7 +141,7 @@ def test_bash_tool_input_schema_validation(bash_tool):
     Args:
         bash_tool: Bash 工具实例 | Bash tool instance
     """
-    from ide4ai.python_ide.mcp.schemas.tools import BashInput
+    from ide4ai.a2c_smcp.schemas import BashInput
 
     # 有效输入 | Valid input
     valid_input = BashInput(command="ls")
@@ -171,7 +179,7 @@ async def test_bash_tool_output_truncation(bash_tool):
             "command": "echo",
             "args": large_text,
             "description": "Generate large output for truncation test",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -214,7 +222,7 @@ async def test_bash_tool_no_truncation_for_small_output(bash_tool):
             "command": "echo",
             "args": small_text,
             "description": "Generate small output",
-        }
+        },
     )
 
     # 验证结果 | Verify result

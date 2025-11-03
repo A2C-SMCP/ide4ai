@@ -21,7 +21,7 @@ Demonstrates how to start MCP Server with default stdio mode
 import asyncio
 import os
 
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 
 async def main() -> None:

@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from ide4ai.a2c_smcp.schemas import ReadOutput
+from ide4ai.a2c_smcp.tools import ReadTool
 from ide4ai.python_ide.ide import PythonIDE
-from ide4ai.python_ide.mcp.schemas.tools import ReadOutput
-from ide4ai.python_ide.mcp.tools.read import ReadTool
 
 
 class TestReadTool:

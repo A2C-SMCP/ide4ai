@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from ide4ai.a2c_smcp.schemas import GrepInput, GrepOutput
+from ide4ai.a2c_smcp.tools import GrepTool
 from ide4ai.python_ide.ide import PythonIDE
-from ide4ai.python_ide.mcp.schemas.tools import GrepInput, GrepOutput
-from ide4ai.python_ide.mcp.tools.grep import GrepTool
 
 
 class TestGrepTool:
@@ -98,7 +98,7 @@ class TestApp(unittest.TestCase):
             {
                 "pattern": "TODO",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -119,7 +119,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "def",
                 "type": "py",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -139,7 +139,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "TODO",
                 "output_mode": "content",
                 "-n": True,  # 显示行号
-            }
+            },
         )
 
         assert result["success"] is True
@@ -161,7 +161,7 @@ class TestApp(unittest.TestCase):
                 "output_mode": "content",
                 "-C": 2,  # 前后各 2 行
                 "-n": True,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -181,7 +181,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "todo",
                 "-i": True,  # 忽略大小写
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -201,7 +201,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "test",
                 "glob": "**/test_*.py",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -221,7 +221,7 @@ class TestApp(unittest.TestCase):
             {
                 "pattern": "def",
                 "output_mode": "count",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -241,7 +241,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "def",
                 "output_mode": "content",
                 "head_limit": 5,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -260,7 +260,7 @@ class TestApp(unittest.TestCase):
                 "pattern": r"def.*\n.*print",
                 "multiline": True,
                 "output_mode": "content",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -278,7 +278,7 @@ class TestApp(unittest.TestCase):
             {
                 "pattern": "NONEXISTENT_PATTERN_XYZ",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -314,7 +314,7 @@ class TestApp(unittest.TestCase):
                 "pattern": "FIXME",
                 "path": os.path.join(tmpdir, "tests"),
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -333,7 +333,7 @@ class TestApp(unittest.TestCase):
             {
                 "pattern": "TODO",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -372,7 +372,7 @@ class TestApp(unittest.TestCase):
         result = await tool.execute(
             {
                 "pattern": "TODO",
-            }
+            },
         )
 
         # 验证输出符合 GrepOutput schema
@@ -407,7 +407,7 @@ class TestGrepToolEdgeCases:
             result = await tool.execute(
                 {
                     "pattern": "test",
-                }
+                },
             )
 
             assert result["success"] is False
@@ -434,7 +434,7 @@ class TestGrepToolEdgeCases:
                 {
                     "pattern": "test",
                     "path": "/nonexistent/path",
-                }
+                },
             )
 
             assert result["success"] is False
@@ -467,7 +467,7 @@ class TestGrepToolEdgeCases:
             result = await tool.execute(
                 {
                     "pattern": "test",
-                }
+                },
             )
 
             assert result["success"] is False
@@ -494,7 +494,7 @@ class TestGrepToolEdgeCases:
             result = await tool.execute(
                 {
                     "pattern": "[invalid(regex",  # 无效的正则表达式
-                }
+                },
             )
 
             # 应该返回错误而不是抛出异常

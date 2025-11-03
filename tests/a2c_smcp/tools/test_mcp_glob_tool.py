@@ -10,11 +10,13 @@ MCP Glob 工具测试 | MCP Glob Tool Tests
 Tests basic functionality of Glob tool
 """
 
+import os
+
 import pytest
 
+from ide4ai.a2c_smcp.tools import GlobTool
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.ides import PyIDESingleton
-from ide4ai.python_ide.mcp.tools.glob import GlobTool
 
 
 @pytest.fixture
@@ -25,8 +27,14 @@ def ide_instance():
     Returns:
         PythonIDE: IDE 实例 | IDE instance
     """
+    # 获取 virtual_project 的绝对路径
+    # Get absolute path to virtual_project
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(test_dir, "../../integration/python_ide/virtual_project")
+    root_dir = os.path.abspath(root_dir)
+
     ide_singleton = PyIDESingleton(
-        root_dir="../..",
+        root_dir=root_dir,
         project_name="test-project",
         cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )
@@ -83,7 +91,7 @@ async def test_glob_tool_execute_simple_pattern(glob_tool):
     result = await glob_tool.execute(
         {
             "pattern": "*.py",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -111,7 +119,7 @@ async def test_glob_tool_execute_recursive_pattern(glob_tool):
     result = await glob_tool.execute(
         {
             "pattern": "**/*.py",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -142,7 +150,7 @@ async def test_glob_tool_execute_with_path(glob_tool):
         {
             "pattern": "*.py",
             "path": "ide4ai",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -168,7 +176,7 @@ async def test_glob_tool_execute_no_matches(glob_tool):
     result = await glob_tool.execute(
         {
             "pattern": "*.nonexistent_extension_xyz",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -195,7 +203,7 @@ async def test_glob_tool_execute_invalid_path(glob_tool):
         {
             "pattern": "*.py",
             "path": "/nonexistent/path/that/does/not/exist",
-        }
+        },
     )
 
     # 应该返回错误 | Should return error
@@ -229,7 +237,7 @@ def test_glob_tool_input_schema_validation(glob_tool):
     Args:
         glob_tool: Glob 工具实例 | Glob tool instance
     """
-    from ide4ai.python_ide.mcp.schemas.tools import GlobInput
+    from ide4ai.a2c_smcp.schemas import GlobInput
 
     # 有效输入 - 仅 pattern | Valid input - pattern only
     valid_input = GlobInput(pattern="*.py")
@@ -254,7 +262,7 @@ async def test_glob_tool_files_sorted_by_mtime(glob_tool):
     result = await glob_tool.execute(
         {
             "pattern": "**/*.py",
-        }
+        },
     )
 
     # 验证结果 | Verify result
@@ -285,7 +293,7 @@ async def test_glob_tool_workspace_none_error(ide_instance):
         result = await glob_tool.execute(
             {
                 "pattern": "*.py",
-            }
+            },
         )
 
         # 验证返回错误 | Verify error is returned

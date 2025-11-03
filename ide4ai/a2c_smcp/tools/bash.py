@@ -14,8 +14,8 @@ from typing import Any
 
 from loguru import logger
 
-from ide4ai.python_ide.mcp.schemas.tools import BashInput, BashOutput
-from ide4ai.python_ide.mcp.tools.base import BaseTool
+from ide4ai.a2c_smcp.schemas import BashInput, BashOutput
+from ide4ai.a2c_smcp.tools.base import BaseTool
 
 
 class BashTool(BaseTool):
@@ -140,7 +140,7 @@ cd /foo/bar && pytest tests
                 output_text = raw_output[: self.MAX_OUTPUT_LENGTH]
                 truncated = True
                 logger.warning(
-                    f"输出被截断 | Output truncated: {len(raw_output)} -> {self.MAX_OUTPUT_LENGTH} 字符 | characters"
+                    f"输出被截断 | Output truncated: {len(raw_output)} -> {self.MAX_OUTPUT_LENGTH} 字符 | characters",
                 )
 
             # 构造输出 | Construct output

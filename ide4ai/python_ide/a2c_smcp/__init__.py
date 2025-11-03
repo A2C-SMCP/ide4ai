@@ -10,7 +10,7 @@ Python IDE MCP Server 封装 | Python IDE MCP Server Wrapper
 Wraps PythonIDE capabilities as MCP Server for external services
 """
 
-from ide4ai.python_ide.mcp.config import MCPServerConfig
-from ide4ai.python_ide.mcp.server import PythonIDEMCPServer
+from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 __all__ = ["MCPServerConfig", "PythonIDEMCPServer"]

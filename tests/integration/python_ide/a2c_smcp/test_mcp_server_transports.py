@@ -17,7 +17,8 @@ import pytest
 from confz import DataSource
 from confz.exceptions import ConfigException
 
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 class TestMCPServerTransportModes:
@@ -469,7 +470,7 @@ class TestMCPServerTools:
                 result = await glob_tool.execute(
                     {
                         "pattern": "*.py",
-                    }
+                    },
                 )
 
                 # 验证结果 | Verify result
@@ -503,7 +504,7 @@ class TestMCPServerTools:
                 result = await glob_tool.execute(
                     {
                         "pattern": "**/*.py",
-                    }
+                    },
                 )
 
                 # 验证结果 | Verify result
@@ -542,7 +543,7 @@ class TestMCPServerTools:
                     {
                         "pattern": "*.py",
                         "path": "ide4ai",
-                    }
+                    },
                 )
 
                 # 验证结果 | Verify result
@@ -578,7 +579,7 @@ class TestMCPServerTools:
                     {
                         "pattern": "*.py",
                         "path": "/nonexistent/path",
-                    }
+                    },
                 )
 
                 # 应该返回错误 | Should return error

@@ -15,7 +15,8 @@ from typing_extensions import TypedDict
 from ide4ai.environment.terminal.base import BaseTerminalEnv
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.workspace.base import BaseWorkspace
-from ide4ai.schema import IDEObs
+from ide4ai.exceptions import IDEExecutionError
+from ide4ai.schema import IDEAction, IDEObs
 
 # 定义泛型类型变量用于 Terminal 和 Workspace 类型 | Define generic type variables for Terminal and Workspace types
 TerminalT = TypeVar("TerminalT", bound=BaseTerminalEnv)
@@ -125,9 +126,59 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
     def active_terminal(self, index: int) -> None:
         self.active_terminal_index = index
 
-    @abstractmethod
+    def construct_action(self, action: dict) -> IDEAction:
+        """
+        构建 IDEAction 对象
+
+        Args:
+            action (dict): 动作字典 | Action dictionary
+
+        Returns:
+            IDEAction: IDEAction 对象 | IDEAction object
+
+        Raises:
+            ValueError: 如果动作不在支持的动作集合中 | If the action is not in the supported action set
+        """
+        ide_action = IDEAction.model_validate(action)
+        if ide_action.category == "terminal" and not self.cmd_filter.is_allowed(ide_action.action_name):
+            reason = self.cmd_filter.get_rejection_reason(ide_action.action_name)
+            err = f"{reason}. Can't run this command now."
+            raise IDEExecutionError(message=err, detail_for_llm=err)
+        return ide_action
+
     def step(self, action: dict) -> tuple[dict, SupportsFloat, bool, bool, dict[str, Any]]:
-        pass
+        """
+        执行一个动作
+
+        观察返回：
+        1. OpenFile: 返回打开文件的内容
+        2. ApplyEdit: 返回编辑的变更记录
+
+        奖励机制：
+        1. OpenFile: 成功打印返回100，打开失败返回0
+        2. ApplyEdit: 变更成功返回100，失败返回0
+
+        Args:
+            action (dict): 动作字典 | Action dictionary
+
+        Returns:
+            tuple[dict, SupportsFloat, bool, bool, dict[str, Any]]: 观察、奖励、是否结束、是否成功、额外信息 |
+                Observation, Reward, Done, Success, Extra info
+
+        Raises:
+            ValueError: 如果工作区尚未正常初始化 | If the workspace has not been initialized properly
+        """
+        ide_action = self.construct_action(action)
+        if ide_action.category == "terminal":
+            return self.terminal.step(action)
+        else:
+            if self.workspace:
+                return self.workspace.step(action)
+            else:
+                raise IDEExecutionError(
+                    "Workspace is not initialized",
+                    detail_for_llm="Workspace is not initialized, initialize workspace first",
+                )
 
     def reset(
         self,

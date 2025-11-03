@@ -12,5 +12,6 @@ from ide4ai.a2c_smcp.tools.edit import EditTool
 from ide4ai.a2c_smcp.tools.glob import GlobTool
 from ide4ai.a2c_smcp.tools.grep import GrepTool
 from ide4ai.a2c_smcp.tools.read import ReadTool
+from ide4ai.a2c_smcp.tools.write import WriteTool
 
-__all__ = ["BashTool", "EditTool", "GlobTool", "GrepTool", "ReadTool"]
+__all__ = ["BashTool", "EditTool", "GlobTool", "GrepTool", "ReadTool", "WriteTool"]

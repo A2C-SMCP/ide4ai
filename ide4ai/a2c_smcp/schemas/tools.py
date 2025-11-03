@@ -167,3 +167,15 @@ class WriteInput(BaseModel):
 
     file_path: str = Field(..., description="要写入的文件的绝对路径 | The absolute path to the file to write")
     content: str = Field(..., description="要写入的内容 | The content to write to the file")
+
+
+class WriteOutput(BaseModel):
+    """Write 工具输出 Schema | Write Tool Output Schema"""
+
+    success: bool = Field(..., description="是否成功执行 | Whether the operation was successful")
+    message: str = Field(default="", description="操作结果消息 | Operation result message")
+    error: str | None = Field(default=None, description="错误信息(如果有) | Error message (if any)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="额外的元数据 | Additional metadata",
+    )

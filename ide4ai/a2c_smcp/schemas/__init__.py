@@ -19,6 +19,7 @@ from ide4ai.a2c_smcp.schemas.tools import (
     ReadInput,
     ReadOutput,
     WriteInput,
+    WriteOutput,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "ReadInput",
     "ReadOutput",
     "WriteInput",
+    "WriteOutput",
 ]

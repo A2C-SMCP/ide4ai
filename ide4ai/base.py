@@ -4,12 +4,12 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import atexit
+import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, SupportsFloat, TypeVar
 
 import gymnasium as gym
-from gymnasium.core import RenderFrame
 from typing_extensions import TypedDict
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv
@@ -111,7 +111,7 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
 
     @property
     def terminal(self) -> TerminalT:
-        if self.active_terminal_index:
+        if self.active_terminal_index is not None:
             return self.terminals[self.active_terminal_index]
         else:
             terminal = self.init_terminal()
@@ -135,11 +135,84 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[IDEObs, dict[str, Any]]:
-        return super().reset(seed=seed)
+        """
+        Resets the environment.
 
-    @abstractmethod
-    def render(self) -> RenderFrame | list[RenderFrame] | None:
-        pass
+        This function resets the environment to its initial state, including resetting the workspace and all terminals.
+
+        Args:
+            seed (int | None): The seed to be used for resetting the environment. Defaults to None.
+            options (dict[str, Any] | None): Additional options for the reset operation. Defaults to None.
+
+        Returns:
+            tuple[IDEObs, dict[str, Any]]: A tuple containing the observation result and additional information.
+        """
+        super().reset(seed=seed, options=options)
+        # 重置工作区与所有终端 | Reset workspace and all terminals
+        if self.workspace:
+            self.workspace.reset(seed=seed, options=options)
+        if self.terminals:
+            for terminal in self.terminals:
+                terminal.reset(seed=seed, options=options)
+        return IDEObs(obs="Reset IDE successfully"), {}
+
+    def _get_git_status(self) -> str | None:
+        """
+        获取 git 仓库状态
+
+        使用 subprocess 独立执行 git status -s，不影响 terminal 的命令历史
+        Use subprocess to execute git status -s independently, without affecting terminal command history
+
+        Returns:
+            str | None: git status -s 的输出，如果不是 git 仓库或执行失败则返回 None
+                       Output of git status -s, or None if not a git repo or execution failed
+        """
+        try:
+            # 使用 subprocess 执行 git status -s
+            # 设置 cwd 为 root_dir，确保在正确的目录执行
+            result = subprocess.run(
+                ["git", "status", "-s"],
+                cwd=self.root_dir,
+                capture_output=True,
+                text=True,
+                timeout=5,  # 5秒超时，防止卡住
+            )
+
+            # 如果命令执行成功且有输出
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                # 只有当有实际内容时才返回（空字符串表示没有变更）
+                return output if output else None
+
+            return None
+
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            # FileNotFoundError: git 命令不存在
+            # TimeoutExpired: 执行超时
+            # Exception: 其他异常（如不是 git 仓库）
+            return None
+
+    def render(self) -> str:  # type: ignore
+        """
+        渲染 IDE 内容
+
+        Returns:
+            str: 渲染结果 | Render result
+        """
+        # 添加 git 状态信息
+        git_status = self._get_git_status()
+        if git_status:
+            content = f"\n当前项目 Git 状态 (git status -s):\n{git_status}\n"
+        else:
+            content = ""
+
+        content += "IDE Content:\n"
+        if self.workspace:
+            content += f"当前工作区内容如下:\n{self.workspace.render()}\n"
+        if self.active_terminal_index is not None:
+            content += f"当前终端内容如下:\n{self.terminal.render()}\n"
+
+        return content
 
     def close(self) -> None:
         for t in self.terminals:

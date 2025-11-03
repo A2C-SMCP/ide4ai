@@ -11,7 +11,7 @@ from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 from ide4ai.exceptions import IDEExecutionError
 from ide4ai.python_ide.workspace import PyWorkspace
-from ide4ai.schema import IDEAction, IDEObs
+from ide4ai.schema import IDEAction
 
 
 class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
@@ -139,30 +139,3 @@ class PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace]):
                     "Workspace is not initialized",
                     detail_for_llm="Workspace is not initialized, initialize workspace first",
                 )
-
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,
-    ) -> tuple[IDEObs, dict[str, Any]]:
-        if self.workspace:
-            self.workspace.reset(seed=seed, options=options)
-        if self.terminals:
-            for terminal in self.terminals:
-                terminal.reset(seed=seed, options=options)
-        return IDEObs(obs="Reset IDE successfully"), {}
-
-    def render(self) -> str:  # type: ignore
-        """
-        渲染
-
-        Returns:
-            str: 渲染结果 | Render result
-        """
-        content = "IDE Content:\n"
-        if self.workspace:
-            content += f"当前工作区内容如下:\n{self.workspace.render()}\n"
-        if self.active_terminal_index is not None:
-            content += f"当前终端内容如下:\n{self.terminal.render()}\n"
-        return content

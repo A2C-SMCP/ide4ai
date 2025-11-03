@@ -123,13 +123,43 @@ class ReadInput(BaseModel):
     limit: int | None = Field(default=None, description="读取的行数 | The number of lines to read", ge=1)
 
 
+class ReadOutput(BaseModel):
+    """Read 工具输出 Schema | Read Tool Output Schema"""
+
+    success: bool = Field(..., description="是否成功执行 | Whether the operation was successful")
+    content: str = Field(default="", description="文件内容 | File content")
+    error: str | None = Field(default=None, description="错误信息(如果有) | Error message (if any)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="额外的元数据 | Additional metadata",
+    )
+
+
 class EditInput(BaseModel):
     """Edit 工具输入 Schema | Edit Tool Input Schema"""
 
     file_path: str = Field(..., description="要修改的文件的绝对路径 | The absolute path to the file to modify")
     old_string: str = Field(..., description="要替换的文本 | The text to replace")
-    new_string: str = Field(..., description="替换后的文本 | The text to replace it with")
-    replace_all: bool = Field(default=False, description="是否替换所有匹配项 | Replace all occurrences")
+    new_string: str = Field(
+        ...,
+        description="替换后的文本（必须与 old_string 不同）| The text to replace it with (must be different from old_string)",
+    )
+    replace_all: bool = Field(
+        default=False, description="是否替换所有匹配项（默认 false）| Replace all occurrences (default false)"
+    )
+
+
+class EditOutput(BaseModel):
+    """Edit 工具输出 Schema | Edit Tool Output Schema"""
+
+    success: bool = Field(..., description="是否成功执行 | Whether the operation was successful")
+    message: str = Field(default="", description="操作结果消息 | Operation result message")
+    replacements_made: int = Field(default=0, description="执行的替换次数 | Number of replacements made")
+    error: str | None = Field(default=None, description="错误信息(如果有) | Error message (if any)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="额外的元数据 | Additional metadata",
+    )
 
 
 class WriteInput(BaseModel):

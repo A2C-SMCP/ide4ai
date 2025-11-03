@@ -86,8 +86,8 @@ CONFIG = {
                         "project_name": "test-grep-integration",
                         "transport": "stdio",
                         "render_with_symbols": False,
-                    }
-                )
+                    },
+                ),
             ):
                 config = MCPServerConfig()
 
@@ -140,11 +140,11 @@ CONFIG = {
             {
                 "pattern": "TODO",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         # 验证结果
-        assert result["success"] is True
+        assert result["success"] is True, str(result)
         assert result["matched"] is True
         assert "main.py" in result["output"] or "utils.py" in result["output"]
 
@@ -161,7 +161,7 @@ CONFIG = {
                 "pattern": "def",
                 "type": "py",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -180,7 +180,7 @@ CONFIG = {
                 "pattern": "TODO",
                 "output_mode": "content",
                 "-n": True,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -200,7 +200,7 @@ CONFIG = {
                 "pattern": "test",
                 "glob": "**/test_*.py",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -220,7 +220,7 @@ CONFIG = {
                 "pattern": "todo",
                 "-i": True,
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -238,7 +238,7 @@ CONFIG = {
             {
                 "pattern": "NONEXISTENT_PATTERN_ABC123",
                 "output_mode": "files_with_matches",
-            }
+            },
         )
 
         assert result["success"] is True
@@ -318,7 +318,7 @@ class TestGrepIntegrationRealWorld:
                         "pattern": r"^import\s+",
                         "output_mode": "content",
                         "-n": True,
-                    }
+                    },
                 )
 
                 assert result["success"] is True
@@ -363,7 +363,7 @@ class MyClass:
                     {
                         "pattern": r"^\s*def\s+\w+",
                         "output_mode": "content",
-                    }
+                    },
                 )
 
                 assert result["success"] is True
@@ -470,7 +470,7 @@ class TestDataProcessor(unittest.TestCase):
             from confz import DataSource
 
             with MCPServerConfig.change_config_sources(
-                DataSource(data={"root_dir": tmpdir, "project_name": "test-context"})
+                DataSource(data={"root_dir": tmpdir, "project_name": "test-context"}),
             ):
                 config = MCPServerConfig()
 
@@ -491,7 +491,7 @@ class TestDataProcessor(unittest.TestCase):
                 "pattern": "TODO",
                 "output_mode": "content",
                 "-n": True,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -514,7 +514,7 @@ class TestDataProcessor(unittest.TestCase):
                 "output_mode": "content",
                 "-n": True,
                 "-A": 3,  # 显示匹配行后的 3 行
-            }
+            },
         )
 
         assert result["success"] is True
@@ -537,7 +537,7 @@ class TestDataProcessor(unittest.TestCase):
                 "output_mode": "content",
                 "-n": True,
                 "-B": 2,  # 显示匹配行前的 2 行
-            }
+            },
         )
 
         assert result["success"] is True
@@ -560,7 +560,7 @@ class TestDataProcessor(unittest.TestCase):
                 "output_mode": "content",
                 "-n": True,
                 "-C": 2,  # 显示匹配行前后各 2 行
-            }
+            },
         )
 
         assert result["success"] is True
@@ -585,7 +585,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-n": True,
                 "-B": 1,  # 前 1 行
                 "-A": 4,  # 后 4 行
-            }
+            },
         )
 
         assert result["success"] is True
@@ -609,7 +609,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-n": True,
                 "-A": 2,
                 "-B": 1,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -632,7 +632,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-i": True,  # 大小写不敏感
                 "-n": True,
                 "-C": 2,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -655,7 +655,7 @@ class TestDataProcessor(unittest.TestCase):
                 "output_mode": "content",
                 "-n": True,
                 "-A": 1,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -679,7 +679,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-n": True,
                 "-B": 1,
                 "-A": 2,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -702,7 +702,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-n": True,
                 "-A": 10,  # 大量后续上下文
                 "-B": 5,  # 较多前置上下文
-            }
+            },
         )
 
         assert result["success"] is True
@@ -725,7 +725,7 @@ class TestDataProcessor(unittest.TestCase):
                 "output_mode": "content",
                 "-n": True,
                 "-C": 3,
-            }
+            },
         )
 
         assert result["success"] is True
@@ -749,7 +749,7 @@ class TestDataProcessor(unittest.TestCase):
                 "-n": True,
                 "-A": 2,
                 "-m": 2,  # 最多匹配 2 次
-            }
+            },
         )
 
         assert result["success"] is True

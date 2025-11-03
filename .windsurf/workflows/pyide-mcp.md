@@ -20,5 +20,4 @@ PythonIDE相关代码在： @ide4ai/python_ide 下
 
 ---
 
-针对工具的测试需要在：
-
+针对工具的测试需要在：tests/integration/python_ide/mcp 及其子目录下进行测试验证。

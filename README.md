@@ -70,6 +70,67 @@ ide.step(edit.model_dump())
 
 更多示例（导航、终端执行、LSP 能力）请查看 `examples/` 目录与测试用例 `tests/`。
 
+### 使用 uvx 启动与管理 MCP Server
+
+- **脚本入口**：`py-ide4ai-mcp`（定义于 `pyproject.toml` -> `[project.scripts]`）
+- **前置要求**：已安装 `uv`（`curl -LsSf https://astral.sh/uv/install.sh | sh`）与 `ripgrep (rg)`。
+
+- **从 PyPI 运行（无需安装到全局环境）**：
+```bash
+uvx py-ide4ai-mcp --help   # 查看可用参数
+uvx py-ide4ai-mcp          # 启动服务（按需添加参数）
+```
+
+- **从本地源码运行（仓库根目录）**：
+```bash
+uvx --from . py-ide4ai-mcp -- --help
+uvx --from . py-ide4ai-mcp            # 启动本地开发版
+```
+
+- **固定（或切换）版本运行**：
+```bash
+uvx --from ide4ai==<version> py-ide4ai-mcp
+```
+
+提示：`uvx` 会为命令创建隔离环境并缓存依赖，便于快速升级/回滚。生产环境可配合进程管理器（如 systemd、supervisor、tmux/screen）做守护与重启策略。
+
+#### 常用启动参数（CLI 与环境变量）
+
+- **传输模式**：`--transport`（默认 `stdio`）
+  - 取值：`stdio` | `sse` | `streamable-http`
+  - 环境变量：`TRANSPORT`
+- **主机/端口**：`--host`（默认 `127.0.0.1`）、`--port`（默认 `8000`）
+  - 仅用于 `sse` 与 `streamable-http`
+  - 环境变量：`HOST`、`PORT`
+- **项目根目录/名称**：`--root-dir`（默认 `.`）、`--project-name`（默认 `mcp-project`）
+  - 环境变量：`PROJECT_ROOT`、`PROJECT_NAME`
+- **命令白名单**：`--cmd-white-list`（逗号分隔）
+  - 默认：`["ls","pwd","echo","cat","grep","find","head","tail","wc"]`
+  - 环境变量：`CMD_WHITE_LIST`
+- **命令超时(秒)**：`--cmd-timeout`（默认 `10`）
+  - 环境变量：`CMD_TIMEOUT`
+- **渲染符号**：`--render-with-symbols`（默认 `true`）
+  - 环境变量：`RENDER_WITH_SYMBOLS`
+- **最大活跃模型数**：`--max-active-models`（默认 `3`）
+  - 环境变量：`MAX_ACTIVE_MODELS`
+- **简化视图模式**：`--enable-simple-view-mode`（默认 `true`）
+  - 环境变量：`ENABLE_SIMPLE_VIEW_MODE`
+
+说明：命令行参数优先级高于环境变量，高于默认值。
+
+#### 示例
+
+- **SSE 模式（本地 8000 端口）**：
+```bash
+uvx py-ide4ai-mcp --transport sse --host 127.0.0.1 --port 8000 \
+  --root-dir "/path/to/proj" --project-name my_proj
+```
+
+- **标准输入输出（默认）+ 自定义白名单与超时**：
+```bash
+uvx py-ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
+```
+
 ## 📚 核心概念（使用者）
 
 ### IDE Actions

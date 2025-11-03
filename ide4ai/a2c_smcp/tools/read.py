@@ -14,9 +14,9 @@ from typing import Any
 
 from loguru import logger
 
+from ide4ai.a2c_smcp.schemas import ReadInput, ReadOutput
+from ide4ai.a2c_smcp.tools.base import BaseTool
 from ide4ai.environment.workspace.schema import Position, Range
-from ide4ai.python_ide.mcp.schemas.tools import ReadInput, ReadOutput
-from ide4ai.python_ide.mcp.tools.base import BaseTool
 
 
 class ReadTool(BaseTool):

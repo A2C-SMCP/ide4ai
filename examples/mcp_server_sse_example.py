@@ -20,7 +20,7 @@ Demonstrates how to start MCP Server with SSE (Server-Sent Events) mode
 
 import asyncio
 
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 
 async def main() -> None:

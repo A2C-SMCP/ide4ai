@@ -151,7 +151,7 @@ py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ```python
 import asyncio
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
     # 自动从环境变量和命令行参数加载配置 | Automatically load configuration from environment variables and command-line arguments
@@ -171,7 +171,7 @@ if __name__ == "__main__":
 **使用 stdio 模式 | Using stdio mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
     config = MCPServerConfig(
@@ -191,7 +191,7 @@ if __name__ == "__main__":
 **使用 SSE 模式 | Using SSE mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
     config = MCPServerConfig(
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 **使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.mcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
 
 async def main():
     config = MCPServerConfig(

@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from ide4ai.a2c_smcp.schemas import EditOutput
+from ide4ai.a2c_smcp.tools.edit import EditTool
 from ide4ai.python_ide.ide import PythonIDE
-from ide4ai.python_ide.mcp.schemas.tools import EditOutput
-from ide4ai.python_ide.mcp.tools.edit import EditTool
 
 
 class TestEditTool:
@@ -101,7 +101,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": "Hello, World!",
                 "new_string": "Hello, Python!",
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -134,7 +134,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": old_string,
                 "new_string": new_string,
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -163,7 +163,7 @@ class OldClass:
                 "old_string": '"test"',
                 "new_string": '"updated"',
                 "replace_all": False,
-            }
+            },
         )
 
         # 验证结果 - 应该失败因为有多个匹配 | Verify result - should fail due to multiple matches
@@ -188,7 +188,7 @@ class OldClass:
                 "old_string": '"test"',
                 "new_string": '"updated"',
                 "replace_all": True,
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -216,7 +216,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": "NonExistentString",
                 "new_string": "NewString",
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -240,7 +240,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": "old",
                 "new_string": "new",
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -263,7 +263,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": "Hello, World!",
                 "new_string": "Hello, World!",
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -286,7 +286,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": "Hello, World!",
                 "new_string": "Hello, Universe!",
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -326,7 +326,7 @@ class OldClass:
                 "old_string": "Hello, World!",
                 "new_string": "Hello, Test!",
                 "replace_all": False,
-            }
+            },
         )
 
         # 验证结果 | Verify result
@@ -352,7 +352,7 @@ class OldClass:
                 "file_path": file_path,
                 "old_string": '    print("Hello, World!")',
                 "new_string": '    print("Goodbye, World!")',
-            }
+            },
         )
 
         # 验证结果 | Verify result

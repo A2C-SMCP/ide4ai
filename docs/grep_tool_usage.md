@@ -193,10 +193,10 @@ result = workspace.grep_files(
 
 ```bash
 # 验证导入
-uv run python -c "from ide4ai.python_ide.mcp.tools import GrepTool; print('OK')"
+uv run python -c "from ide4ai.python_ide.a2c_smcp.tools import GrepTool; print('OK')"
 
 # 验证 Schema
-uv run python -c "from ide4ai.python_ide.mcp.schemas.tools import GrepInput; print(GrepInput.model_json_schema())"
+uv run python -c "from ide4ai.python_ide.a2c_smcp.schemas.tools import GrepInput; print(GrepInput.model_json_schema())"
 ```
 
 ## 相关工具 | Related Tools

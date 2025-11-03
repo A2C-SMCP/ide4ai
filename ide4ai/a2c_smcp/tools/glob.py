@@ -14,8 +14,8 @@ from typing import Any
 
 from loguru import logger
 
-from ide4ai.python_ide.mcp.schemas.tools import GlobInput, GlobOutput
-from ide4ai.python_ide.mcp.tools.base import BaseTool
+from ide4ai.a2c_smcp.schemas import GlobInput, GlobOutput
+from ide4ai.a2c_smcp.tools.base import BaseTool
 
 
 class GlobTool(BaseTool):

@@ -10,6 +10,8 @@ MCP Glob 工具测试 | MCP Glob Tool Tests
 Tests basic functionality of Glob tool
 """
 
+import os
+
 import pytest
 
 from ide4ai.a2c_smcp.tools import GlobTool
@@ -25,8 +27,14 @@ def ide_instance():
     Returns:
         PythonIDE: IDE 实例 | IDE instance
     """
+    # 获取 virtual_project 的绝对路径
+    # Get absolute path to virtual_project
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(test_dir, "../../integration/python_ide/virtual_project")
+    root_dir = os.path.abspath(root_dir)
+
     ide_singleton = PyIDESingleton(
-        root_dir="../../../integration/python_ide",
+        root_dir=root_dir,
         project_name="test-project",
         cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )

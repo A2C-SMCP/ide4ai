@@ -10,6 +10,8 @@ MCP Bash 工具测试 | MCP Bash Tool Tests
 Tests basic functionality of Bash tool
 """
 
+import os
+
 import pytest
 from pydantic import ValidationError
 
@@ -26,8 +28,14 @@ def ide_instance():
     Returns:
         PythonIDE: IDE 实例 | IDE instance
     """
+    # 获取 virtual_project 的绝对路径
+    # Get absolute path to virtual_project
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.join(test_dir, "../../integration/python_ide/virtual_project")
+    root_dir = os.path.abspath(root_dir)
+
     ide_singleton = PyIDESingleton(
-        root_dir="../../../integration/python_ide",
+        root_dir=root_dir,
         project_name="test-project",
         cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),
     )
@@ -181,7 +189,9 @@ async def test_bash_tool_output_truncation(bash_tool):
 
     # 检查输出是否被截断 | Check if output was truncated
     output_length = len(result["output"])
-    assert output_length <= bash_tool.MAX_OUTPUT_LENGTH, f"输出长度 {output_length} 超过了最大限制 {bash_tool.MAX_OUTPUT_LENGTH}"
+    assert output_length <= bash_tool.MAX_OUTPUT_LENGTH, (
+        f"输出长度 {output_length} 超过了最大限制 {bash_tool.MAX_OUTPUT_LENGTH}"
+    )
 
     # 检查 metadata 中的截断标记 | Check truncation flag in metadata
     if result["metadata"].get("truncated"):

@@ -75,10 +75,14 @@ ide.step(edit.model_dump())
 - **脚本入口**：`py-ide4ai-mcp`（定义于 `pyproject.toml` -> `[project.scripts]`）
 - **前置要求**：已安装 `uv`（`curl -LsSf https://astral.sh/uv/install.sh | sh`）与 `ripgrep (rg)`。
 
-- **从 PyPI 运行（无需安装到全局环境）**：
+- **从 TestPyPI 运行（无需安装到全局环境）**：
 ```bash
-uvx py-ide4ai-mcp --help   # 查看可用参数
-uvx py-ide4ai-mcp          # 启动服务（按需添加参数）
+uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match --prerelease=allow --from ide4ai py-ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
+```
+
+- **从 PyPi 运行（无需安装到全局环境）**:
+```bash
+uvx --from ide4ai py-ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
 ```
 
 - **从本地源码运行（仓库根目录）**：

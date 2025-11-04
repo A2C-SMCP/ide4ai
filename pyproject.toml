@@ -48,7 +48,7 @@ Issues = "https://github.com/JQQ/ide4ai/issues"
 
 [project.scripts]
 # MCP 服务器命令 | MCP server command
-py-ide4ai-mcp = "ide4ai.python_ide.mcp.server:main"
+py-ide4ai-mcp = "ide4ai.python_ide.a2c_smcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

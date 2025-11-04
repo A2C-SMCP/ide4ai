@@ -23,7 +23,8 @@ dependencies = [
     "confz>=2.1.0",
     # MCP HTTP/SSE 传输支持 | MCP HTTP/SSE transport support
     # 显式声明 httpx 版本以确保与 httpx-sse 兼容 | Explicitly declare httpx version for httpx-sse compatibility
-    "httpx>=0.25.0",
+    # 限制在 0.x 版本，避免安装不兼容的 1.0.dev 版本 | Limit to 0.x to avoid incompatible 1.0.dev versions
+    "httpx>=0.25.0,<1.0",
     "starlette>=0.27.0",
     "uvicorn>=0.23.0",
     "sse-starlette>=2.0.0",

@@ -18,12 +18,14 @@ from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 from mcp.server.stdio import stdio_server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import Tool
+from mcp.types import Resource, Tool
+from pydantic import AnyUrl
 from starlette.applications import Starlette
 from starlette.responses import Response
 from starlette.routing import Mount, Route
 
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.resources.base import BaseResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
 from ide4ai.base import IDE
 
@@ -56,8 +58,14 @@ class BaseMCPServer(ABC):
         # 初始化工具列表 | Initialize tools list
         self.tools: dict[str, BaseTool] = {}
 
+        # 初始化资源列表 | Initialize resources list
+        self.resources: dict[str, BaseResource] = {}
+
         # 注册工具 | Register tools
         self._register_tools()
+
+        # 注册资源 | Register resources
+        self._register_resources()
 
         # 设置 MCP 处理器 | Setup MCP handlers
         self._setup_handlers()
@@ -86,6 +94,16 @@ class BaseMCPServer(ABC):
 
         由子类实现，注册特定语言的工具
         Implemented by subclass to register language-specific tools
+        """
+        pass
+
+    @abstractmethod
+    def _register_resources(self) -> None:
+        """
+        注册所有资源 | Register all resources
+
+        由子类实现，注册特定语言的资源
+        Implemented by subclass to register language-specific resources
         """
         pass
 
@@ -181,6 +199,78 @@ class BaseMCPServer(ABC):
                 error_msg = f"工具执行失败 | Tool execution failed: {e}"
                 logger.exception(error_msg)
                 return [{"type": "text", "text": error_msg}]
+
+        @self.server.list_resources()  # type: ignore[no-untyped-call]
+        async def list_resources() -> list[Resource]:
+            """
+            列出所有可用资源 | List all available resources
+
+            Returns:
+                list[Resource]: 资源列表 | List of resources
+            """
+            resources = []
+            for resource in self.resources.values():
+                resources.append(
+                    Resource(
+                        uri=AnyUrl(resource.uri),
+                        name=resource.name,
+                        description=resource.description,
+                        mimeType=resource.mime_type,
+                    ),
+                )
+
+            logger.debug(f"列出资源 | Listed resources: {[r.uri for r in resources]}")
+            return resources
+
+        @self.server.read_resource()  # type: ignore[no-untyped-call]
+        async def read_resource(uri: str) -> str:
+            """
+            读取资源内容 | Read resource content
+
+            支持动态参数更新：如果用户请求的 URI 包含不同的查询参数，
+            会先调用资源的 update_from_uri 方法更新参数，然后再读取内容。
+            Supports dynamic parameter updates: if the requested URI contains different query parameters,
+            it will call the resource's update_from_uri method to update parameters before reading.
+
+            Args:
+                uri: 资源 URI（可能包含查询参数）| Resource URI (may contain query parameters)
+
+            Returns:
+                str: 资源内容 | Resource content
+            """
+            logger.info(f"读取资源 | Reading resource: {uri}")
+
+            # 解析 base_uri（不含查询参数）用于查找资源
+            # Parse base_uri (without query parameters) to find resource
+            from urllib.parse import urlparse
+
+            parsed = urlparse(uri)
+            base_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+            # 使用 base_uri 查找资源 | Find resource using base_uri
+            resource = self.resources.get(base_uri)
+            if not resource:
+                error_msg = f"未找到资源 | Resource not found: {base_uri}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            try:
+                # 如果请求的 URI 与资源当前 URI 不同，更新资源参数
+                # If requested URI differs from resource's current URI, update parameters
+                if uri != resource.uri:
+                    logger.debug(f"更新资源参数 | Updating resource parameters from URI: {uri}")
+                    resource.update_from_uri(uri)
+
+                # 读取资源内容 | Read resource content
+                content = await resource.read()
+
+                # 返回文本内容 | Return text content
+                return content
+
+            except Exception as e:
+                error_msg = f"资源读取失败 | Resource read failed: {e}"
+                logger.exception(error_msg)
+                raise ValueError(error_msg) from e
 
     async def run(self) -> None:
         """

@@ -506,7 +506,7 @@ wheels = [
 
 [[package]]
 name = "ide4ai"
-version = "0.1.0a2"
+version = "0.1.0a3"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -556,7 +556,7 @@ requires-dist = [
     { name = "docker", specifier = ">=7.0.0" },
     { name = "emoji", specifier = ">=2.11.1" },
     { name = "gymnasium", specifier = ">=0.29.1" },
-    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "httpx", specifier = ">=0.25.0,<1.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "mcp", specifier = ">=1.19.0" },

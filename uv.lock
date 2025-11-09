@@ -506,7 +506,7 @@ wheels = [
 
 [[package]]
 name = "ide4ai"
-version = "0.1.0a3"
+version = "0.1.0b0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },

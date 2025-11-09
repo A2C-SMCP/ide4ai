@@ -1,6 +1,6 @@
 [project]
 name = "ide4ai"
-version = "0.1.0a3"
+version = "0.1.0b0"
 description = "A powerful IDE environment designed for AI agents to interact with code"
 readme = "README.md"
 authors = [

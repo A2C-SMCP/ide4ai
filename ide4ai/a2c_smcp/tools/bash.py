@@ -144,6 +144,8 @@ cd /foo/bar && pytest tests
                 )
 
             # 构造输出 | Construct output
+            # Epic A (AS-32 A6)：info 现由 `StepResult.to_info()` 提供，透传 cwd / duration_ms / exit_code
+            # Epic A (AS-32 A6): info now comes from `StepResult.to_info()`, forward cwd / duration_ms / exit_code
             output = BashOutput(
                 success=bool(success),
                 output=output_text,
@@ -156,6 +158,9 @@ cd /foo/bar && pytest tests
                     "run_in_background": bash_input.run_in_background,
                     "truncated": truncated,
                     "original_length": len(raw_output) if truncated else None,
+                    # 新增（AS-32 A6）：透传终端层结构化字段
+                    "cwd": info.get("cwd"),
+                    "duration_ms": info.get("duration_ms"),
                 },
             )
 

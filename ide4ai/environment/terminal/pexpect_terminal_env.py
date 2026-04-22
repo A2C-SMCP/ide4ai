@@ -26,6 +26,8 @@ from typing_extensions import SupportsFloat
 
 from ide4ai.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
+from ide4ai.environment.terminal.execution.run_result import StepResult
+from ide4ai.environment.terminal.semantics.output_pipeline import clean_output
 from ide4ai.schema import IDEAction, IDEObs
 
 
@@ -51,8 +53,8 @@ class PexpectTerminalEnv(BaseTerminalEnv):
     PROMPT_PATTERN = r"[\$#>]\s*$"
 
     # AS-20 同源 Bug #2 修复：退出码用独立定界符抽取，不再 regex 扫输出
-    # 实际定界符在 __init__ 注入随机后缀，避免和命令输出中的普通字符串串扰
-    _RC_TAG: ClassVar[str] = "IDE4AI_RC"
+    # A 可变的标签避免串扰（如用户命令意外含 "__IDE4AI_RC_"）；每实例生成一次。
+    _RC_TAG: ClassVar[str] = "IDE4AI_RC"  # 用于调试/错误提示；实际定界符在 __init__ 注入随机后缀
 
     def __init__(
         self,
@@ -254,6 +256,11 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         Returns:
             观察、奖励、是否结束、是否成功、额外信息
             Observation, reward, done, success, extra info
+
+        Notes:
+            自 Epic A 起 `info` 由 `StepResult.to_info()` 填充，字段包括
+            `exit_code / success / output / truncated / cwd / duration_ms`；
+            修复 AS-20 同源 Bug #3。
         """
         self._assert_not_closed()
 
@@ -270,38 +277,38 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         full_command = f"{cmd} {' '.join(cast(list[str], args))}" if args else cmd
 
         # 执行命令 | Execute command
-        output, success = self._execute_command(full_command)
+        start = time.monotonic()
+        result = self._execute_command(full_command)
+        result.duration_ms = int((time.monotonic() - start) * 1000)
 
         # 记录命令历史 | Record command history
         self._command_history.append(
             {
                 "command": full_command,
-                "output": output,
-                "success": str(success),
+                "output": result.output,
+                "success": str(result.success),
             },
         )
 
         # 返回观察结果 | Return observation
-        obs = IDEObs(obs=output)
-        reward = 100.0 if success else 0.0
+        obs = IDEObs(obs=result.output)
+        reward = 100.0 if result.success else 0.0
         done = True  # 命令执行完成 | Command execution completed
 
-        return obs.model_dump(), reward, done, success, {}
+        return obs.model_dump(), reward, done, result.success, result.to_info()
 
-    def _execute_command(self, command: str) -> tuple[str, bool]:
+    def _execute_command(self, command: str) -> StepResult:
         """
         在持久 shell 会话中执行命令 | Execute command in persistent shell session
 
         AS-20 同源 Bug #2 修复：退出码通过独立定界符 `__IDE4AI_RC_<nonce>_<n>_..._`
         精确抽取，避免输出中的数字（含 OSC-133 里的 `133`）被 regex 误匹配。
-        本 commit 仅替换 rc 抽取路径；返回值仍为 `tuple[str, bool]`，
-        结构化 StepResult 由 AS-32 (A6) 引入。
 
         Args:
             command: 要执行的命令 | Command to execute
 
         Returns:
-            命令输出和是否成功 | Command output and success status
+            结构化执行结果 | Structured StepResult
         """
         try:
             # 发送命令 | Send command
@@ -314,31 +321,49 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             )
 
             if index == 0:
-                # 命令正常完成 | Command completed normally
-                output = self.shell.before or ""
+                raw_output = self.shell.before or ""
 
                 # 精确抽取退出码：用独立定界符协议
                 self.shell.sendline(f'echo "{self._rc_start}$?{self._rc_end}"')
                 self.shell.expect("PEXPECT_PROMPT>", timeout=5)
                 rc_blob = self.shell.before or ""
                 exit_code = self._extract_exit_code(rc_blob)
-                success = exit_code == 0
 
-                # 清理输出 | Clean output
-                output = self._clean_output(output)
+                cleaned = self._clean_output(raw_output)
+                cwd = self.current_dir  # 快照当前缓存的 cwd
 
-                return output, success
+                return StepResult(
+                    exit_code=exit_code,
+                    success=exit_code == 0,
+                    output=cleaned,
+                    truncated=False,  # 截断发生在 MCP 层；此处始终 False
+                    cwd=cwd,
+                    duration_ms=0,  # 由调用方填充
+                )
 
             elif index == 1:
-                # 超时 | Timeout
-                return f"Command timeout after {self.timeout} seconds", False
+                return StepResult(
+                    exit_code=-1,
+                    success=False,
+                    output=f"Command timeout after {self.timeout} seconds",
+                    cwd=self.current_dir,
+                )
 
             else:
-                # EOF - shell 进程意外终止 | EOF - shell process terminated unexpectedly
-                return "Shell process terminated unexpectedly", False
+                return StepResult(
+                    exit_code=-1,
+                    success=False,
+                    output="Shell process terminated unexpectedly",
+                    cwd=self.current_dir,
+                )
 
         except Exception as e:
-            return f"Error executing command: {str(e)}", False
+            return StepResult(
+                exit_code=-1,
+                success=False,
+                output=f"Error executing command: {str(e)}",
+                cwd=self.current_dir,
+            )
 
     def _extract_exit_code(self, rc_blob: str) -> int:
         """
@@ -359,25 +384,12 @@ class PexpectTerminalEnv(BaseTerminalEnv):
     @staticmethod
     def _clean_output(output: str) -> str:
         """
-        清理命令输出,移除控制字符和多余空白 | Clean command output, remove control characters and extra whitespace
+        清理命令输出 | Clean command output
 
-        Args:
-            output: 原始输出 | Raw output
-
-        Returns:
-            清理后的输出 | Cleaned output
+        自 Epic A 起委托给 `semantics.output_pipeline.clean_output`，分阶段剥离
+        CSI → OSC → OSC-133 → 归一化，修复 AS-20 同源 Bug #1。
         """
-        # 移除 ANSI 转义序列 | Remove ANSI escape sequences
-        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-        output = ansi_escape.sub("", output)
-
-        # 移除回车符 | Remove carriage returns
-        output = output.replace("\r", "")
-
-        # 移除首尾空白 | Strip leading/trailing whitespace
-        output = output.strip()
-
-        return output
+        return clean_output(output or "")
 
     def reset(
         self,
@@ -509,13 +521,13 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             return f"Path {path} is not a subdirectory of {self.work_dir}", False
 
         # 执行 cd 命令 | Execute cd command
-        output, success = self._execute_command(f'cd "{path}"')
+        result = self._execute_command(f'cd "{path}"')
 
-        if success:
+        if result.success:
             self.current_dir = real_path
             return f"Changed directory to {path}", True
         else:
-            return f"Failed to change directory: {output}", False
+            return f"Failed to change directory: {result.output}", False
 
     def get_env_var(self, var_name: str) -> str | None:
         """
@@ -529,10 +541,10 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         """
         self._assert_not_closed()
 
-        output, success = self._execute_command(f'echo "${var_name}"')
+        result = self._execute_command(f'echo "${var_name}"')
 
-        if success and output:
-            return output.strip()
+        if result.success and result.output:
+            return result.output.strip()
         return None
 
     def set_env_var(self, var_name: str, value: str) -> bool:
@@ -548,5 +560,5 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         """
         self._assert_not_closed()
 
-        _, success = self._execute_command(f'export {var_name}="{value}"')
-        return success
+        result = self._execute_command(f'export {var_name}="{value}"')
+        return result.success

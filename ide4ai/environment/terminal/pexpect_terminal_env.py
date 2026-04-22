@@ -16,6 +16,7 @@
 import os
 import re
 import time
+import uuid
 from typing import Any, ClassVar, cast
 
 import gymnasium as gym
@@ -48,6 +49,10 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
     # Shell 提示符模式 | Shell prompt pattern
     PROMPT_PATTERN = r"[\$#>]\s*$"
+
+    # AS-20 同源 Bug #2 修复：退出码用独立定界符抽取，不再 regex 扫输出
+    # 实际定界符在 __init__ 注入随机后缀，避免和命令输出中的普通字符串串扰
+    _RC_TAG: ClassVar[str] = "IDE4AI_RC"
 
     def __init__(
         self,
@@ -99,6 +104,15 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         # 虚拟环境激活状态 | Virtual environment activation status
         self.venv_activated = False
         self.venv_activation_error: str | None = None
+
+        # 退出码定界符：实例级随机后缀，避免命令输出中碰巧出现同名串
+        # Exit-code delimiter: per-instance random suffix to avoid collisions in command output
+        rc_nonce = uuid.uuid4().hex[:8]
+        self._rc_start = f"__{self._RC_TAG}_{rc_nonce}_"
+        self._rc_end = f"_{self._RC_TAG}_{rc_nonce}__"
+        self._rc_pattern: re.Pattern[str] = re.compile(
+            re.escape(self._rc_start) + r"(-?\d+)" + re.escape(self._rc_end),
+        )
 
         # 初始化持久 shell 会话 | Initialize persistent shell session
         self._init_shell()
@@ -278,6 +292,11 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         """
         在持久 shell 会话中执行命令 | Execute command in persistent shell session
 
+        AS-20 同源 Bug #2 修复：退出码通过独立定界符 `__IDE4AI_RC_<nonce>_<n>_..._`
+        精确抽取，避免输出中的数字（含 OSC-133 里的 `133`）被 regex 误匹配。
+        本 commit 仅替换 rc 抽取路径；返回值仍为 `tuple[str, bool]`，
+        结构化 StepResult 由 AS-32 (A6) 引入。
+
         Args:
             command: 要执行的命令 | Command to execute
 
@@ -296,21 +315,17 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
             if index == 0:
                 # 命令正常完成 | Command completed normally
-                output = self.shell.before
+                output = self.shell.before or ""
 
-                # 检查退出状态 | Check exit status
-                self.shell.sendline("echo $?")
+                # 精确抽取退出码：用独立定界符协议
+                self.shell.sendline(f'echo "{self._rc_start}$?{self._rc_end}"')
                 self.shell.expect("PEXPECT_PROMPT>", timeout=5)
-                exit_code_output = self.shell.before
-
-                # 提取退出码 | Extract exit code
-                exit_code_match = re.search(r"(\d+)", exit_code_output or "")
-                exit_code = int(exit_code_match.group(1)) if exit_code_match else 1
-
+                rc_blob = self.shell.before or ""
+                exit_code = self._extract_exit_code(rc_blob)
                 success = exit_code == 0
 
                 # 清理输出 | Clean output
-                output = self._clean_output(output or "")
+                output = self._clean_output(output)
 
                 return output, success
 
@@ -324,6 +339,22 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
         except Exception as e:
             return f"Error executing command: {str(e)}", False
+
+    def _extract_exit_code(self, rc_blob: str) -> int:
+        """
+        从 `echo "__...<rc>__"` 的输出里抽退出码；找不到返回 1。
+
+        Args:
+            rc_blob: shell.before 的原始内容
+
+        Returns:
+            退出码 | Exit code
+        """
+        m = self._rc_pattern.search(rc_blob)
+        if m is None:
+            logger.warning(f"Failed to extract exit code from: {rc_blob!r}")
+            return 1
+        return int(m.group(1))
 
     @staticmethod
     def _clean_output(output: str) -> str:

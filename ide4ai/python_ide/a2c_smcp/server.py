@@ -13,8 +13,9 @@ Inherits from generic MCP Server base class, providing specific implementation f
 from loguru import logger
 
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.server import BaseMCPServer
-from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, ReadTool
+from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, ReadTool, WriteTool
 from ide4ai.base import IDE
 from ide4ai.ides import PyIDESingleton
 
@@ -74,10 +75,25 @@ class PythonIDEMCPServer(BaseMCPServer):
         edit_tool = EditTool(self.ide)
         self.tools[edit_tool.name] = edit_tool
 
+        # 注册 Write 工具 | Register Write tool
+        write_tool = WriteTool(self.ide)
+        self.tools[write_tool.name] = write_tool
+
         logger.info(f"已注册工具 | Registered tools: {list(self.tools.keys())}")
 
-        # TODO: 注册其他工具 | Register other tools
-        # - WriteTool
+    def _register_resources(self) -> None:
+        """
+        注册所有资源 | Register all resources
+        """
+        # 注册窗口资源 | Register Window resource
+        # 使用 base_uri 作为 key，确保相同资源不同参数使用同一个实例
+        # Use base_uri as key to ensure same resource with different params uses same instance
+        window_resource = WindowResource(self.ide, priority=0, fullscreen=True)
+        self.resources[window_resource.base_uri] = window_resource
+
+        logger.info(f"已注册资源 | Registered resources: {list(self.resources.keys())}")
+
+        # TODO: 注册其他资源 | Register other resources
 
 
 async def async_main() -> None:

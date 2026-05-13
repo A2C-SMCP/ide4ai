@@ -1,16 +1,21 @@
 [tool.bumpversion]
-current_version = "0.1.0a1"
+current_version = "0.1.0b0"
 parse = """(?x)
     (?P<major>0|[1-9]\\d*)\\.
     (?P<minor>0|[1-9]\\d*)\\.
     (?P<patch>0|[1-9]\\d*)
-    (?:
-        (?P<release>a|b|rc)
-        (?P<pre>0|[1-9]\\d*)
-    )?
+    (?:(?P<pre_l>a|b|rc)(?P<pre_n>0|[1-9]\\d*))?   # Pre-release
+    (?:\\.post(?P<post>0|[1-9]\\d*))?              # Post-release
+    (?:\\.dev(?P<dev>0|[1-9]\\d*))?                # Dev release
 """
 serialize = [
-    "{major}.{minor}.{patch}{release}{pre}",
+    "{major}.{minor}.{patch}{pre_l}{pre_n}.post{post}.dev{dev}",
+    "{major}.{minor}.{patch}{pre_l}{pre_n}.post{post}",
+    "{major}.{minor}.{patch}{pre_l}{pre_n}.dev{dev}",
+    "{major}.{minor}.{patch}{pre_l}{pre_n}",
+    "{major}.{minor}.{patch}.post{post}.dev{dev}",
+    "{major}.{minor}.{patch}.post{post}",
+    "{major}.{minor}.{patch}.dev{dev}",
     "{major}.{minor}.{patch}",
 ]
 search = "{current_version}"
@@ -28,10 +33,16 @@ message = "Bump version: {current_version} → {new_version}"
 commit_args = ""
 
 
-[tool.bumpversion.parts.release]
-values = ["dev", "a", "b", "rc"]
+[tool.bumpversion.parts.pre_l]
+values = ["a", "b", "rc"]
 
-[tool.bumpversion.parts.pre]
+[tool.bumpversion.parts.pre_n]
+first_value = 0
+
+[tool.bumpversion.parts.post]
+first_value = 0
+
+[tool.bumpversion.parts.dev]
 first_value = 0
 
 [[tool.bumpversion.files]]

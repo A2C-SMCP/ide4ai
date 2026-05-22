@@ -36,6 +36,7 @@ from ide4ai.environment.workspace.schema import (
     TextModelResolvedOptions,
     WordAtPosition,
 )
+from ide4ai.environment.workspace.uri_utils import file_uri_to_path
 from ide4ai.environment.workspace.utils import (
     LARGE_FILE_HEAP_OPERATION_THRESHOLD,
     contains_rtl,
@@ -151,9 +152,9 @@ class TextModel(ModelProtocol):
             self.__bom = ""
             self._content = [""]
         else:
-            path = uri.path
-            if not path:
+            if not uri.path:
                 raise ValueError("The path of the URI is empty.")
+            path = file_uri_to_path(str(uri))
             self.__eol = detect_newline_type(Path(path))
             self.__bom, self._content = read_file_with_bom_handling(path)
         self._is_basic_ascii = is_pure_basic_ascii(self._content)
@@ -277,7 +278,7 @@ class TextModel(ModelProtocol):
         self._assert_not_disposed()
         if not path:
             if self.uri.scheme == "file" and self.uri.path:
-                path = Path(self.uri.path)
+                path = Path(file_uri_to_path(str(self.uri)))
             else:
                 raise ValueError("You should provide a path to save the file.")
         # 写入

@@ -16,6 +16,7 @@ from loguru import logger
 
 from ide4ai.a2c_smcp.schemas import EditInput, EditOutput
 from ide4ai.a2c_smcp.tools.base import BaseTool
+from ide4ai.environment.workspace.uri_utils import normalize_tool_file_path
 
 
 class EditTool(BaseTool):
@@ -93,12 +94,7 @@ class EditTool(BaseTool):
             if self.ide.workspace is None:
                 raise RuntimeError("Workspace 未初始化 | Workspace is not initialized")
 
-            # 构建文件 URI | Build file URI
-            file_path = edit_input.file_path
-            if not file_path.startswith("file://"):
-                file_uri = f"file://{file_path}"
-            else:
-                file_uri = file_path
+            file_uri, file_path = normalize_tool_file_path(edit_input.file_path)
 
             # 首先读取文件以确保文件存在 | First read file to ensure it exists
             try:
@@ -154,6 +150,8 @@ class EditTool(BaseTool):
 
             # 计算实际替换次数 | Calculate actual replacements made
             replacements_made = len(undo_edits) if undo_edits else 0
+            if replacements_made:
+                self.ide.workspace.save_file(uri=file_uri)
 
             # 构造成功消息 | Construct success message
             message = f"成功替换 {replacements_made} 处"

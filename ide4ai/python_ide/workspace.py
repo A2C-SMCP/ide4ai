@@ -18,6 +18,7 @@ from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
+from ide4ai.environment.workspace.uri_utils import file_uri_to_path, path_to_file_uri
 from ide4ai.exceptions import IDEExecutionError
 from ide4ai.python_ide.const import DEFAULT_CAPABILITY, DEFAULT_SYMBOL_VALUE_SET
 from ide4ai.schema import LSP_ACTIONS, TEXT_DOCUMENT_ACTIONS, WORKSPACE_ACTIONS, IDEAction, IDEObs, LanguageId
@@ -488,7 +489,7 @@ class PyWorkspace(BaseWorkspace):
         if self.active_models:
             # 获取最后一个active_model的文件路径 | Get the last active_model's file path
             last_model = self.active_models[-1]
-            target_file = str(last_model.uri).replace("file://", "")
+            target_file = file_uri_to_path(str(last_model.uri))
             dir_info = get_minimal_tree(self.root_dir, target_file, indent="- ")
         else:
             # 如果没有active_models，使用普通的目录树 | Use normal directory tree if no active_models
@@ -719,8 +720,8 @@ class PyWorkspace(BaseWorkspace):
         """
         self._assert_not_closed()
         if not uri.startswith("file://"):
-            uri = f"file://{uri}"  # pragma: no cover
-        file_path = uri[7:]
+            uri = path_to_file_uri(uri)  # pragma: no cover
+        file_path = file_uri_to_path(uri)
 
         # Check if the file already exists
         if os.path.exists(file_path):
@@ -857,7 +858,7 @@ class PyWorkspace(BaseWorkspace):
         # 提取文件路径 / Extract file path
         from pathlib import Path
 
-        file_path = Path(uri[7:])
+        file_path = Path(file_uri_to_path(uri))
 
         # 验证路径存在 / Validate path exists
         if not file_path.exists():

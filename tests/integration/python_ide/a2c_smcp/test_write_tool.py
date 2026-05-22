@@ -93,6 +93,43 @@ async def test_write_existing_file(write_tool, temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_write_existing_chinese_file_with_file_uri(write_tool, temp_workspace):
+    """覆盖 file:// URI 输入的中文路径已存在文件。"""
+    file_path = os.path.join(temp_workspace, "淘宝报告.md")
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write("old content\n")
+
+    result = await write_tool.execute(
+        {
+            "file_path": f"file://{file_path}",
+            "content": "new content\n",
+        }
+    )
+
+    assert result["success"] is True
+    with open(file_path, encoding="utf-8") as f:
+        assert f.read() == "new content\n"
+
+
+@pytest.mark.asyncio
+async def test_write_percent_literal_path(write_tool, temp_workspace):
+    """普通路径中的 %20 是真实文件名，不应被解码成空格。"""
+    file_path = os.path.join(temp_workspace, "a%20b.py")
+    decoded_path = os.path.join(temp_workspace, "a b.py")
+
+    result = await write_tool.execute(
+        {
+            "file_path": file_path,
+            "content": "print('percent literal')\n",
+        }
+    )
+
+    assert result["success"] is True
+    assert os.path.exists(file_path)
+    assert not os.path.exists(decoded_path)
+
+
+@pytest.mark.asyncio
 async def test_write_empty_content(write_tool, temp_workspace):
     """测试写入空内容 | Test writing empty content"""
     file_path = os.path.join(temp_workspace, "test_empty.py")

@@ -115,6 +115,33 @@ class OldClass:
         content = ide.workspace.read_file(uri=f"file://{file_path}", with_line_num=False)
         assert "Hello, Python!" in content
         assert "Hello, World!" not in content
+        assert "Hello, Python!" in Path(file_path).read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_chinese_path_replacement_is_saved_to_disk(self, temp_ide):
+        """
+        中文路径编辑成功后必须落盘 | Edits in Chinese path files must be saved to disk.
+        """
+        ide, tmpdir = temp_ide
+        tool = EditTool(ide)
+
+        file_path = Path(tmpdir) / "巡店报告.md"
+        file_path.write_text("# 巡店报告\n旧内容\n", encoding="utf-8")
+
+        result = await tool.execute(
+            {
+                "file_path": str(file_path),
+                "old_string": "旧内容",
+                "new_string": "新内容",
+            },
+        )
+
+        output = EditOutput.model_validate(result)
+        assert output.success is True
+        assert output.replacements_made == 1
+        disk_content = file_path.read_text(encoding="utf-8")
+        assert "新内容" in disk_content
+        assert "旧内容" not in disk_content
 
     @pytest.mark.asyncio
     async def test_multiline_replacement(self, temp_ide):

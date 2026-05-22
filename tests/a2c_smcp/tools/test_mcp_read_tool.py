@@ -179,6 +179,23 @@ def function():
         assert "Hello, World!" in output.content
 
     @pytest.mark.asyncio
+    async def test_read_chinese_path(self, temp_ide):
+        """
+        测试读取中文路径文件 | Test reading a file with a Chinese path.
+        """
+        ide, tmpdir = temp_ide
+        tool = ReadTool(ide)
+
+        file_path = Path(tmpdir) / "巡店报告.md"
+        file_path.write_text("# 巡店报告\n", encoding="utf-8")
+        result = await tool.execute({"file_path": str(file_path)})
+
+        output = ReadOutput.model_validate(result)
+        assert output.success is True
+        assert output.error is None
+        assert "巡店报告" in output.content
+
+    @pytest.mark.asyncio
     async def test_read_long_file(self, temp_ide):
         """
         测试读取长文件 | Test reading long file

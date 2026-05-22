@@ -16,6 +16,7 @@ from loguru import logger
 
 from ide4ai.a2c_smcp.schemas import WriteInput, WriteOutput
 from ide4ai.a2c_smcp.tools.base import BaseTool
+from ide4ai.environment.workspace.uri_utils import normalize_tool_file_path
 
 
 class WriteTool(BaseTool):
@@ -77,12 +78,7 @@ class WriteTool(BaseTool):
             if self.ide.workspace is None:
                 raise RuntimeError("Workspace 未初始化 | Workspace is not initialized")
 
-            # 构建文件 URI | Build file URI
-            file_path = write_input.file_path
-            if not file_path.startswith("file://"):
-                file_uri = f"file://{file_path}"
-            else:
-                file_uri = file_path
+            file_uri, file_path = normalize_tool_file_path(write_input.file_path)
 
             # 检查文件是否存在 | Check if file exists
             import os

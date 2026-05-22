@@ -30,6 +30,7 @@ from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, PreviousResultId, 
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
+from ide4ai.environment.workspace.uri_utils import file_uri_to_path
 from ide4ai.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
 from ide4ai.utils import is_subdirectory, list_directory_tree, render_symbols
 
@@ -997,7 +998,7 @@ class BaseWorkspace(gym.Env, ABC):
         """
         if not uri.startswith("file://"):
             raise ValueError("URI must start with 'file://'")
-        folder_path = uri[7:]
+        folder_path = file_uri_to_path(uri)
         if not os.path.realpath(folder_path) or not os.path.exists(folder_path):
             raise ValueError(f"Invalid folder path: {folder_path}")
         if not is_subdirectory(folder_path, self.root_dir):
@@ -1095,7 +1096,7 @@ class BaseWorkspace(gym.Env, ABC):
         """
         if not uri.startswith("file://"):
             raise ValueError("URI must start with 'file://'")
-        folder_path = uri[7:]
+        folder_path = file_uri_to_path(uri)
         if self.expand_folders == "all":
             self.expand_folders = set()
         if folder_path in self.expand_folders:

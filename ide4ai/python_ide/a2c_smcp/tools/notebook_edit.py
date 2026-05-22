@@ -16,6 +16,7 @@ from typing import Any
 from loguru import logger
 
 from ide4ai.a2c_smcp.tools.base import BaseTool
+from ide4ai.environment.workspace.uri_utils import normalize_tool_file_path
 from ide4ai.python_ide.a2c_smcp.schemas import NotebookEditInput, NotebookEditOutput
 
 
@@ -81,10 +82,7 @@ Jupyter notebooks 是结合代码、文本和可视化的交互式文档，通�
                 raise RuntimeError("Workspace 未初始化 | Workspace is not initialized")
 
             # 获取文件路径 | Get file path
-            notebook_path = edit_input.notebook_path
-            # 如果是 file:// URI，提取实际路径 | If it's a file:// URI, extract actual path
-            if notebook_path.startswith("file://"):
-                notebook_path = notebook_path[7:]  # 移除 "file://" 前缀 | Remove "file://" prefix
+            _, notebook_path = normalize_tool_file_path(edit_input.notebook_path)
 
             # 检查文件是否存在 | Check if file exists
             import os

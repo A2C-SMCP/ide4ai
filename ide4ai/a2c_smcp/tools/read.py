@@ -17,6 +17,7 @@ from loguru import logger
 from ide4ai.a2c_smcp.schemas import ReadInput, ReadOutput
 from ide4ai.a2c_smcp.tools.base import BaseTool
 from ide4ai.environment.workspace.schema import Position, Range
+from ide4ai.environment.workspace.uri_utils import normalize_tool_file_path
 
 
 class ReadTool(BaseTool):
@@ -86,12 +87,7 @@ class ReadTool(BaseTool):
             if self.ide.workspace is None:
                 raise RuntimeError("Workspace 未初始化 | Workspace is not initialized")
 
-            # 构建文件 URI | Build file URI
-            file_path = read_input.file_path
-            if not file_path.startswith("file://"):
-                file_uri = f"file://{file_path}"
-            else:
-                file_uri = file_path
+            file_uri, file_path = normalize_tool_file_path(read_input.file_path)
 
             # 构建 Range 参数（如果提供了 offset 和 limit）| Build Range parameter (if offset and limit provided)
             code_range = None

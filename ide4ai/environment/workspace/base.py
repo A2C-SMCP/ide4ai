@@ -5,7 +5,6 @@
 # @Software: PyCharm
 import json
 import os.path
-import select
 import signal
 import subprocess
 import threading
@@ -28,6 +27,7 @@ from typing_extensions import SupportsFloat
 from ide4ai.dtos.base_protocol import LSPResponseMessage
 from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, PreviousResultId, WorkspaceDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
+from ide4ai.environment.stream_io import wait_for_readable
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
 from ide4ai.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
@@ -228,10 +228,11 @@ class BaseWorkspace(gym.Env, ABC):
                     # 检查LSP进程状态 / Check LSP process status
                     if not self.lsp or not self.lsp.stdout or self.lsp.poll() is not None:
                         break
-                    # 再次调用select，确保在获取锁的过程中不出现其它意外 / Call select again to ensure no issues during lock acquisition
-                    # 检查是否有数据可读 / Check if there is data to read
-                    rlist, _, _ = select.select([self.lsp.stdout], [], [], 0.1)
-                    if not rlist:
+                    # 再次检测就绪，确保在获取锁的过程中不出现其它意外 / Recheck readiness after acquiring the lock
+                    # selectors 取代 select.select：fd≥1024 时 select 会抛
+                    # ValueError: filedescriptor out of range（TFROB-588）。
+                    ready = wait_for_readable([self.lsp.stdout], 0.1)  # 100ms 防止CPU占用过高
+                    if not ready:
                         continue
 
                     logger.info("获取到LSP服务器返回数据 / Got LSP server response data")
@@ -242,11 +243,11 @@ class BaseWorkspace(gym.Env, ABC):
                         message_parsed = self._try_parse_one_message()
                         if not message_parsed:
                             # 缓冲区中没有完整消息，尝试读取更多数据 / No complete message in buffer, try to read more data
-                            # 使用非阻塞select检查是否还有数据 / Use non-blocking select to check if more data is available
+                            # 使用非阻塞就绪检测是否还有数据 / Non-blocking readiness check for more data
                             if not self.lsp.stdout:
                                 break
-                            rlist, _, _ = select.select([self.lsp.stdout], [], [], 0)
-                            if not rlist:
+                            ready = wait_for_readable([self.lsp.stdout], 0)
+                            if not ready:
                                 # 没有更多数据可读 / No more data to read
                                 break
 

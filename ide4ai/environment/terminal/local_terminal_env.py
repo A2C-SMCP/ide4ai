@@ -4,7 +4,6 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import os
-import select
 import signal
 import subprocess
 import time
@@ -14,6 +13,7 @@ from typing import Any, ClassVar, cast
 import gymnasium as gym
 from typing_extensions import SupportsFloat
 
+from ide4ai.environment.stream_io import wait_for_readable
 from ide4ai.environment.terminal.base import BaseTerminalEnv, EnvironmentArguments
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.schema import IDEAction, IDEObs
@@ -249,14 +249,15 @@ class TerminalEnv(BaseTerminalEnv):
             # 进程正在执行中
             while True:
                 if proc.poll() is None:
-                    rlist, _, _ = select.select([proc.stdout], [], [], timeout)
-                    err_rlist, _, _ = select.select([proc.stderr], [], [], timeout)
-                    if err_rlist:
+                    # selectors 取代 select.select：长跑进程 fd≥1024 时 select 会抛
+                    # ValueError: filedescriptor out of range（TFROB-588）。
+                    ready = wait_for_readable([proc.stdout, proc.stderr], timeout)
+                    if proc.stderr in ready:
                         stderr = proc.stderr.read() if proc.stderr else None
                         if stderr:
                             # 进程还在运行时，stderr 通常表示错误 / stderr usually indicates error when process is running
                             yield stderr, False
-                    if rlist:
+                    if proc.stdout in ready:
                         stdout = proc.stdout.read() if proc.stdout else None
                         if stdout:
                             # 进程还在运行时，stdout 通常表示正常输出 / stdout usually indicates normal output when process is running

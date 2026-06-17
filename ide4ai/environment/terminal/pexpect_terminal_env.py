@@ -156,6 +156,10 @@ class PexpectTerminalEnv(BaseTerminalEnv):
                 echo=False,
                 timeout=self.timeout,
                 cwd=self.work_dir,
+                # use_poll=True：pexpect 默认内部用 select.select()，fd≥1024 时会抛
+                # ValueError: filedescriptor out of range（TFROB-588 同源风险）；
+                # 切到 poll() 规避 FD_SETSIZE(1024) 上限。
+                use_poll=True,
             )
 
             # 设置简单的提示符以便于匹配 | Set simple prompt for easy matching

@@ -25,7 +25,8 @@ class BashInput(BaseModel):
     )
     timeout: int | None = Field(
         default=None,
-        description="超时时间(毫秒)，最大 600000 | Optional timeout in milliseconds (max 600000)",
+        description="超时时间(毫秒)，范围 1-600000 | Optional timeout in milliseconds (1-600000)",
+        ge=1,
         le=600000,
     )
     description: str | None = Field(

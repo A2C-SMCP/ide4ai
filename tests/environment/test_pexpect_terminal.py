@@ -393,6 +393,130 @@ class TestCommandFilterConfig:
         env.close()
 
 
+class TestPexpectTerminalRecovery:
+    """超时恢复测试 | Timeout recovery tests
+
+    复现 GitHub Issue #12：一条不返回提示符的交互式 / 前台命令(如 cat 等 stdin、
+    或无视 SIGINT 的进程)超时后，持久 shell 被永久毒死，后续每条命令都超时。
+    Reproduces GitHub Issue #12: after one interactive/foreground command that
+    never returns to the prompt times out, the persistent shell is permanently
+    poisoned and every subsequent command also times out.
+    """
+
+    @pytest.fixture
+    def short_timeout_env(self, tmp_path):
+        """超时设置较短的环境，加速复现 | Env with short timeout to speed up reproduction"""
+        args = EnvironmentArguments(image_name="local", timeout=3)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat", "python3"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_recover_after_cat_blocks_on_stdin(self, short_timeout_env):
+        """cat(等 stdin)超时后，后续 echo 必须恢复 | echo must recover after cat times out"""
+        env = short_timeout_env
+
+        # 1. echo 正常 | echo works
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["ok1"]},
+        )
+        assert success is True
+        assert "ok1" in obs["obs"]
+
+        # 2. cat 无参等待 stdin → 超时 | cat waits on stdin → times out
+        _, _, _, success, info = env.step(
+            {"category": "terminal", "action_name": "cat", "action_args": []},
+        )
+        assert success is False
+        assert "timeout" in info["output"].lower()
+
+        # 3. 关键断言：之后的 echo 必须恢复，而不是被永久毒死
+        #    Key assertion: the next echo must recover, not be permanently poisoned
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["ok2"]},
+        )
+        assert success is True, "终端在交互式命令超时后未能自我恢复 | terminal failed to self-recover after timeout"
+        assert "ok2" in obs["obs"]
+
+    def test_recover_after_sigint_immune_process(self, short_timeout_env, mocker):
+        """无视 SIGINT 的前台进程超时后，仍须通过重建 shell 恢复
+        After a SIGINT-immune foreground process times out, recovery must still
+        succeed (via hard shell rebuild)."""
+        env = short_timeout_env
+        # 监视硬重建路径，确保确实走了 _rebuild_shell（而非软恢复意外成功掩盖回归）
+        # Spy on the hard-rebuild path to assert it actually fired (not masked by soft recovery).
+        rebuild_spy = mocker.spy(env, "_rebuild_shell")
+
+        # 启动一个忽略 SIGINT 并长睡的进程，模拟 vim/top/ssh 等无视 Ctrl-C 的程序
+        # Spawn a process that ignores SIGINT and sleeps long, simulating vim/top/ssh
+        # 内联代码用单引号包裹成单个 shell 词，避免被空格/分号拆解
+        # Wrap the inline code in single quotes so it stays one shell word
+        code = "import signal,time;signal.signal(signal.SIGINT,signal.SIG_IGN);time.sleep(300)"
+        _, _, _, success, info = env.step(
+            {
+                "category": "terminal",
+                "action_name": "python3",
+                "action_args": ["-c", f"'{code}'"],
+            },
+        )
+        assert success is False
+        assert "timeout" in info["output"].lower()
+        # 软恢复（Ctrl-C）对无视 SIGINT 的进程必然失败 → 必须落到硬重建
+        # Soft recovery (Ctrl-C) must fail for a SIGINT-immune process → hard rebuild path
+        assert rebuild_spy.call_count >= 1, "无视 SIGINT 的进程超时未触发硬重建 | hard rebuild path not taken"
+
+        # 之后的 echo 必须恢复 | the next echo must recover
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["recovered"]},
+        )
+        assert success is True, (
+            "无视 SIGINT 的进程超时后终端未恢复 | terminal failed to recover after SIGINT-immune timeout"
+        )
+        assert "recovered" in obs["obs"]
+
+    def test_per_call_timeout_overrides_env_default(self, tmp_path):
+        """per-call timeout 必须真正生效，而非始终用环境默认
+        Per-call timeout must actually take effect rather than always using env default.
+
+        复现 Issue #12 次要 #1：请求 timeout 较小却等满 --cmd-timeout。
+        """
+        import time
+
+        # 环境默认 30s，但本次命令注入 2s 的 per-call 超时
+        # Env default is 30s, but this command injects a 2s per-call timeout.
+        args = EnvironmentArguments(image_name="local", timeout=30)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        try:
+            start = time.monotonic()
+            _, _, _, success, info = env.step(
+                {
+                    "category": "terminal",
+                    "action_name": "cat",
+                    "action_args": [],
+                    "timeout": 2,  # per-call 覆盖：2s 而非 30s | per-call override
+                },
+            )
+            elapsed = time.monotonic() - start
+
+            assert success is False
+            # 主断言：文案直证 per-call 2s 生效（而非 30s 默认）
+            # Primary assertion: message proves the 2s per-call value took effect (not 30s default).
+            assert "2 seconds" in info["output"]
+            # 辅助时间断言放宽，避免与恢复链路耗时（Ctrl-C/重建）隐式耦合导致 CI flaky
+            # Loose time bound: avoid coupling to recovery-chain latency; still well below 30s default.
+            assert elapsed < 25, f"per-call timeout 未生效，等待 {elapsed:.1f}s | per-call timeout ignored"
+
+            # 恢复后续命令仍可用 | subsequent command still works after recovery
+            obs, _, _, success, _ = env.step(
+                {"category": "terminal", "action_name": "echo", "action_args": ["after"]},
+            )
+            assert success is True
+            assert "after" in obs["obs"]
+        finally:
+            env.close()
+
+
 if __name__ == "__main__":
     # 运行测试 | Run tests
     # pytest tests/environment/test_pexpect_terminal.py -v

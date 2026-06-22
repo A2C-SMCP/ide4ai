@@ -12,6 +12,7 @@ Demonstrates how to use pexpect-based terminal environment, especially virtual e
 
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -515,6 +516,104 @@ class TestPexpectTerminalRecovery:
             assert "after" in obs["obs"]
         finally:
             env.close()
+
+
+class TestPexpectTerminalMultiline:
+    """多行 / heredoc 命令测试 | Multi-line / heredoc command tests
+
+    复现 GitHub Issue #15：持久 shell 用单次 `sendline` + 匹配首个提示符的协议
+    隐含「命令是单行」假设。多行命令的每一行都会触发一个提示符，首个提示符匹配后
+    剩余行 + 后续提示符残留在 pty 缓冲，导致：多行命令被截断、heredoc 卡满超时、
+    退出码探针串位，会话被毒化（后续命令也读到串位数据）。
+
+    Reproduces GitHub Issue #15: the persistent shell protocol (single `sendline`
+    matching the first prompt) silently assumes single-line commands. Multi-line /
+    heredoc commands desync the prompt-matching protocol, truncating output, hanging
+    on heredocs, and poisoning the session for subsequent commands.
+    """
+
+    @pytest.fixture
+    def env(self, tmp_path):
+        """超时较短的环境，heredoc 若卡住能快速暴露 | short timeout so a hang surfaces fast"""
+        args = EnvironmentArguments(image_name="local", timeout=6)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat", "python3"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_multiline_command_executes_all_lines(self, env):
+        """多行命令的每一行都应执行，输出不丢失 | every line of a multi-line command runs"""
+        result = env._execute_command("echo a\necho b")
+
+        assert result.success is True, f"多行命令应成功 | multi-line command should succeed: {result.output!r}"
+        assert result.exit_code == 0
+        assert "a" in result.output and "b" in result.output, (
+            f"第二行丢失（协议只支持单行）| second line lost: {result.output!r}"
+        )
+
+    def test_heredoc_command_executes_without_hang(self, env):
+        """heredoc 应正确执行并及时返回，而非卡满超时 | heredoc runs and returns promptly"""
+        start = time.monotonic()
+        result = env._execute_command(
+            "python3 << 'PYEOF'\nprint('hi')\nPYEOF",
+            timeout=6,
+        )
+        elapsed = time.monotonic() - start
+
+        assert result.success is True, f"heredoc 应成功 | heredoc should succeed: {result.output!r}"
+        assert "hi" in result.output, f"heredoc 输出缺失 | heredoc output missing: {result.output!r}"
+        # 一个 print('hi') 级别的 heredoc 必须远快于 timeout（不卡满）
+        # A trivial heredoc must finish far below the timeout (no full-timeout hang).
+        assert elapsed < 5, f"heredoc 卡满超时 | heredoc hung until timeout: {elapsed:.1f}s"
+
+    def test_session_not_desynced_after_multiline(self, env):
+        """多行命令后会话不应被毒化，后续单行命令输出仍正确 | no desync poisoning"""
+        # 先跑一个会触发 desync 的 heredoc | run a heredoc that would desync the old protocol
+        env._execute_command("python3 << 'PYEOF'\nprint('warmup')\nPYEOF", timeout=6)
+
+        # 关键断言：之后的单行命令输出干净、退出码正确，而非读到 stale RC blob
+        # Key assertion: the next single-line command is clean, not a stale RC blob.
+        result = env._execute_command("echo recovered")
+        assert result.success is True
+        assert result.exit_code == 0
+        assert result.output.strip() == "recovered", (
+            f"会话被多行命令毒化 | session poisoned by prior multi-line command: {result.output!r}"
+        )
+
+    def test_multiline_preserves_session_state(self, env):
+        """多行命令在当前 shell 执行，cd/export 等状态须持久化 | state persists in current shell"""
+        # 多行命令内导出变量 | export a var inside a multi-line command
+        result = env._execute_command("export ISSUE15_VAR=persisted\necho done")
+        assert result.success is True
+
+        # 后续命令应能读到该变量（证明在当前 shell 而非子 shell 执行）
+        # A later command must see it (proving execution in the current shell, not a subshell).
+        follow = env._execute_command("echo $ISSUE15_VAR")
+        assert follow.success is True
+        assert "persisted" in follow.output, (
+            f"多行命令在子 shell 执行，状态丢失 | state lost (ran in a subshell): {follow.output!r}"
+        )
+
+    def test_multiline_failing_command_propagates_exit_code(self, env):
+        """多行命令末行失败时退出码须如实传播 | failing last line propagates non-zero exit code"""
+        # `eval` 包裹后 `$?` 取最后一行退出码——末行 false 必须得到非零退出码 / success False
+        # After eval-wrapping, `$?` is the last line's exit code: a trailing `false` must be non-zero.
+        result = env._execute_command("echo ok\nfalse")
+        assert result.success is False, f"末行失败应判定失败 | failing last line should fail: {result.output!r}"
+        assert result.exit_code != 0, f"退出码应非零 | exit code should be non-zero: {result.exit_code}"
+
+    def test_to_single_line_fold_policy(self, env):
+        """`_to_single_line` 折叠策略：仅多行命令被包裹 | only multi-line commands get wrapped"""
+        # 单行命令原样透传（零回归）| single-line passes through unchanged
+        assert env._to_single_line("echo hi") == "echo hi"
+        # 仅含孤立 \r（无 \n）本就是单物理行，不应被包裹（W3：避免 eval $'\r' 退化）
+        # A lone-CR command (no \n) is still one physical line — must NOT be wrapped (W3).
+        assert env._to_single_line("echo hi\r") == "echo hi\r"
+        # 含 \n 的多行命令被折叠成单条 eval+base64 物理行
+        # Multi-line (\n) command is folded into one eval+base64 physical line.
+        wrapped = env._to_single_line("echo a\necho b")
+        assert wrapped.startswith("eval ") and "base64 --decode" in wrapped
+        assert "\n" not in wrapped, "折叠结果必须是单物理行 | folded result must be one physical line"
 
 
 if __name__ == "__main__":

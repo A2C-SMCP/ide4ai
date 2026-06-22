@@ -13,6 +13,7 @@
 4. 真实 shell 行为 - cd、export 等内置命令正常工作
 """
 
+import base64
 import os
 import re
 import time
@@ -336,7 +337,12 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         effective_timeout = timeout if (timeout is not None and timeout > 0) else self.timeout
         try:
             # 发送命令 | Send command
-            self.shell.sendline(command)
+            # Issue #15：多行 / heredoc 命令折叠为单条物理行后再发送，使持久 shell 只产生一个
+            # 提示符，与「匹配首个提示符 = 命令完成」的协议及 #12 超时/恢复逻辑保持一致。
+            # Issue #15: collapse multi-line / heredoc commands into a single physical line so
+            # the persistent shell emits exactly one prompt, keeping the "first prompt = done"
+            # protocol (and #12 recovery) intact.
+            self.shell.sendline(self._to_single_line(command))
 
             # 等待命令完成 | Wait for command completion
             index = self.shell.expect(
@@ -466,6 +472,41 @@ class PexpectTerminalEnv(BaseTerminalEnv):
                 self.current_dir = self.work_dir
         else:
             self.current_dir = self.work_dir
+
+    @staticmethod
+    def _to_single_line(command: str) -> str:
+        """
+        把可能含换行的命令折叠为单条物理行 | Collapse a possibly multi-line command to one line
+
+        Issue #15 根治：持久 shell 用「单次 sendline + 匹配首个提示符」探测命令完成，隐含
+        「命令是单行」假设。多行 / heredoc 命令的每一行都会触发一个提示符，首个提示符匹配
+        后剩余行 + 后续提示符残留在 pty 缓冲，导致截断 / 卡满超时 / 退出码探针串位、会话毒化。
+
+        修复：单行命令原样返回（零回归）；含换行的命令 base64 编码后包成单条物理行，经
+        `eval "$(... | base64 --decode)"` 在**当前 shell 上下文**执行——只产生一个提示符，
+        且 cd/export 等状态正常持久化、stdin 仍连到 pty（交互式命令行为不变）。
+
+        - base64 输出仅含 `[A-Za-z0-9+/=]`，单引号包裹绝对安全，无任何转义/引号冲突。
+        - `--decode` 长选项在 GNU coreutils 与 macOS/BSD base64 上均可用，比 `-d`/`-D` 更可移植。
+        - 仅按 `\n` 触发折叠：含 `\n` 的命令才是真正的多物理行；不含 `\n`（哪怕有孤立 `\r`）
+          本就是单物理行，原样透传即可，避免对退化输入做无谓包裹。
+
+        Root-fix for Issue #15: single-line commands pass through unchanged (zero regression);
+        commands containing a newline are base64-encoded and wrapped into one physical line run
+        via `eval "$(... | base64 --decode)"` in the *current shell*, so the persistent shell
+        emits exactly one prompt while cd/export state persists and stdin stays on the pty.
+
+        Args:
+            command: 原始命令（可能多行）| The original (possibly multi-line) command
+
+        Returns:
+            单条物理行命令 | A single physical-line command
+        """
+        if "\n" not in command:
+            return command
+
+        blob = base64.b64encode(command.encode("utf-8")).decode("ascii")
+        return f"eval \"$(printf '%s' '{blob}' | base64 --decode)\""
 
     def _extract_exit_code(self, rc_blob: str) -> int:
         """

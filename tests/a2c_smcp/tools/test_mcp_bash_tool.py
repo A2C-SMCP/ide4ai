@@ -239,3 +239,29 @@ async def test_bash_tool_no_truncation_for_small_output(bash_tool):
     output_length = len(result["output"])
     assert output_length <= bash_tool.MAX_OUTPUT_LENGTH
     print(f"✓ 小输出未被截断: {output_length} 字符")
+
+
+@pytest.mark.asyncio
+async def test_bash_tool_multiline_command(bash_tool):
+    """
+    端到端：MCP 工具层执行多行命令应返回完整结果 | E2E: multi-line command via the tool layer
+
+    复现 GitHub Issue #15：旧实现下多行命令必卡满超时 / 截断。修复后经
+    BashTool.execute → ide.step → terminal._execute_command 全链路应正确执行每一行。
+
+    Args:
+        bash_tool: Bash 工具实例 | Bash tool instance
+    """
+    # 多行命令放在 command 字段（action_name 为整串，命令过滤按首 token 判定）
+    # Multi-line command in the `command` field (filter decides on the first token).
+    result = await bash_tool.execute(
+        {
+            "command": "echo line1\necho line2",
+            "description": "Run a multi-line command",
+        },
+    )
+
+    assert result["success"] is True, f"多行命令应成功 | multi-line command should succeed: {result}"
+    assert "line1" in result["output"] and "line2" in result["output"], (
+        f"多行命令输出不完整 | multi-line output incomplete: {result['output']!r}"
+    )

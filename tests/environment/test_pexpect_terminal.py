@@ -616,6 +616,79 @@ class TestPexpectTerminalMultiline:
         assert "\n" not in wrapped, "折叠结果必须是单物理行 | folded result must be one physical line"
 
 
+class TestPexpectTerminalPromptDesync:
+    """提示符哨兵失同步测试 | Prompt-sentinel desync tests (Jira AS-35)
+
+    复现 AS-35：旧实现 PS1 固定为 `PEXPECT_PROMPT> ` 且以同名字面量做 `expect()` 匹配。
+    一旦某条命令的输出里含 `PEXPECT_PROMPT>` 子串，`expect()` 就在输出中间提前匹配 →
+    `shell.before` 被截断 → 退出码探针与真实提示符时序错位 → 退出码标记泄漏到下一条命令 →
+    整个持久会话永久失同步（后续每条命令都返回上一条的退出码标记，退出码恒为 1）。
+
+    根治：把提示符哨兵改成带实例级随机 nonce 的唯一串（`self._prompt`），命令输出几乎不可能
+    撞上，从根上消除提前匹配。
+
+    Reproduces AS-35: the old fixed `PEXPECT_PROMPT> ` sentinel, matched by the same literal,
+    made `expect()` match prematurely whenever a command's output contained that substring,
+    permanently desyncing the persistent session. Fix: randomize the sentinel per instance.
+    """
+
+    @pytest.fixture
+    def env(self, tmp_path):
+        args = EnvironmentArguments(image_name="local", timeout=8)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "expr", "true", "false"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_prompt_sentinel_is_randomized_per_instance(self, tmp_path):
+        """哨兵须含实例级随机 nonce，且非旧固定字面量 | sentinel is randomized, not the old literal"""
+        args = EnvironmentArguments(image_name="local", timeout=8)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo"])
+        e1 = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        e2 = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        try:
+            assert e1._prompt != "PEXPECT_PROMPT>", "哨兵不应再是旧固定字面量 | must not be the old literal"
+            assert e1._prompt != e2._prompt, "不同实例哨兵须不同 | sentinels must differ across instances"
+        finally:
+            e1.close()
+            e2.close()
+
+    def test_output_containing_old_sentinel_does_not_truncate(self, env):
+        """输出含旧字面量 `PEXPECT_PROMPT>` 不应触发提前匹配/截断 | no premature match on old literal"""
+        result = env._execute_command('echo "some PEXPECT_PROMPT> text"')
+
+        assert result.success is True, f"含旧哨兵子串的命令应成功 | should succeed: {result.output!r}"
+        assert result.exit_code == 0
+        # 旧实现这里只会得到被截断的 'some'；修复后须拿到完整输出
+        # The old impl truncated to 'some'; the fix must return the full line.
+        assert result.output.strip() == "some PEXPECT_PROMPT> text", (
+            f"输出被提前匹配截断 | output truncated by premature prompt match: {result.output!r}"
+        )
+
+    def test_session_not_desynced_after_sentinel_in_output(self, env):
+        """触发条件后会话不应被永久毒化，后续命令输出/退出码均正确 | no permanent desync"""
+        # 先跑一条会让旧实现失同步的命令 | run the command that desyncs the old impl
+        env._execute_command('echo "trap PEXPECT_PROMPT> here"')
+
+        # 关键回归断言：之后的命令不能读到 stale RC blob | next commands must be clean
+        r2 = env._execute_command("echo HELLO_AFTER")
+        assert r2.success is True and r2.exit_code == 0
+        assert r2.output.strip() == "HELLO_AFTER", f"会话被毒化，读到上一条的残留 | session poisoned: {r2.output!r}"
+
+        r3 = env._execute_command("expr 6 \\* 7")
+        assert r3.success is True and r3.exit_code == 0
+        assert r3.output.strip() == "42", f"会话仍失同步 | still desynced: {r3.output!r}"
+
+    def test_output_containing_sentinel_prefix_does_not_desync(self, env):
+        """输出含哨兵公共前缀但非本实例 nonce 时不应误匹配 | shared prefix w/o nonce won't match"""
+        # 用一个伪 nonce 拼出形似哨兵的串，验证匹配的是完整唯一哨兵而非公共前缀
+        # A fake-nonce sentinel-shaped string must not trigger a match (full unique sentinel only).
+        env._execute_command('echo "__IDE4AI_PROMPT_deadbeef__> bait"')
+        r = env._execute_command("echo STILL_OK")
+        assert r.success is True and r.exit_code == 0
+        assert r.output.strip() == "STILL_OK", f"伪哨兵前缀致失同步 | fake-prefix desync: {r.output!r}"
+
+
 if __name__ == "__main__":
     # 运行测试 | Run tests
     # pytest tests/environment/test_pexpect_terminal.py -v

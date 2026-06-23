@@ -117,6 +117,21 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             re.escape(self._rc_start) + r"(-?\d+)" + re.escape(self._rc_end),
         )
 
+        # 提示符哨兵：实例级随机后缀，根治 AS-35。
+        # 旧实现 PS1 固定为 "PEXPECT_PROMPT> " 且以同名字面量做 expect 匹配，一旦某条命令的
+        # 输出里含 "PEXPECT_PROMPT>" 子串，expect() 就在输出中间提前匹配 → shell.before 被截断
+        # → 退出码探针与真实提示符时序错位 → 退出码标记泄漏到下一条命令 → 整个持久会话永久失同步。
+        # 与退出码定界符同源思路：把哨兵改成带随机 nonce 的唯一串，命令输出几乎不可能撞上。
+        #
+        # Per-instance prompt sentinel: root-fix for AS-35. The old PS1 was a fixed
+        # "PEXPECT_PROMPT> " matched by the same literal, so any command whose output contained
+        # that substring made expect() match prematurely and permanently desynced the session.
+        # Randomizing the sentinel (same idea as the exit-code delimiter) makes a collision with
+        # real command output effectively impossible.
+        prompt_nonce = uuid.uuid4().hex[:8]
+        self._prompt = f"__IDE4AI_PROMPT_{prompt_nonce}__>"
+        self._prompt_re = re.escape(self._prompt)
+
         # 初始化持久 shell 会话 | Initialize persistent shell session
         self._init_shell()
 
@@ -163,23 +178,24 @@ class PexpectTerminalEnv(BaseTerminalEnv):
                 use_poll=True,
             )
 
-            # 设置简单的提示符以便于匹配 | Set simple prompt for easy matching
-            self.shell.sendline('export PS1="PEXPECT_PROMPT> "')
-            self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+            # 设置实例级唯一提示符以便于匹配（AS-35：随机 nonce 杜绝输出子串提前匹配）
+            # Set a per-instance unique prompt (AS-35: random nonce prevents premature substring match)
+            self.shell.sendline(f'export PS1="{self._prompt} "')
+            self.shell.expect(self._prompt_re, timeout=5)
 
             # 激活虚拟环境(如果指定) | Activate virtual environment (if specified)
             if self.active_venv_cmd:
                 try:
                     self.shell.sendline(self.active_venv_cmd)
                     index = self.shell.expect(
-                        ["PEXPECT_PROMPT>", pexpect.TIMEOUT, pexpect.EOF],
+                        [self._prompt_re, pexpect.TIMEOUT, pexpect.EOF],
                         timeout=10,
                     )
 
                     if index == 0:
                         # 检查命令退出码 | Check command exit code
                         self.shell.sendline("echo $?")
-                        self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+                        self.shell.expect(self._prompt_re, timeout=5)
                         exit_code_output = self.shell.before or ""
 
                         # 提取退出码 | Extract exit code
@@ -346,7 +362,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
             # 等待命令完成 | Wait for command completion
             index = self.shell.expect(
-                ["PEXPECT_PROMPT>", pexpect.TIMEOUT, pexpect.EOF],
+                [self._prompt_re, pexpect.TIMEOUT, pexpect.EOF],
                 timeout=effective_timeout,
             )
 
@@ -355,7 +371,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
 
                 # 精确抽取退出码：用独立定界符协议
                 self.shell.sendline(f'echo "{self._rc_start}$?{self._rc_end}"')
-                self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+                self.shell.expect(self._prompt_re, timeout=5)
                 rc_blob = self.shell.before or ""
                 exit_code = self._extract_exit_code(rc_blob)
 
@@ -424,7 +440,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
             for _ in range(2):
                 self.shell.sendintr()
                 index = self.shell.expect(
-                    ["PEXPECT_PROMPT>", pexpect.TIMEOUT, pexpect.EOF],
+                    [self._prompt_re, pexpect.TIMEOUT, pexpect.EOF],
                     timeout=2,
                 )
                 if index == 0:
@@ -465,7 +481,7 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         if prev_dir and os.path.realpath(prev_dir) != real_work_dir:
             try:
                 self.shell.sendline(f'cd "{prev_dir}"')
-                self.shell.expect("PEXPECT_PROMPT>", timeout=5)
+                self.shell.expect(self._prompt_re, timeout=5)
                 self.current_dir = prev_dir
             except (pexpect.ExceptionPexpect, OSError) as e:
                 logger.warning(f"重建后恢复工作目录失败，回退到 work_dir | failed to restore cwd: {e}")
@@ -580,13 +596,14 @@ class PexpectTerminalEnv(BaseTerminalEnv):
         self._assert_not_closed()
 
         if not self._command_history:
-            return f"PEXPECT_PROMPT> (cwd: {self.current_dir})"
+            return f"$ (cwd: {self.current_dir})"
 
         # 渲染最近 3 条命令 | Render last 3 commands
+        # 展示用中性提示符，避免泄漏内部随机哨兵（AS-35）| neutral display prompt, no internal sentinel
         render_frames = []
         for entry in self._command_history[-3:]:
             render_frames.append(
-                f"PEXPECT_PROMPT> {entry['command']}\n{entry['output']}",
+                f"$ {entry['command']}\n{entry['output']}",
             )
 
         return "\n\n".join(render_frames)

@@ -112,7 +112,7 @@ cd /foo/bar && pytest tests
             # 构造 IDE action
             # action_args 必须是 str 或 list[str]，不能是 dict
             # action_args must be str or list[str], not dict
-            action = {
+            action: dict[str, Any] = {
                 "category": "terminal",
                 "action_name": bash_input.command,
                 "action_args": bash_input.args
@@ -120,12 +120,15 @@ cd /foo/bar && pytest tests
                 else "",  # 使用传入的 args 或空字符串 | Use provided args or empty string
             }
 
-            # 如果设置了超时，转换为秒 | Convert timeout to seconds if set
+            # 如果设置了超时，转换为秒并注入 action，使其经 ide.step → terminal.step
+            # → _execute_command 真正生效（Issue #12 次要 #1：此前仅 logger.debug，从未传入，
+            # 导致请求 timeout:5000(5s) 却始终等满 --cmd-timeout）。
+            # If a timeout is set, convert ms→s and inject into action so it actually takes
+            # effect down the call chain (Issue #12 secondary #1: previously only logged).
             if bash_input.timeout:
                 # IDE 的 timeout 是秒，MCP 的是毫秒 | IDE timeout is in seconds, MCP is in milliseconds
                 timeout_seconds = bash_input.timeout / 1000
-                # 注意：这里可能需要根据实际的 IDE 实现来调整超时设置
-                # Note: May need to adjust timeout setting based on actual IDE implementation
+                action["timeout"] = timeout_seconds
                 logger.debug(f"设置超时 | Setting timeout: {timeout_seconds}s")
 
             # 执行命令 | Execute command

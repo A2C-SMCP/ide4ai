@@ -223,7 +223,7 @@ class BaseMCPServer(ABC):
             return resources
 
         @self.server.read_resource()  # type: ignore[no-untyped-call]
-        async def read_resource(uri: str) -> str:
+        async def read_resource(uri: AnyUrl) -> str:
             """
             读取资源内容 | Read resource content
 
@@ -235,16 +235,26 @@ class BaseMCPServer(ABC):
             Args:
                 uri: 资源 URI（可能包含查询参数）| Resource URI (may contain query parameters)
 
+                    mcp lowlevel 分发器恒以 ``AnyUrl`` 注入（见 mcp/server/lowlevel/server.py），
+                    而 ``AnyUrl`` 在 pydantic 2.x 下并非 ``str`` 子类，故须先归一化为 ``str``，
+                    否则 ``urlparse`` 会走 bytes 分支调 ``.decode()`` 抛 AttributeError（见 Issue #13）。
+                    The mcp lowlevel dispatcher always passes an ``AnyUrl``; since ``AnyUrl`` is not a
+                    ``str`` subclass under pydantic 2.x, it must be normalized to ``str`` first, otherwise
+                    ``urlparse`` takes the bytes path and calls ``.decode()`` (see Issue #13).
+
             Returns:
                 str: 资源内容 | Resource content
             """
-            logger.info(f"读取资源 | Reading resource: {uri}")
+            # 归一化为 str：lowlevel 实传 AnyUrl，下游 urlparse/查找/比较/update_from_uri 均要求 str
+            # Normalize to str: lowlevel passes AnyUrl, downstream urlparse/lookup/compare/update_from_uri require str
+            uri_str = str(uri)
+            logger.info(f"读取资源 | Reading resource: {uri_str}")
 
             # 解析 base_uri（不含查询参数）用于查找资源
             # Parse base_uri (without query parameters) to find resource
             from urllib.parse import urlparse
 
-            parsed = urlparse(uri)
+            parsed = urlparse(uri_str)
             base_uri = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
             # 使用 base_uri 查找资源 | Find resource using base_uri
@@ -257,9 +267,9 @@ class BaseMCPServer(ABC):
             try:
                 # 如果请求的 URI 与资源当前 URI 不同，更新资源参数
                 # If requested URI differs from resource's current URI, update parameters
-                if uri != resource.uri:
-                    logger.debug(f"更新资源参数 | Updating resource parameters from URI: {uri}")
-                    resource.update_from_uri(uri)
+                if uri_str != resource.uri:
+                    logger.debug(f"更新资源参数 | Updating resource parameters from URI: {uri_str}")
+                    resource.update_from_uri(uri_str)
 
                 # 读取资源内容 | Read resource content
                 content = await resource.read()

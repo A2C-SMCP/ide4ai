@@ -12,6 +12,7 @@ Demonstrates how to use pexpect-based terminal environment, especially virtual e
 
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -391,6 +392,301 @@ class TestCommandFilterConfig:
         assert success is True
 
         env.close()
+
+
+class TestPexpectTerminalRecovery:
+    """超时恢复测试 | Timeout recovery tests
+
+    复现 GitHub Issue #12：一条不返回提示符的交互式 / 前台命令(如 cat 等 stdin、
+    或无视 SIGINT 的进程)超时后，持久 shell 被永久毒死，后续每条命令都超时。
+    Reproduces GitHub Issue #12: after one interactive/foreground command that
+    never returns to the prompt times out, the persistent shell is permanently
+    poisoned and every subsequent command also times out.
+    """
+
+    @pytest.fixture
+    def short_timeout_env(self, tmp_path):
+        """超时设置较短的环境，加速复现 | Env with short timeout to speed up reproduction"""
+        args = EnvironmentArguments(image_name="local", timeout=3)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat", "python3"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_recover_after_cat_blocks_on_stdin(self, short_timeout_env):
+        """cat(等 stdin)超时后，后续 echo 必须恢复 | echo must recover after cat times out"""
+        env = short_timeout_env
+
+        # 1. echo 正常 | echo works
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["ok1"]},
+        )
+        assert success is True
+        assert "ok1" in obs["obs"]
+
+        # 2. cat 无参等待 stdin → 超时 | cat waits on stdin → times out
+        _, _, _, success, info = env.step(
+            {"category": "terminal", "action_name": "cat", "action_args": []},
+        )
+        assert success is False
+        assert "timeout" in info["output"].lower()
+
+        # 3. 关键断言：之后的 echo 必须恢复，而不是被永久毒死
+        #    Key assertion: the next echo must recover, not be permanently poisoned
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["ok2"]},
+        )
+        assert success is True, "终端在交互式命令超时后未能自我恢复 | terminal failed to self-recover after timeout"
+        assert "ok2" in obs["obs"]
+
+    def test_recover_after_sigint_immune_process(self, short_timeout_env, mocker):
+        """无视 SIGINT 的前台进程超时后，仍须通过重建 shell 恢复
+        After a SIGINT-immune foreground process times out, recovery must still
+        succeed (via hard shell rebuild)."""
+        env = short_timeout_env
+        # 监视硬重建路径，确保确实走了 _rebuild_shell（而非软恢复意外成功掩盖回归）
+        # Spy on the hard-rebuild path to assert it actually fired (not masked by soft recovery).
+        rebuild_spy = mocker.spy(env, "_rebuild_shell")
+
+        # 启动一个忽略 SIGINT 并长睡的进程，模拟 vim/top/ssh 等无视 Ctrl-C 的程序
+        # Spawn a process that ignores SIGINT and sleeps long, simulating vim/top/ssh
+        # 内联代码用单引号包裹成单个 shell 词，避免被空格/分号拆解
+        # Wrap the inline code in single quotes so it stays one shell word
+        code = "import signal,time;signal.signal(signal.SIGINT,signal.SIG_IGN);time.sleep(300)"
+        _, _, _, success, info = env.step(
+            {
+                "category": "terminal",
+                "action_name": "python3",
+                "action_args": ["-c", f"'{code}'"],
+            },
+        )
+        assert success is False
+        assert "timeout" in info["output"].lower()
+        # 软恢复（Ctrl-C）对无视 SIGINT 的进程必然失败 → 必须落到硬重建
+        # Soft recovery (Ctrl-C) must fail for a SIGINT-immune process → hard rebuild path
+        assert rebuild_spy.call_count >= 1, "无视 SIGINT 的进程超时未触发硬重建 | hard rebuild path not taken"
+
+        # 之后的 echo 必须恢复 | the next echo must recover
+        obs, _, _, success, _ = env.step(
+            {"category": "terminal", "action_name": "echo", "action_args": ["recovered"]},
+        )
+        assert success is True, (
+            "无视 SIGINT 的进程超时后终端未恢复 | terminal failed to recover after SIGINT-immune timeout"
+        )
+        assert "recovered" in obs["obs"]
+
+    def test_per_call_timeout_overrides_env_default(self, tmp_path):
+        """per-call timeout 必须真正生效，而非始终用环境默认
+        Per-call timeout must actually take effect rather than always using env default.
+
+        复现 Issue #12 次要 #1：请求 timeout 较小却等满 --cmd-timeout。
+        """
+        import time
+
+        # 环境默认 30s，但本次命令注入 2s 的 per-call 超时
+        # Env default is 30s, but this command injects a 2s per-call timeout.
+        args = EnvironmentArguments(image_name="local", timeout=30)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        try:
+            start = time.monotonic()
+            _, _, _, success, info = env.step(
+                {
+                    "category": "terminal",
+                    "action_name": "cat",
+                    "action_args": [],
+                    "timeout": 2,  # per-call 覆盖：2s 而非 30s | per-call override
+                },
+            )
+            elapsed = time.monotonic() - start
+
+            assert success is False
+            # 主断言：文案直证 per-call 2s 生效（而非 30s 默认）
+            # Primary assertion: message proves the 2s per-call value took effect (not 30s default).
+            assert "2 seconds" in info["output"]
+            # 辅助时间断言放宽，避免与恢复链路耗时（Ctrl-C/重建）隐式耦合导致 CI flaky
+            # Loose time bound: avoid coupling to recovery-chain latency; still well below 30s default.
+            assert elapsed < 25, f"per-call timeout 未生效，等待 {elapsed:.1f}s | per-call timeout ignored"
+
+            # 恢复后续命令仍可用 | subsequent command still works after recovery
+            obs, _, _, success, _ = env.step(
+                {"category": "terminal", "action_name": "echo", "action_args": ["after"]},
+            )
+            assert success is True
+            assert "after" in obs["obs"]
+        finally:
+            env.close()
+
+
+class TestPexpectTerminalMultiline:
+    """多行 / heredoc 命令测试 | Multi-line / heredoc command tests
+
+    复现 GitHub Issue #15：持久 shell 用单次 `sendline` + 匹配首个提示符的协议
+    隐含「命令是单行」假设。多行命令的每一行都会触发一个提示符，首个提示符匹配后
+    剩余行 + 后续提示符残留在 pty 缓冲，导致：多行命令被截断、heredoc 卡满超时、
+    退出码探针串位，会话被毒化（后续命令也读到串位数据）。
+
+    Reproduces GitHub Issue #15: the persistent shell protocol (single `sendline`
+    matching the first prompt) silently assumes single-line commands. Multi-line /
+    heredoc commands desync the prompt-matching protocol, truncating output, hanging
+    on heredocs, and poisoning the session for subsequent commands.
+    """
+
+    @pytest.fixture
+    def env(self, tmp_path):
+        """超时较短的环境，heredoc 若卡住能快速暴露 | short timeout so a hang surfaces fast"""
+        args = EnvironmentArguments(image_name="local", timeout=6)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "cat", "python3"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_multiline_command_executes_all_lines(self, env):
+        """多行命令的每一行都应执行，输出不丢失 | every line of a multi-line command runs"""
+        result = env._execute_command("echo a\necho b")
+
+        assert result.success is True, f"多行命令应成功 | multi-line command should succeed: {result.output!r}"
+        assert result.exit_code == 0
+        assert "a" in result.output and "b" in result.output, (
+            f"第二行丢失（协议只支持单行）| second line lost: {result.output!r}"
+        )
+
+    def test_heredoc_command_executes_without_hang(self, env):
+        """heredoc 应正确执行并及时返回，而非卡满超时 | heredoc runs and returns promptly"""
+        start = time.monotonic()
+        result = env._execute_command(
+            "python3 << 'PYEOF'\nprint('hi')\nPYEOF",
+            timeout=6,
+        )
+        elapsed = time.monotonic() - start
+
+        assert result.success is True, f"heredoc 应成功 | heredoc should succeed: {result.output!r}"
+        assert "hi" in result.output, f"heredoc 输出缺失 | heredoc output missing: {result.output!r}"
+        # 一个 print('hi') 级别的 heredoc 必须远快于 timeout（不卡满）
+        # A trivial heredoc must finish far below the timeout (no full-timeout hang).
+        assert elapsed < 5, f"heredoc 卡满超时 | heredoc hung until timeout: {elapsed:.1f}s"
+
+    def test_session_not_desynced_after_multiline(self, env):
+        """多行命令后会话不应被毒化，后续单行命令输出仍正确 | no desync poisoning"""
+        # 先跑一个会触发 desync 的 heredoc | run a heredoc that would desync the old protocol
+        env._execute_command("python3 << 'PYEOF'\nprint('warmup')\nPYEOF", timeout=6)
+
+        # 关键断言：之后的单行命令输出干净、退出码正确，而非读到 stale RC blob
+        # Key assertion: the next single-line command is clean, not a stale RC blob.
+        result = env._execute_command("echo recovered")
+        assert result.success is True
+        assert result.exit_code == 0
+        assert result.output.strip() == "recovered", (
+            f"会话被多行命令毒化 | session poisoned by prior multi-line command: {result.output!r}"
+        )
+
+    def test_multiline_preserves_session_state(self, env):
+        """多行命令在当前 shell 执行，cd/export 等状态须持久化 | state persists in current shell"""
+        # 多行命令内导出变量 | export a var inside a multi-line command
+        result = env._execute_command("export ISSUE15_VAR=persisted\necho done")
+        assert result.success is True
+
+        # 后续命令应能读到该变量（证明在当前 shell 而非子 shell 执行）
+        # A later command must see it (proving execution in the current shell, not a subshell).
+        follow = env._execute_command("echo $ISSUE15_VAR")
+        assert follow.success is True
+        assert "persisted" in follow.output, (
+            f"多行命令在子 shell 执行，状态丢失 | state lost (ran in a subshell): {follow.output!r}"
+        )
+
+    def test_multiline_failing_command_propagates_exit_code(self, env):
+        """多行命令末行失败时退出码须如实传播 | failing last line propagates non-zero exit code"""
+        # `eval` 包裹后 `$?` 取最后一行退出码——末行 false 必须得到非零退出码 / success False
+        # After eval-wrapping, `$?` is the last line's exit code: a trailing `false` must be non-zero.
+        result = env._execute_command("echo ok\nfalse")
+        assert result.success is False, f"末行失败应判定失败 | failing last line should fail: {result.output!r}"
+        assert result.exit_code != 0, f"退出码应非零 | exit code should be non-zero: {result.exit_code}"
+
+    def test_to_single_line_fold_policy(self, env):
+        """`_to_single_line` 折叠策略：仅多行命令被包裹 | only multi-line commands get wrapped"""
+        # 单行命令原样透传（零回归）| single-line passes through unchanged
+        assert env._to_single_line("echo hi") == "echo hi"
+        # 仅含孤立 \r（无 \n）本就是单物理行，不应被包裹（W3：避免 eval $'\r' 退化）
+        # A lone-CR command (no \n) is still one physical line — must NOT be wrapped (W3).
+        assert env._to_single_line("echo hi\r") == "echo hi\r"
+        # 含 \n 的多行命令被折叠成单条 eval+base64 物理行
+        # Multi-line (\n) command is folded into one eval+base64 physical line.
+        wrapped = env._to_single_line("echo a\necho b")
+        assert wrapped.startswith("eval ") and "base64 --decode" in wrapped
+        assert "\n" not in wrapped, "折叠结果必须是单物理行 | folded result must be one physical line"
+
+
+class TestPexpectTerminalPromptDesync:
+    """提示符哨兵失同步测试 | Prompt-sentinel desync tests (Jira AS-35)
+
+    复现 AS-35：旧实现 PS1 固定为 `PEXPECT_PROMPT> ` 且以同名字面量做 `expect()` 匹配。
+    一旦某条命令的输出里含 `PEXPECT_PROMPT>` 子串，`expect()` 就在输出中间提前匹配 →
+    `shell.before` 被截断 → 退出码探针与真实提示符时序错位 → 退出码标记泄漏到下一条命令 →
+    整个持久会话永久失同步（后续每条命令都返回上一条的退出码标记，退出码恒为 1）。
+
+    根治：把提示符哨兵改成带实例级随机 nonce 的唯一串（`self._prompt`），命令输出几乎不可能
+    撞上，从根上消除提前匹配。
+
+    Reproduces AS-35: the old fixed `PEXPECT_PROMPT> ` sentinel, matched by the same literal,
+    made `expect()` match prematurely whenever a command's output contained that substring,
+    permanently desyncing the persistent session. Fix: randomize the sentinel per instance.
+    """
+
+    @pytest.fixture
+    def env(self, tmp_path):
+        args = EnvironmentArguments(image_name="local", timeout=8)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo", "expr", "true", "false"])
+        env = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        yield env
+        env.close()
+
+    def test_prompt_sentinel_is_randomized_per_instance(self, tmp_path):
+        """哨兵须含实例级随机 nonce，且非旧固定字面量 | sentinel is randomized, not the old literal"""
+        args = EnvironmentArguments(image_name="local", timeout=8)
+        cmd_filter = CommandFilterConfig.from_white_list(["echo"])
+        e1 = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        e2 = PexpectTerminalEnv(args=args, work_dir=str(tmp_path), cmd_filter=cmd_filter)
+        try:
+            assert e1._prompt != "PEXPECT_PROMPT>", "哨兵不应再是旧固定字面量 | must not be the old literal"
+            assert e1._prompt != e2._prompt, "不同实例哨兵须不同 | sentinels must differ across instances"
+        finally:
+            e1.close()
+            e2.close()
+
+    def test_output_containing_old_sentinel_does_not_truncate(self, env):
+        """输出含旧字面量 `PEXPECT_PROMPT>` 不应触发提前匹配/截断 | no premature match on old literal"""
+        result = env._execute_command('echo "some PEXPECT_PROMPT> text"')
+
+        assert result.success is True, f"含旧哨兵子串的命令应成功 | should succeed: {result.output!r}"
+        assert result.exit_code == 0
+        # 旧实现这里只会得到被截断的 'some'；修复后须拿到完整输出
+        # The old impl truncated to 'some'; the fix must return the full line.
+        assert result.output.strip() == "some PEXPECT_PROMPT> text", (
+            f"输出被提前匹配截断 | output truncated by premature prompt match: {result.output!r}"
+        )
+
+    def test_session_not_desynced_after_sentinel_in_output(self, env):
+        """触发条件后会话不应被永久毒化，后续命令输出/退出码均正确 | no permanent desync"""
+        # 先跑一条会让旧实现失同步的命令 | run the command that desyncs the old impl
+        env._execute_command('echo "trap PEXPECT_PROMPT> here"')
+
+        # 关键回归断言：之后的命令不能读到 stale RC blob | next commands must be clean
+        r2 = env._execute_command("echo HELLO_AFTER")
+        assert r2.success is True and r2.exit_code == 0
+        assert r2.output.strip() == "HELLO_AFTER", f"会话被毒化，读到上一条的残留 | session poisoned: {r2.output!r}"
+
+        r3 = env._execute_command("expr 6 \\* 7")
+        assert r3.success is True and r3.exit_code == 0
+        assert r3.output.strip() == "42", f"会话仍失同步 | still desynced: {r3.output!r}"
+
+    def test_output_containing_sentinel_prefix_does_not_desync(self, env):
+        """输出含哨兵公共前缀但非本实例 nonce 时不应误匹配 | shared prefix w/o nonce won't match"""
+        # 用一个伪 nonce 拼出形似哨兵的串，验证匹配的是完整唯一哨兵而非公共前缀
+        # A fake-nonce sentinel-shaped string must not trigger a match (full unique sentinel only).
+        env._execute_command('echo "__IDE4AI_PROMPT_deadbeef__> bait"')
+        r = env._execute_command("echo STILL_OK")
+        assert r.success is True and r.exit_code == 0
+        assert r.output.strip() == "STILL_OK", f"伪哨兵前缀致失同步 | fake-prefix desync: {r.output!r}"
 
 
 if __name__ == "__main__":

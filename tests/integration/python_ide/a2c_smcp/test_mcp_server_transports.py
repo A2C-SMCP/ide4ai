@@ -17,8 +17,8 @@ import pytest
 from confz import DataSource
 from confz.exceptions import ConfigException
 
+from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
-from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 class TestMCPServerTransportModes:
@@ -113,7 +113,7 @@ class TestMCPServerTransportModes:
         ):
             config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
             try:
                 assert server.config.transport == "stdio"
                 assert server.server is not None
@@ -139,7 +139,7 @@ class TestMCPServerTransportModes:
         ):
             config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
             try:
                 assert server.config.transport == "sse"
                 assert server.config.host == "127.0.0.1"
@@ -164,7 +164,7 @@ class TestMCPServerTransportModes:
         ):
             config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
             try:
                 assert server.config.transport == "streamable-http"
                 assert server.config.host == "127.0.0.1"
@@ -196,7 +196,7 @@ class TestMCPServerSSETransport:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 创建一个任务来运行服务器 | Create a task to run the server
@@ -236,7 +236,7 @@ class TestMCPServerSSETransport:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             # 在后台运行服务器 | Run server in background
             server_task = asyncio.create_task(server.run())
@@ -290,7 +290,7 @@ class TestMCPServerStreamableHTTPTransport:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 创建一个任务来运行服务器 | Create a task to run the server
@@ -327,7 +327,7 @@ class TestMCPServerStreamableHTTPTransport:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             # 在后台运行服务器 | Run server in background
             server_task = asyncio.create_task(server.run())
@@ -381,7 +381,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 验证 Glob 工具已注册 | Verify Glob tool is registered
@@ -407,7 +407,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 验证 Bash 工具已注册 | Verify Bash tool is registered
@@ -431,7 +431,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取工具列表 | Get tools list
@@ -460,7 +460,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取 Glob 工具 | Get Glob tool
@@ -495,7 +495,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 glob_tool = server.tools["Glob"]
@@ -533,7 +533,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 glob_tool = server.tools["Glob"]
@@ -569,7 +569,7 @@ class TestMCPServerTools:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 glob_tool = server.tools["Glob"]
@@ -607,7 +607,7 @@ class TestMCPServerTransportIntegration:
             DataSource(data={"transport": "stdio", "root_dir": ".", "project_name": "test-routing-stdio"}),
         ):
             config_stdio = MCPServerConfig()
-            server_stdio = PythonIDEMCPServer(config_stdio)
+            server_stdio = IDEMCPServer(config_stdio)
             try:
                 assert server_stdio.config.transport == "stdio"
             finally:
@@ -626,7 +626,7 @@ class TestMCPServerTransportIntegration:
             ),
         ):
             config_sse = MCPServerConfig()
-            server_sse = PythonIDEMCPServer(config_sse)
+            server_sse = IDEMCPServer(config_sse)
             try:
                 assert server_sse.config.transport == "sse"
             finally:
@@ -645,7 +645,7 @@ class TestMCPServerTransportIntegration:
             ),
         ):
             config_http = MCPServerConfig()
-            server_http = PythonIDEMCPServer(config_http)
+            server_http = IDEMCPServer(config_http)
             try:
                 assert server_http.config.transport == "streamable-http"
             finally:
@@ -666,7 +666,7 @@ class TestMCPServerTransportIntegration:
             # Manually set to invalid transport mode (bypass Pydantic validation)
             config.__dict__["transport"] = "invalid-mode"
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 运行服务器应该抛出 ValueError | Running server should raise ValueError

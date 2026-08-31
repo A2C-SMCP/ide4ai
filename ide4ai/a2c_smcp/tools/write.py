@@ -22,8 +22,8 @@ class WriteTool(BaseTool):
     """
     Write 文件写入工具 | Write File Writing Tool
 
-    通过 PythonIDE 的工作区环境写入文件内容
-    Writes file contents through PythonIDE's workspace environment
+    通过 IDE 的工作区环境写入文件内容
+    Writes file contents through IDE's workspace environment
     """
 
     @property
@@ -124,9 +124,9 @@ class WriteTool(BaseTool):
 
                 # 添加诊断信息 | Add diagnostics info
                 if diagnostics:
-                    from ide4ai.python_ide.workspace import PyWorkspace
+                    from ide4ai.environment.workspace.workspace import Workspace
 
-                    message += "\n" + PyWorkspace._format_diagnostics(diagnostics)
+                    message += "\n" + Workspace._format_diagnostics(diagnostics)
 
                 output = WriteOutput(
                     success=True,
@@ -140,10 +140,11 @@ class WriteTool(BaseTool):
 
             else:
                 # 如果文件不存在，创建新文件 | If file doesn't exist, create new file
-                text_model, diagnostics = self.ide.workspace.create_file(uri=file_uri)
+                created_model, diagnostics = self.ide.workspace.create_file(uri=file_uri)
 
-                if text_model is None:
+                if created_model is None:
                     raise RuntimeError(f"无法创建文件 | Cannot create file: {file_path}")
+                text_model = created_model
 
                 # 如果创建的文件有初始内容，需要先清空 | If created file has initial content, clear it first
                 if text_model.get_value():
@@ -192,9 +193,9 @@ class WriteTool(BaseTool):
 
                 # 添加诊断信息 | Add diagnostics info
                 if diagnostics:
-                    from ide4ai.python_ide.workspace import PyWorkspace
+                    from ide4ai.environment.workspace.workspace import Workspace
 
-                    message += "\n" + PyWorkspace._format_diagnostics(diagnostics)
+                    message += "\n" + Workspace._format_diagnostics(diagnostics)
 
                 output = WriteOutput(
                     success=True,

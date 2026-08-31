@@ -12,11 +12,11 @@ from typing import Any
 
 import pytest
 
-from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.environment.workspace.workspace import Workspace
 
 
 @pytest.fixture
-def temp_workspace() -> Generator[tuple[PyWorkspace, str], Any, None]:
+def temp_workspace() -> Generator[tuple[Workspace, str], Any, None]:
     """
     创建一个临时工作区用于测试 / Create a temporary workspace for testing
 
@@ -65,7 +65,7 @@ def temp_workspace() -> Generator[tuple[PyWorkspace, str], Any, None]:
         (Path(temp_dir) / "newer_file.py").write_text("# Newer file")
 
         # 初始化工作区 / Initialize workspace
-        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_glob_workspace")
+        workspace = Workspace(root_dir=temp_dir, project_name="test_glob_workspace")
 
         yield workspace, temp_dir
 
@@ -80,7 +80,7 @@ def temp_workspace() -> Generator[tuple[PyWorkspace, str], Any, None]:
             shutil.rmtree(temp_dir)
 
 
-def test_glob_files_all_python_files(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_all_python_files(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试查找所有 Python 文件 / Test finding all Python files
 
@@ -114,7 +114,7 @@ def test_glob_files_all_python_files(temp_workspace: tuple[PyWorkspace, str]) ->
         print(f"  - {r['path']}")
 
 
-def test_glob_files_specific_directory(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_specific_directory(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试在特定目录中查找文件 / Test finding files in specific directory
 
@@ -146,7 +146,7 @@ def test_glob_files_specific_directory(temp_workspace: tuple[PyWorkspace, str]) 
         print(f"  - {r['path']}")
 
 
-def test_glob_files_non_recursive(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_non_recursive(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试非递归模式查找文件 / Test non-recursive file finding
 
@@ -176,7 +176,7 @@ def test_glob_files_non_recursive(temp_workspace: tuple[PyWorkspace, str]) -> No
         print(f"  - {r['path']}")
 
 
-def test_glob_files_multiple_extensions(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_multiple_extensions(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试查找多种文件类型 / Test finding multiple file types
 
@@ -202,7 +202,7 @@ def test_glob_files_multiple_extensions(temp_workspace: tuple[PyWorkspace, str])
     print(f"找到 {len(js_results)} 个 .js 文件 / Found {len(js_results)} .js files")
 
 
-def test_glob_files_sorted_by_mtime(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_sorted_by_mtime(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试结果按修改时间排序 / Test results are sorted by modification time
 
@@ -233,7 +233,7 @@ def test_glob_files_sorted_by_mtime(temp_workspace: tuple[PyWorkspace, str]) -> 
         print(f"  - {r['path']} (mtime: {r['mtime']})")
 
 
-def test_glob_files_invalid_path(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_invalid_path(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试使用无效路径时抛出异常 / Test exception is raised with invalid path
 
@@ -249,7 +249,7 @@ def test_glob_files_invalid_path(temp_workspace: tuple[PyWorkspace, str]) -> Non
     print("\n✓ 正确处理不存在的路径 / Correctly handled non-existent path")
 
 
-def test_glob_files_outside_workspace(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_outside_workspace(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试搜索工作区外的路径时抛出异常 / Test exception is raised when searching outside workspace
 
@@ -265,7 +265,7 @@ def test_glob_files_outside_workspace(temp_workspace: tuple[PyWorkspace, str]) -
     print("\n✓ 正确阻止搜索工作区外的路径 / Correctly prevented searching outside workspace")
 
 
-def test_glob_files_empty_results(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_empty_results(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试没有匹配文件时返回空列表 / Test empty list is returned when no files match
 
@@ -283,7 +283,7 @@ def test_glob_files_empty_results(temp_workspace: tuple[PyWorkspace, str]) -> No
     print("\n✓ 正确处理无匹配结果的情况 / Correctly handled no matching results")
 
 
-def test_glob_files_relative_path(temp_workspace: tuple[PyWorkspace, str]) -> None:
+def test_glob_files_relative_path(temp_workspace: tuple[Workspace, str]) -> None:
     """
     测试使用相对路径 / Test using relative path
 

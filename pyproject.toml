@@ -15,11 +15,12 @@ dependencies = [
     "paramiko>=3.4.0",
     "emoji>=2.11.1",
     "loguru>=0.7.2",
+    "lsprotocol>=2025.0.0,<2026.0.0",
     "cachetools>=5.3.2",
     "jinja2>=3.1.6",
     "regex>=2025.10.23",
     "pexpect>=4.9.0",
-    "mcp>=1.19.0",
+    "mcp>=1.19.0,<2.0.0",
     "confz>=2.1.0",
     # MCP HTTP/SSE 传输支持 | MCP HTTP/SSE transport support
     # 显式声明 httpx 版本以确保与 httpx-sse 兼容 | Explicitly declare httpx version for httpx-sse compatibility
@@ -51,7 +52,7 @@ Issues = "https://github.com/JQQ/ide4ai/issues"
 
 [project.scripts]
 # MCP 服务器命令 | MCP server command
-py-ide4ai-mcp = "ide4ai.python_ide.a2c_smcp.server:main"
+ide4ai-mcp = "ide4ai.a2c_smcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]

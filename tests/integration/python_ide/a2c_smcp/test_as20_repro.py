@@ -17,16 +17,16 @@ import pytest
 
 from ide4ai.a2c_smcp.tools import BashTool
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 @pytest.fixture
-def ide_with_whitelist(tmp_path) -> Generator[PythonIDE, Any, None]:
+def ide_with_whitelist(tmp_path) -> Generator[IDE, Any, None]:
     """
     AS-20 repro 场景：启动 IDE 时传入 `["ls", "pwd", "echo", "cat"]` 白名单。
     Before fix：带参数命令被拦截；After fix：放行。
     """
-    ide = PythonIDE(
+    ide = IDE(
         root_dir=str(tmp_path),
         project_name="as20-repro",
         cmd_filter=CommandFilterConfig.from_white_list(

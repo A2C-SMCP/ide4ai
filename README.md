@@ -56,15 +56,15 @@ pip install ide4ai
 ### 基础用法（最小示例）
 
 ```python
-from ide4ai import PythonIDE, IDEAction
+from ide4ai import IDE, IDEAction
 
-ide = PythonIDE(root_dir="/path/to/project", project_name="my_project")
+ide = IDE(root_dir="/path/to/project", project_name="my_project")
 
 # 打开并编辑
 open_file = IDEAction(category="workspace", action_name="open_file", action_args={"uri": "file:///path/to/app.py"})
 ide.step(open_file.model_dump())
 
-edit = IDEAction(category="workspace", action_name="edit_file", action_args={"uri": "file:///path/to/app.py", "edits": [{"range": {"start_position": [1, 1], "end_position": [1, 1]}, "text": "# hello\n"}]})
+edit = IDEAction(category="workspace", action_name="apply_edit", action_args={"uri": "file:///path/to/app.py", "edits": [{"range": {"start_position": [1, 1], "end_position": [1, 1]}, "text": "# hello\n"}]})
 ide.step(edit.model_dump())
 ```
 
@@ -72,28 +72,28 @@ ide.step(edit.model_dump())
 
 ### 使用 uvx 启动与管理 MCP Server
 
-- **脚本入口**：`py-ide4ai-mcp`（定义于 `pyproject.toml` -> `[project.scripts]`）
+- **脚本入口**：`ide4ai-mcp`（定义于 `pyproject.toml` -> `[project.scripts]`）
 - **前置要求**：已安装 `uv`（`curl -LsSf https://astral.sh/uv/install.sh | sh`）与 `ripgrep (rg)`。
 
 - **从 TestPyPI 运行（无需安装到全局环境）**：
 ```bash
-uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match --prerelease=allow --from ide4ai py-ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
+uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match --prerelease=allow --from ide4ai ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
 ```
 
 - **从 PyPi 运行（无需安装到全局环境）**:
 ```bash
-uvx --from ide4ai py-ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
+uvx --from ide4ai ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
 ```
 
 - **从本地源码运行（仓库根目录）**：
 ```bash
-uvx --from . py-ide4ai-mcp -- --help
-uvx --from . py-ide4ai-mcp            # 启动本地开发版
+uvx --from . ide4ai-mcp --help
+uvx --from . ide4ai-mcp            # 启动本地开发版
 ```
 
 - **固定（或切换）版本运行**：
 ```bash
-uvx --from ide4ai==<version> py-ide4ai-mcp
+uvx --from ide4ai==<version> ide4ai-mcp
 ```
 
 提示：`uvx` 会为命令创建隔离环境并缓存依赖，便于快速升级/回滚。生产环境可配合进程管理器（如 systemd、supervisor、tmux/screen）做守护与重启策略。
@@ -126,14 +126,24 @@ uvx --from ide4ai==<version> py-ide4ai-mcp
 
 - **SSE 模式（本地 8000 端口）**：
 ```bash
-uvx py-ide4ai-mcp --transport sse --host 127.0.0.1 --port 8000 \
+uvx --from ide4ai ide4ai-mcp --transport sse --host 127.0.0.1 --port 8000 \
   --root-dir "/path/to/proj" --project-name my_proj
 ```
 
 - **标准输入输出（默认）+ 自定义白名单与超时**：
 ```bash
-uvx py-ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
+uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
+
+- **LSP 模式与服务覆盖**：
+```bash
+ide4ai-mcp --lsp-mode auto
+ide4ai-mcp --lsp-mode explicit --lsp-language-id python \
+  --lsp-server-command "pyright-langserver --stdio"
+ide4ai-mcp --lsp-mode disabled
+```
+
+对应环境变量为 `LSP_MODE`、`LSP_LANGUAGE_ID` 与 `LSP_SERVER_COMMAND`。运行中的状态查询和显式重载由 MCP `Lsp` 工具提供。
 
 ## 📚 核心概念（使用者）
 
@@ -144,16 +154,16 @@ IDE4AI 支持两类操作：
 1. **Workspace Actions** - 工作区操作
    - `open_file` - 打开文件
    - `close_file` - 关闭文件
-   - `edit_file` - 编辑文件
+   - `apply_edit` - 编辑文件
    - `save_file` - 保存文件
-   - `search_files` - 搜索文件
-   - `goto_definition` - 跳转到定义
-   - `find_references` - 查找引用
-   - `list_directory` - 列出目录
+   - `read_file` - 读取文件
+   - `find_in_file` / `replace_in_file` - 文件内搜索和替换
+   - `get_file_symbols` - 获取文件符号
+   - `create_file` - 创建文件
+   - `restart_lsp` - 重新选择并加载 LSP
 
 2. **Terminal Actions** - 终端操作
-   - `run_command` - 执行命令
-   - `get_output` - 获取输出
+   - `action_name` 直接传入终端命令，例如 `pwd` 或 `pytest -q`
 
 ### Workspace 功能
 
@@ -206,7 +216,8 @@ pytest -k "your_case" -v   # 按需选择
 ## 🏗️ 架构设计（开发者）
 
 整体目录与模块说明请参见项目内文档与源码注释：
-- `ide4ai/python_ide/`：Python IDE 实现
+- `ide4ai/ide.py` 与 `ide4ai/environment/workspace/`：通用 IDE/Workspace 实现
+- `ide4ai/languages/`：内建与可扩展的语言 profile
 - `ide4ai/environment/`：终端与工作区环境
 - `ide4ai/dtos/`：LSP 数据模型
 - `examples/` 与 `tests/`：使用示例与行为参考

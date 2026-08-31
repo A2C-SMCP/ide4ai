@@ -8,25 +8,27 @@ This package provides a comprehensive IDE environment that AI agents can use to:
 - Manage workspaces and projects
 
 Main Components:
-- IDE: Base IDE environment class
-- PythonIDE: Python-specific IDE implementation
-- BaseWorkspace: Workspace management
+- BaseIDE: Abstract IDE environment class
+- IDE: Concrete language-profile-driven IDE implementation
+- Workspace: Workspace management
 - BaseTerminalEnv: Terminal environment interface
 """
 
-from ide4ai.base import IDE
+from ide4ai.base import BaseIDE
+from ide4ai.environment.workspace.workspace import Workspace
 from ide4ai.exceptions import IDEExecutionError, IDEProtocolError
-from ide4ai.ides import IDESingleton, PyIDESingleton
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
+from ide4ai.ides import IDEInstance, IDESingleton
 from ide4ai.schema import IDEAction, IDEObs, LanguageId
 
 __version__ = "0.1.0rc0"
 
 __all__ = [
     "IDE",
-    "PythonIDE",
+    "BaseIDE",
+    "Workspace",
     "IDESingleton",
-    "PyIDESingleton",
+    "IDEInstance",
     "IDEAction",
     "IDEObs",
     "LanguageId",

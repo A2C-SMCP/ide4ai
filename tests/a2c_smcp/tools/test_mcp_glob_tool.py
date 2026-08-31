@@ -16,7 +16,7 @@ import pytest
 
 from ide4ai.a2c_smcp.tools import GlobTool
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
-from ide4ai.ides import PyIDESingleton
+from ide4ai.ides import IDEInstance
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def ide_instance():
     创建 IDE 实例 | Create IDE instance
 
     Returns:
-        PythonIDE: IDE 实例 | IDE instance
+        IDE: IDE 实例 | IDE instance
     """
     # 获取 virtual_project 的绝对路径
     # Get absolute path to virtual_project
@@ -33,7 +33,7 @@ def ide_instance():
     root_dir = os.path.join(test_dir, "../../integration/python_ide/virtual_project")
     root_dir = os.path.abspath(root_dir)
 
-    ide_singleton = PyIDESingleton(
+    ide_singleton = IDEInstance(
         root_dir=root_dir,
         project_name="test-project",
         cmd_filter=CommandFilterConfig.from_white_list(["ls", "pwd", "echo"]),

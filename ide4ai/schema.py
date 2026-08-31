@@ -4,8 +4,7 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 import datetime
-from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, BeforeValidator, Field, Json
 
@@ -104,9 +103,5 @@ class IDEAction(BaseModel):
     )
 
 
-class LanguageId(Enum):
-    """
-    The language identifier of the IDE environment.
-    """
-
-    python = "python"
+LanguageId: TypeAlias = str
+"""Extensible LSP language identifier such as ``"python"`` or ``"rust"``."""

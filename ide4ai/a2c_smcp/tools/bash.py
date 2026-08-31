@@ -22,8 +22,8 @@ class BashTool(BaseTool):
     """
     Bash 命令执行工具 | Bash Command Execution Tool
 
-    通过 PythonIDE 的终端环境执行 Bash 命令
-    Executes Bash commands through PythonIDE's terminal environment
+    通过 IDE 的终端环境执行 Bash 命令
+    Executes Bash commands through IDE's terminal environment
     """
 
     # 输出字符数限制 | Output character limit

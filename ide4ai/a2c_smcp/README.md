@@ -1,15 +1,16 @@
-# Python IDE MCP Server
+# IDE4AI MCP Server
 
-将 PythonIDE 的能力封装为 MCP (Model Context Protocol) Server，为 AI 助手提供强大的 IDE 能力。
+将 IDE 的能力封装为 MCP (Model Context Protocol) Server，为 AI 助手提供强大的 IDE 能力。
 
-Wraps PythonIDE capabilities as MCP (Model Context Protocol) Server, providing powerful IDE capabilities for AI assistants.
+Wraps IDE capabilities as MCP (Model Context Protocol) Server, providing powerful IDE capabilities for AI assistants.
 
 ## 架构设计 | Architecture
 
 ```
-ide4ai/python_ide/mcp/
-├── __init__.py              # 包入口 | Package entry
-├── server.py                # MCP Server 主实现 | MCP Server main implementation
+ide4ai/a2c_smcp/
+├── __init__.py              # 公共导出 | Public exports
+├── cli.py                   # 通用 MCP Server 与 CLI | Generic MCP server and CLI
+├── server.py                # MCP Server 基类 | MCP Server base implementation
 ├── config.py                # 配置管理 | Configuration management
 ├── tools/                   # 工具实现 | Tools implementation
 │   ├── __init__.py
@@ -39,9 +40,9 @@ ide4ai/python_ide/mcp/
 
 ### 2. 单例模式 | Singleton Pattern
 
-使用 `PyIDESingleton` 确保在 MCP Server 生命周期内 IDE 实例的唯一性和状态一致性。
+使用 `IDEInstance` 确保在 MCP Server 生命周期内 IDE 实例的唯一性和状态一致性。
 
-Uses `PyIDESingleton` to ensure IDE instance uniqueness and state consistency throughout MCP Server lifecycle.
+Uses `IDEInstance` to ensure IDE instance uniqueness and state consistency throughout MCP Server lifecycle.
 
 ### 3. 工具封装 | Tool Encapsulation
 
@@ -97,18 +98,18 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ```bash
 # 直接运行，无需安装 | Run directly without installation
-uvx ide4ai py-ide4ai-mcp
+uvx --from ide4ai ide4ai-mcp
 
 # 或者安装到全局 | Or install globally
 uv tool install ide4ai
-py-ide4ai-mcp
+ide4ai-mcp
 ```
 
 #### 使用 pip | Using pip
 
 ```bash
 pip install ide4ai
-py-ide4ai-mcp
+ide4ai-mcp
 ```
 
 ### 作为独立服务运行 | Run as Standalone Service
@@ -118,31 +119,31 @@ py-ide4ai-mcp
 **默认使用 stdio 模式 | Default stdio mode:**
 ```bash
 # 如果已安装 | If installed
-py-ide4ai-mcp
+ide4ai-mcp
 
 # 使用 uv run (开发环境) | Using uv run (development)
-uv run py-ide4ai-mcp
+uv run ide4ai-mcp
 
 # 使用 Python 模块 | Using Python module
-python -m ide4ai.python_ide.mcp.server
+python -m ide4ai.a2c_smcp.cli
 ```
 
 **使用 SSE 模式 | Using SSE mode:**
 ```bash
 # 使用环境变量 | Using environment variable
-TRANSPORT=sse HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+TRANSPORT=sse HOST=0.0.0.0 PORT=8000 ide4ai-mcp
 
 # 使用命令行参数 | Using command-line arguments
-py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
 ```
 
 **使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
 ```bash
 # 使用环境变量 | Using environment variable
-TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 ide4ai-mcp
 
 # 使用命令行参数 | Using command-line arguments
-py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 ### 在代码中使用 | Use in Code
@@ -151,7 +152,7 @@ py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ```python
 import asyncio
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
     # 自动从环境变量和命令行参数加载配置 | Automatically load configuration from environment variables and command-line arguments
@@ -159,7 +160,7 @@ async def main():
     config = MCPServerConfig()
     
     # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()
 
 if __name__ == "__main__":
@@ -171,7 +172,7 @@ if __name__ == "__main__":
 **使用 stdio 模式 | Using stdio mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
     config = MCPServerConfig(
@@ -181,7 +182,7 @@ async def main():
         project_name="my-project",
     )
     
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()
 
 if __name__ == "__main__":
@@ -191,7 +192,7 @@ if __name__ == "__main__":
 **使用 SSE 模式 | Using SSE mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
     config = MCPServerConfig(
@@ -202,7 +203,7 @@ async def main():
         project_name="my-project",
     )
     
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()  # 启动 HTTP 服务器 | Start HTTP server
 
 if __name__ == "__main__":
@@ -212,7 +213,7 @@ if __name__ == "__main__":
 **使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
 ```python
 import asyncio
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
     config = MCPServerConfig(
@@ -223,7 +224,7 @@ async def main():
         project_name="my-project",
     )
     
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()  # 启动 HTTP 服务器 | Start HTTP server
 
 if __name__ == "__main__":
@@ -247,7 +248,7 @@ Add to MCP client configuration file:
   "mcpServers": {
     "python-ide": {
       "command": "uvx",
-      "args": ["ide4ai", "py-ide4ai-mcp"],
+      "args": ["--from", "ide4ai", "ide4ai-mcp"],
       "env": {
         "TRANSPORT": "stdio",
         "PROJECT_ROOT": "/path/to/project",
@@ -271,8 +272,8 @@ Add to MCP client configuration file:
     "python-ide": {
       "command": "uvx",
       "args": [
-        "ide4ai",
-        "py-ide4ai-mcp",
+        "--from", "ide4ai",
+        "ide4ai-mcp",
         "--transport", "stdio",
         "--root-dir", "/path/to/project",
         "--project-name", "my-project",
@@ -295,8 +296,8 @@ Add to MCP client configuration file:
     "python-ide": {
       "command": "uvx",
       "args": [
-        "ide4ai",
-        "py-ide4ai-mcp",
+        "--from", "ide4ai",
+        "ide4ai-mcp",
         "--root-dir", "/path/to/project",
         "--cmd-timeout", "60"
       ],
@@ -317,7 +318,7 @@ Add to MCP client configuration file:
 {
   "mcpServers": {
     "python-ide": {
-      "command": "py-ide4ai-mcp",
+      "command": "ide4ai-mcp",
       "args": [],
       "env": {
         "TRANSPORT": "stdio",
@@ -336,7 +337,7 @@ Add to MCP client configuration file:
 {
   "mcpServers": {
     "python-ide": {
-      "command": "py-ide4ai-mcp",
+      "command": "ide4ai-mcp",
       "args": [
         "--transport", "stdio",
         "--root-dir", "/path/to/project",
@@ -357,7 +358,7 @@ Add to MCP client configuration file:
   "mcpServers": {
     "python-ide": {
       "command": "python",
-      "args": ["-m", "ide4ai.python_ide.mcp.server"],
+      "args": ["-m", "ide4ai.a2c_smcp.cli"],
       "env": {
         "TRANSPORT": "stdio",
         "PROJECT_ROOT": "/path/to/project",
@@ -377,7 +378,7 @@ Add to MCP client configuration file:
     "python-ide": {
       "command": "python",
       "args": [
-        "-m", "ide4ai.python_ide.mcp.server",
+        "-m", "ide4ai.a2c_smcp.cli",
         "--transport", "stdio",
         "--root-dir", "/path/to/project",
         "--project-name", "my-project",
@@ -399,13 +400,13 @@ SSE mode requires starting the server first, then the client connects via HTTP.
 
 ```bash
 # 使用 uvx | Using uvx
-uvx ide4ai py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+uvx --from ide4ai ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
 
 # 使用已安装的命令 | Using installed command
-py-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
+ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
 
 # 使用环境变量 | Using environment variables
-TRANSPORT=sse HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+TRANSPORT=sse HOST=0.0.0.0 PORT=8000 ide4ai-mcp
 ```
 
 ##### 客户端连接 | Client Connection
@@ -441,19 +442,19 @@ Streamable HTTP mode requires starting the server first, then the client connect
 
 ```bash
 # 使用 uvx | Using uvx
-uvx ide4ai py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+uvx --from ide4ai ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 # 使用已安装的命令 | Using installed command
-py-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 # 使用环境变量 | Using environment variables
-TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
+TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 ide4ai-mcp
 ```
 
 ##### 客户端连接 | Client Connection
 
 **连接端点 | Connection Endpoint:**
-- `POST http://host:port/message` - 消息处理端点（支持流式响应）| Message handling endpoint (supports streaming responses)
+- `POST http://host:port/mcp` - 消息处理端点（支持流式响应）| Message handling endpoint (supports streaming responses)
 
 **MCP 客户端配置示例（如果客户端支持 Streamable HTTP）| MCP Client Configuration Example (If Client Supports Streamable HTTP):**
 
@@ -461,7 +462,7 @@ TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 py-ide4ai-mcp
 {
   "mcpServers": {
     "python-ide-http": {
-      "url": "http://localhost:8000/message",
+      "url": "http://localhost:8000/mcp",
       "transport": "streamable-http"
     }
   }
@@ -503,7 +504,7 @@ Command-line Arguments > Environment Variables > Default Values
 | **连接方式 Connection** | 标准输入输出<br/>Standard I/O | HTTP (GET + POST) | HTTP (POST) |
 | **优点 Advantages** | 简单、高效、无需网络配置<br/>Simple, efficient, no network config | 支持远程访问、适合 Web 集成<br/>Remote access, web integration | 双向通信、流式响应<br/>Bidirectional, streaming |
 | **缺点 Disadvantages** | 仅限本地使用<br/>Local only | 单向推送<br/>One-way push | 相对复杂<br/>More complex |
-| **端点 Endpoints** | N/A | `GET /sse`<br/>`POST /messages/` | `POST /message` |
+| **端点 Endpoints** | N/A | `GET /sse`<br/>`POST /messages/` | `GET/POST/DELETE /mcp` |
 | **推荐用于 Recommended For** | Claude Desktop 等本地客户端<br/>Local clients like Claude Desktop | 自定义 Web 客户端<br/>Custom web clients | 需要流式响应的场景<br/>Scenarios requiring streaming |
 
 ## 开发指南 | Development Guide
@@ -550,10 +551,10 @@ def _register_tools(self):
 
 ```bash
 # 运行单元测试 | Run unit tests
-pytest tests/integration/python_ide/test_mcp_server.py
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_integration.py
 
 # 运行集成测试 | Run integration tests
-pytest tests/integration/python_ide/test_mcp_tools.py
+pytest tests/a2c_smcp/tools
 ```
 
 ## 依赖 | Dependencies
@@ -561,7 +562,7 @@ pytest tests/integration/python_ide/test_mcp_tools.py
 - `mcp`: MCP SDK
 - `pydantic`: 数据验证 | Data validation
 - `loguru`: 日志记录 | Logging
-- `ide4ai`: PythonIDE 核心 | PythonIDE core
+- `ide4ai`: IDE 核心 | IDE core
 
 ## 注意事项 | Notes
 

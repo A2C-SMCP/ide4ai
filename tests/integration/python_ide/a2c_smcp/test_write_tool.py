@@ -16,7 +16,7 @@ import tempfile
 import pytest
 
 from ide4ai.a2c_smcp.tools.write import WriteTool
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def temp_workspace():
 
 @pytest.fixture
 def python_ide(temp_workspace):
-    """创建 PythonIDE 实例 | Create PythonIDE instance"""
-    ide = PythonIDE(
+    """创建 IDE 实例 | Create IDE instance"""
+    ide = IDE(
         root_dir=temp_workspace,
         project_name="test_write_project",
         cmd_time_out=10,

@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from loguru import logger
 
 from ide4ai.a2c_smcp.resources.base import BaseResource
-from ide4ai.base import IDE
+from ide4ai.ide import IDE
 
 
 class WindowResource(BaseResource):

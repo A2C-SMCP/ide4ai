@@ -17,7 +17,7 @@ import pytest
 
 from ide4ai.a2c_smcp.schemas import EditOutput
 from ide4ai.a2c_smcp.tools.edit import EditTool
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class TestEditTool:
@@ -61,7 +61,7 @@ class OldClass:
                 full_path.write_text(content)
 
             # 创建 IDE 实例 | Create IDE instance
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test-edit-tool",
                 render_with_symbols=False,

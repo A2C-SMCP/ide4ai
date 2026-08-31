@@ -88,13 +88,13 @@ env = PexpectTerminalEnv(
 # 等同于：cmd_filter=CommandFilterConfig.allow_all_except()
 ```
 
-## 在 PythonIDE 中使用 | Using with PythonIDE
+## 在 IDE 中使用 | Using with IDE
 
 ### 白名单模式 | Whitelist Mode
 
 ```python
 from ide4ai.environment.terminal import CommandFilterConfig
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 # 创建白名单配置
 cmd_filter = CommandFilterConfig.from_white_list([
@@ -102,7 +102,7 @@ cmd_filter = CommandFilterConfig.from_white_list([
     "python", "python3", "pip", "uv"
 ])
 
-ide = PythonIDE(
+ide = IDE(
     root_dir="/path/to/project",
     project_name="my_project",
     cmd_filter=cmd_filter,
@@ -113,10 +113,10 @@ ide = PythonIDE(
 
 ```python
 from ide4ai.environment.terminal import CommandFilterConfig
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 # 使用默认黑名单
-ide = PythonIDE(
+ide = IDE(
     root_dir="/path/to/project",
     project_name="my_project",
     # cmd_filter 不指定，使用默认黑名单
@@ -124,7 +124,7 @@ ide = PythonIDE(
 
 # 或自定义黑名单
 cmd_filter = CommandFilterConfig.allow_all_except(["rm", "dd", "shutdown"])
-ide = PythonIDE(
+ide = IDE(
     root_dir="/path/to/project",
     project_name="my_project",
     cmd_filter=cmd_filter,
@@ -225,7 +225,7 @@ except ValueError as e:
 
 ```python
 # ❌ 已废弃
-ide = PythonIDE(
+ide = IDE(
     cmd_white_list=["echo", "ls", "pwd"],
     root_dir="/path/to/project",
     project_name="my_project",
@@ -239,7 +239,7 @@ ide = PythonIDE(
 from ide4ai.environment.terminal import CommandFilterConfig
 
 cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls", "pwd"])
-ide = PythonIDE(
+ide = IDE(
     root_dir="/path/to/project",
     project_name="my_project",
     cmd_filter=cmd_filter,

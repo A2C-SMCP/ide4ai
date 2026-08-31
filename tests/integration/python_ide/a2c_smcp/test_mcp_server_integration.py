@@ -6,8 +6,8 @@
 """
 MCP Server 集成测试 | MCP Server Integration Tests
 
-测试 PythonIDEMCPServer 的完整功能，包括工具和资源的注册与使用
-Test complete functionality of PythonIDEMCPServer, including tool and resource registration and usage
+测试 IDEMCPServer 的完整功能，包括工具和资源的注册与使用
+Test complete functionality of IDEMCPServer, including tool and resource registration and usage
 """
 
 from collections.abc import Generator
@@ -18,7 +18,7 @@ import pytest
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, ReadTool, WriteTool
 from ide4ai.a2c_smcp.tools.base import BaseTool
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class TestMCPServer:
@@ -32,12 +32,12 @@ class TestMCPServer:
     Does not inherit BaseMCPServer to avoid confz configuration and full MCP protocol handling
     """
 
-    def __init__(self, ide: PythonIDE) -> None:
+    def __init__(self, ide: IDE) -> None:
         """
         初始化测试 MCP Server | Initialize test MCP Server
 
         Args:
-            ide: PythonIDE 实例 | PythonIDE instance
+            ide: IDE 实例 | IDE instance
         """
         self.ide = ide
         self.tools: dict[str, BaseTool] = {}
@@ -61,11 +61,11 @@ class TestMCPServer:
 
 
 @pytest.fixture
-def python_ide(tmp_path) -> Generator[PythonIDE, Any, None]:
+def python_ide(tmp_path) -> Generator[IDE, Any, None]:
     """
-    创建 PythonIDE 实例 | Create PythonIDE instance
+    创建 IDE 实例 | Create IDE instance
     """
-    ide = PythonIDE(
+    ide = IDE(
         root_dir=str(tmp_path),
         project_name="test-mcp-project",
         cmd_time_out=5,
@@ -386,7 +386,7 @@ class TestServerLifecycle:
         """
         测试服务器关闭 | Test server close
         """
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=str(tmp_path),
             project_name="test-close",
             cmd_time_out=5,

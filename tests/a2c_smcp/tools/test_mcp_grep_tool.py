@@ -18,7 +18,7 @@ import pytest
 
 from ide4ai.a2c_smcp.schemas import GrepInput, GrepOutput
 from ide4ai.a2c_smcp.tools import GrepTool
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class TestGrepTool:
@@ -61,7 +61,7 @@ class TestApp(unittest.TestCase):
                 full_path.write_text(content)
 
             # 创建 IDE 实例 | Create IDE instance
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test-grep-tool",
                 render_with_symbols=False,
@@ -391,7 +391,7 @@ class TestGrepToolEdgeCases:
         测试 workspace 未初始化的情况 | Test when workspace is not initialized
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,
@@ -421,7 +421,7 @@ class TestGrepToolEdgeCases:
         测试无效路径错误处理 | Test invalid path error handling
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,
@@ -456,7 +456,7 @@ class TestGrepToolEdgeCases:
         monkeypatch.setattr(subprocess, "run", mock_run)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,
@@ -482,7 +482,7 @@ class TestGrepToolEdgeCases:
         测试异常处理 | Test exception handling
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,

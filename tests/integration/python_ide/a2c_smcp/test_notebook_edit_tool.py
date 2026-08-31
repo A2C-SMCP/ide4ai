@@ -16,8 +16,8 @@ import tempfile
 
 import pytest
 
+from ide4ai.ide import IDE
 from ide4ai.python_ide.a2c_smcp.tools.notebook_edit import NotebookEditTool
-from ide4ai.python_ide.ide import PythonIDE
 
 
 @pytest.fixture
@@ -29,8 +29,8 @@ def temp_workspace():
 
 @pytest.fixture
 def python_ide(temp_workspace):
-    """创建 PythonIDE 实例 | Create PythonIDE instance"""
-    ide = PythonIDE(
+    """创建 IDE 实例 | Create IDE instance"""
+    ide = IDE(
         root_dir=temp_workspace,
         project_name="test_notebook_project",
         cmd_time_out=10,

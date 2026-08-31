@@ -3,52 +3,78 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-"""
-Python IDE MCP Server 实现 | Python IDE MCP Server Implementation
-
-继承通用 MCP Server 基类，为 Python IDE 提供特定实现
-Inherits from generic MCP Server base class, providing specific implementation for Python IDE
-"""
+"""Concrete language-profile-driven IDE MCP server."""
 
 from loguru import logger
 
 from ide4ai.a2c_smcp.config import MCPServerConfig
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.server import BaseMCPServer
-from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, ReadTool, WriteTool
-from ide4ai.base import IDE
-from ide4ai.ides import PyIDESingleton
+from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, LspTool, ReadTool, WriteTool
+from ide4ai.ide import IDE
+from ide4ai.ides import IDEInstance
 
 
-class PythonIDEMCPServer(BaseMCPServer):
+def _print_help_if_requested() -> bool:
+    """Print stable CLI help before confz initializes the server."""
+    import argparse
+    import sys
+
+    if not any(argument in {"-h", "--help"} for argument in sys.argv[1:]):
+        return False
+    parser = argparse.ArgumentParser(
+        prog="ide4ai-mcp",
+        description="Expose an ide4ai workspace through the Model Context Protocol.",
+    )
+    parser.add_argument("--transport", choices=("stdio", "sse", "streamable-http"), default="stdio")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--root-dir", default=".")
+    parser.add_argument("--project-name", default="mcp-project")
+    parser.add_argument("--cmd-white-list")
+    parser.add_argument("--cmd-timeout", type=int, default=10)
+    parser.add_argument("--render-with-symbols")
+    parser.add_argument("--max-active-models", type=int, default=3)
+    parser.add_argument("--enable-simple-view-mode")
+    parser.add_argument("--lsp-mode", choices=("auto", "explicit", "disabled"), default="auto")
+    parser.add_argument("--lsp-language-id")
+    parser.add_argument("--lsp-profile-language-id")
+    parser.add_argument("--lsp-server-command")
+    parser.add_argument("--lsp-file-extensions")
+    parser.add_argument("--lsp-root-markers")
+    parser.print_help()
+    return True
+
+
+class IDEMCPServer(BaseMCPServer):
     """
-    Python IDE MCP Server
+    Generic IDE MCP Server
 
-    继承通用 MCP Server 基类，封装 PythonIDE 的能力
-    Inherits from generic MCP Server base class, wrapping PythonIDE capabilities
+    继承通用 MCP Server 基类，封装 IDE 的能力
+    Inherits from generic MCP Server base class, wrapping IDE capabilities
     """
 
     def __init__(self, config: MCPServerConfig) -> None:
         """
-        初始化 Python IDE MCP Server | Initialize Python IDE MCP Server
+        初始化 IDE MCP Server | Initialize IDE MCP Server
 
         Args:
             config: MCP Server 配置 | MCP Server configuration
         """
         # 调用父类初始化 | Call parent class initialization
-        super().__init__(config, server_name="python-ide-mcp")
+        super().__init__(config, server_name="ide4ai-mcp")
 
     def _create_ide_instance(self) -> IDE:
         """
-        创建 Python IDE 实例 | Create Python IDE instance
+        创建 IDE 实例 | Create IDE instance
 
-        使用 PyIDESingleton 获取 IDE 实例
-        Get IDE instance using PyIDESingleton
+        使用 IDEInstance 获取 IDE 实例
+        Get IDE instance using IDEInstance
 
         Returns:
-            IDE: Python IDE 实例 | Python IDE instance
+            IDE: IDE 实例 | IDE instance
         """
-        ide_singleton = PyIDESingleton(**self.config.to_ide_kwargs())
+        ide_singleton = IDEInstance(**self.config.to_ide_kwargs())
         return ide_singleton.ide
 
     def _register_tools(self) -> None:
@@ -78,6 +104,9 @@ class PythonIDEMCPServer(BaseMCPServer):
         # 注册 Write 工具 | Register Write tool
         write_tool = WriteTool(self.ide)
         self.tools[write_tool.name] = write_tool
+
+        lsp_tool = LspTool(self.ide)
+        self.tools[lsp_tool.name] = lsp_tool
 
         logger.info(f"已注册工具 | Registered tools: {list(self.tools.keys())}")
 
@@ -130,6 +159,12 @@ async def async_main() -> None:
         - --render-with-symbols: 是否渲染符号 | Whether to render symbols
         - --max-active-models: 最大活跃模型数 | Maximum active models
         - --enable-simple-view-mode: 是否启用简化视图模式 | Whether to enable simple view mode
+        - --lsp-mode: auto, explicit, or disabled
+        - --lsp-language-id: language id used by explicit mode
+        - --lsp-profile-language-id: profile id configured for auto or explicit mode
+        - --lsp-server-command: shell-style language-server command override
+        - --lsp-file-extensions: comma-separated extensions for a custom language
+        - --lsp-root-markers: comma-separated workspace markers for a custom language
     """
     # 使用 confz 加载配置 | Load configuration using confz
     # confz 会自动从环境变量和命令行参数中读取配置
@@ -147,11 +182,13 @@ async def async_main() -> None:
         f"cmd_timeout={config.cmd_time_out}, "
         f"render_with_symbols={config.render_with_symbols}, "
         f"max_active_models={config.max_active_models}, "
-        f"enable_simple_view_mode={config.enable_simple_view_mode}",
+        f"enable_simple_view_mode={config.enable_simple_view_mode}, "
+        f"lsp_mode={config.lsp_mode}, "
+        f"lsp_language_id={config.lsp_language_id}",
     )
 
     # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()
 
 
@@ -162,6 +199,13 @@ def main() -> None:
     用于命令行调用，内部使用 asyncio.run() 运行异步主函数
     For command-line invocation, internally uses asyncio.run() to run the async main function
     """
+    if _print_help_if_requested():
+        return
+
     import asyncio
 
     asyncio.run(async_main())
+
+
+if __name__ == "__main__":
+    main()

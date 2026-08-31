@@ -22,8 +22,8 @@ class GlobTool(BaseTool):
     """
     Glob 文件匹配工具 | Glob File Matching Tool
 
-    通过 PythonIDE 的工作区环境使用通配符模式匹配文件
-    Matches files using glob patterns through PythonIDE's workspace environment
+    通过 IDE 的工作区环境使用通配符模式匹配文件
+    Matches files using glob patterns through IDE's workspace environment
     """
 
     @property

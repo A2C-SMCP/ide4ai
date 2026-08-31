@@ -22,8 +22,8 @@ class EditTool(BaseTool):
     """
     Edit 文件编辑工具 | Edit File Editing Tool
 
-    通过 PythonIDE 的工作区环境执行精确字符串替换
-    Performs exact string replacements through PythonIDE's workspace environment
+    通过 IDE 的工作区环境执行精确字符串替换
+    Performs exact string replacements through IDE's workspace environment
     """
 
     @property
@@ -160,9 +160,9 @@ class EditTool(BaseTool):
 
             # 添加诊断信息 | Add diagnostics info
             if diagnostics:
-                from ide4ai.python_ide.workspace import PyWorkspace
+                from ide4ai.environment.workspace.workspace import Workspace
 
-                message += "\n" + PyWorkspace._format_diagnostics(diagnostics)
+                message += "\n" + Workspace._format_diagnostics(diagnostics)
 
             # 构造输出 | Construct output
             output = EditOutput(

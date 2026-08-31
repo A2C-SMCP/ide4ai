@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.environment.workspace.workspace import Workspace
 
 
 class TestWorkspaceGrepFiles:
-    """测试 PyWorkspace.grep_files 方法 | Test PyWorkspace.grep_files method"""
+    """测试 Workspace.grep_files 方法 | Test Workspace.grep_files method"""
 
     @pytest.fixture
     def temp_workspace(self):
@@ -73,7 +73,7 @@ TODO: Add more docs
                 full_path.write_text(content)
 
             # 创建 workspace | Create workspace
-            workspace = PyWorkspace(
+            workspace = Workspace(
                 root_dir=tmpdir,
                 project_name="test-grep",
                 render_with_symbols=False,
@@ -385,7 +385,7 @@ class TestWorkspaceGrepEdgeCases:
         monkeypatch.setattr(subprocess, "run", mock_run)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = PyWorkspace(
+            workspace = Workspace(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,
@@ -408,7 +408,7 @@ class TestWorkspaceGrepEdgeCases:
         monkeypatch.setattr(subprocess, "run", mock_run)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = PyWorkspace(
+            workspace = Workspace(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,
@@ -435,7 +435,7 @@ class TestWorkspaceGrepEdgeCases:
         monkeypatch.setattr(subprocess, "run", mock_run)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = PyWorkspace(
+            workspace = Workspace(
                 root_dir=tmpdir,
                 project_name="test",
                 render_with_symbols=False,

@@ -8,7 +8,7 @@ from typing import Any
 
 from ide4ai.base import WorkspaceSetting
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class IDESingleton(type):
@@ -27,7 +27,7 @@ class IDESingleton(type):
         return cls._instances[key]
 
 
-class PyIDESingleton(metaclass=IDESingleton):
+class IDEInstance(metaclass=IDESingleton):
     """
     A thread-safe singleton class for storing the PyIDE instance.
     """
@@ -44,7 +44,7 @@ class PyIDESingleton(metaclass=IDESingleton):
         workspace_setting: WorkspaceSetting | None = None,
         **kwargs: Any,
     ) -> None:
-        self._ide: PythonIDE = PythonIDE(
+        self._ide: IDE = IDE(
             root_dir=root_dir,
             project_name=project_name,
             cmd_filter=cmd_filter,
@@ -57,5 +57,5 @@ class PyIDESingleton(metaclass=IDESingleton):
         )
 
     @property
-    def ide(self) -> PythonIDE:
+    def ide(self) -> IDE:
         return self._ide

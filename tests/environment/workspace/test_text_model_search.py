@@ -17,7 +17,6 @@ from ide4ai.environment.workspace.model_search import (
     escape_regexp_characters,
 )
 from ide4ai.environment.workspace.schema import Position, Range
-from ide4ai.schema import LanguageId
 
 
 @pytest.fixture
@@ -36,7 +35,7 @@ class Sample:
         temp_file.write(content)
         temp_file.flush()  # Ensure it's written to disk
         # Create a TextModel instance
-        language_id = LanguageId.python  # Assuming you have a predefined LanguageId enum
+        language_id = "python"  # Assuming you have a predefined LanguageId enum
         uri = AnyUrl(f"file://{temp_file.name}")  # Using file URI for real file handling
         model = TextModel(language_id=language_id, uri=uri)
         yield model
@@ -177,7 +176,7 @@ def multiline_text_model():
         temp_file.write(content)
         temp_file.flush()  # Ensure it's written to disk
         # Create a TextModel instance
-        language_id = LanguageId.python  # Assuming you have a predefined LanguageId enum
+        language_id = "python"  # Assuming you have a predefined LanguageId enum
         uri = AnyUrl(f"file://{temp_file.name}")  # Using file URI for real file handling
         model = TextModel(language_id=language_id, uri=uri)
         yield model

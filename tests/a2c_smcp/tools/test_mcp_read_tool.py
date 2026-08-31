@@ -17,7 +17,7 @@ import pytest
 
 from ide4ai.a2c_smcp.schemas import ReadOutput
 from ide4ai.a2c_smcp.tools import ReadTool
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class TestReadTool:
@@ -59,7 +59,7 @@ def function():
                 full_path.write_text(content)
 
             # 创建 IDE 实例 | Create IDE instance
-            ide = PythonIDE(
+            ide = IDE(
                 root_dir=tmpdir,
                 project_name="test-read-tool",
                 render_with_symbols=False,

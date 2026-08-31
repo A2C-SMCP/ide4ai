@@ -204,7 +204,7 @@ class TextModel(ModelProtocol):
         Returns:
             str: The language id of the model.
         """
-        return self.__language_id.value
+        return self.__language_id
 
     def get_options(self) -> TextModelResolvedOptions:
         return self.creation_options
@@ -1105,8 +1105,39 @@ class TextModel(ModelProtocol):
             Optional[list[TextEdit]]: The text edits. If desired, the inverse edit operations, that, when applied,
                 will bring the model back to the previous state.
         """
-        id_operations = self._validate_edit_operations(operations)
+        normalized_operations = self.normalize_edit_operations(operations)
+        id_operations = self._validate_edit_operations(normalized_operations)
         return self.__apply_edits(id_operations, compute_undo_edits)
+
+    def normalize_edit_operations(
+        self,
+        operations: Sequence[SingleEditOperation],
+    ) -> list[SingleEditOperation]:
+        """Return edits using the exact ranges and line endings applied by this model.
+
+        Consumers such as LSP document synchronization can use this method to
+        serialize the same edit contract that ``apply_edits`` consumes.
+        Operation order is preserved; the model applies non-overlapping edits
+        in descending document order internally.
+        """
+        normalized_operations: list[SingleEditOperation] = []
+        current_eol = self.get_eol()
+        expected_eol = 2 if current_eol == "\r\n" else 1
+        for operation in operations:
+            normalized_text = operation.text or ""
+            if normalized_text:
+                *_, actual_eol = count_eol(normalized_text)
+                if actual_eol not in (0, expected_eol):
+                    normalized_text = re.sub(r"\r\n|\r|\n", current_eol, normalized_text)
+            normalized_operations.append(
+                operation.model_copy(
+                    update={
+                        "range": self.validate_range(operation.range),
+                        "text": normalized_text,
+                    }
+                )
+            )
+        return normalized_operations
 
     def __apply_edits(
         self,
@@ -1139,18 +1170,12 @@ class TextModel(ModelProtocol):
                     might_contain_RTL = contains_rtl(op.text)
                 if not might_contain_unusual_line_terminators and text_might_contain_non_basic_ascii:
                     might_contain_unusual_line_terminators = contains_unusual_line_terminators(op.text)
-            valid_text: str = ""
+            valid_text = op.text or ""
             eol_count: int = 0
             first_line_length: int = 0
             last_line_length: int = 0
-            if op.text:
-                eol_count, first_line_length, last_line_length, str_eol = count_eol(op.text)
-                current_eol = self.get_eol()
-                expected_str_eol = 2 if current_eol == "\r\n" else 1
-                if str_eol == 0 or str_eol == expected_str_eol:
-                    valid_text = op.text
-                else:
-                    valid_text = re.sub(r"\r\n|\r|\n", current_eol, op.text)
+            if valid_text:
+                eol_count, first_line_length, last_line_length, _ = count_eol(valid_text)
             operations.append(
                 {
                     "sort_index": index,
@@ -1527,7 +1552,7 @@ class TextModel(ModelProtocol):
             return self.simple_view_template.format(
                 content_value=contents,
                 uri=self.uri,
-                language_id=self.language_id.value,
+                language_id=self.language_id,
             )
         finally:
             self._content = content_bak
@@ -1569,7 +1594,7 @@ class TextModel(ModelProtocol):
             uri = self.uri
             return self.view_template.format(
                 uri=uri,
-                language_id=language_id.value,
+                language_id=language_id,
                 content_value=contents,
                 original_content=original_content,
             )
@@ -1651,7 +1676,7 @@ class TextModel(ModelProtocol):
             template = Template(jinja)
             return template.render(
                 uri=uri,
-                language_id=language_id.value,
+                language_id=language_id,
                 content_value=contents,
                 original_content=original_content,
             )

@@ -4,7 +4,7 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 """
-测试PyWorkspace的render函数 | Test PyWorkspace render function
+测试Workspace的render函数 | Test Workspace render function
 
 全面测试render函数的各个方面：
 1. 最小化展开的目录树
@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 
-from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.environment.workspace.workspace import Workspace
 
 
 @pytest.fixture
@@ -36,9 +36,9 @@ def project_root_dir() -> str:
 
 
 @pytest.fixture
-def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
-    """PyWorkspace实例 | PyWorkspace instance"""
-    workspace = PyWorkspace(
+def py_workspace(project_root_dir) -> Generator[Workspace, Any, None]:
+    """Workspace实例 | Workspace instance"""
+    workspace = Workspace(
         root_dir=project_root_dir,
         project_name="test_render_workspace",
         diagnostics_timeout=15.0,  # 增加超时时间以适应低配置电脑 / Increase timeout for low-spec computers
@@ -48,12 +48,12 @@ def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
 
 
 @pytest.fixture
-def temp_workspace_with_makefile() -> Generator[tuple[str, PyWorkspace], Any, None]:
+def temp_workspace_with_makefile() -> Generator[tuple[str, Workspace], Any, None]:
     """
     创建带Makefile的临时工作区 | Create temporary workspace with Makefile
 
     Returns:
-        tuple[str, PyWorkspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
+        tuple[str, Workspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         # 创建一个Makefile | Create a Makefile
@@ -85,18 +85,18 @@ install:
         with open(test_file, "w", encoding="utf-8") as f:
             f.write("# -*- coding: utf-8 -*-\n# Test file\ndef main():\n    pass\n")
 
-        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_makefile_workspace", diagnostics_timeout=15.0)
+        workspace = Workspace(root_dir=temp_dir, project_name="test_makefile_workspace", diagnostics_timeout=15.0)
         yield temp_dir, workspace
         workspace.close()
 
 
 @pytest.fixture
-def temp_workspace_with_mk_files() -> Generator[tuple[str, PyWorkspace], Any, None]:
+def temp_workspace_with_mk_files() -> Generator[tuple[str, Workspace], Any, None]:
     """
     创建带.mk文件的临时工作区 | Create temporary workspace with .mk files
 
     Returns:
-        tuple[str, PyWorkspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
+        tuple[str, Workspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         # 创建多个.mk文件 | Create multiple .mk files
@@ -125,7 +125,7 @@ configure:
         with open(test_file, "w", encoding="utf-8") as f:
             f.write("# Test\nprint('hello')\n")
 
-        workspace = PyWorkspace(root_dir=temp_dir, project_name="test_mk_workspace", diagnostics_timeout=15.0)
+        workspace = Workspace(root_dir=temp_dir, project_name="test_mk_workspace", diagnostics_timeout=15.0)
         yield temp_dir, workspace
         workspace.close()
 
@@ -309,7 +309,7 @@ class TestRenderShortcutCommands:
             "npm": ["start", "build", "test"],
         }
 
-        workspace = PyWorkspace(
+        workspace = Workspace(
             root_dir=project_root_dir,
             project_name="test_custom_commands",
             shortcut_commands=custom_commands,
@@ -360,7 +360,7 @@ class TestRenderEdgeCases:
         Create an empty temporary directory as workspace
         """
         with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_workspace", diagnostics_timeout=15.0)
+            workspace = Workspace(root_dir=temp_dir, project_name="empty_workspace", diagnostics_timeout=15.0)
             try:
                 render_output = workspace.render()
 
@@ -386,7 +386,7 @@ class TestRenderEdgeCases:
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Deep file\nprint('deep')\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="nested_workspace", diagnostics_timeout=15.0)
+            workspace = Workspace(root_dir=temp_dir, project_name="nested_workspace", diagnostics_timeout=15.0)
             try:
                 # 打开深层文件 | Open deep file
                 workspace.open_file(uri=f"file://{test_file}")
@@ -417,7 +417,7 @@ class TestRenderEdgeCases:
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Test file\nprint('test')\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="special_chars_workspace", diagnostics_timeout=15.0)
+            workspace = Workspace(root_dir=temp_dir, project_name="special_chars_workspace", diagnostics_timeout=15.0)
             try:
                 workspace.open_file(uri=f"file://{test_file}")
 
@@ -528,9 +528,7 @@ def test_main():
 """)
 
             # 4. 初始化workspace | Initialize workspace
-            workspace = PyWorkspace(
-                root_dir=temp_dir, project_name="integration_test_project", diagnostics_timeout=15.0
-            )
+            workspace = Workspace(root_dir=temp_dir, project_name="integration_test_project", diagnostics_timeout=15.0)
 
             try:
                 # 5. 打开文件 | Open files
@@ -574,12 +572,12 @@ class TestRenderVerboseMode:
     """verbose模式测试 | Verbose mode tests"""
 
     @pytest.fixture
-    def temp_python_project(self) -> Generator[tuple[str, PyWorkspace], Any, None]:
+    def temp_python_project(self) -> Generator[tuple[str, Workspace], Any, None]:
         """
         创建带Python包结构的临时项目 | Create temporary project with Python package structure
 
         Returns:
-            tuple[str, PyWorkspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
+            tuple[str, Workspace]: (临时目录路径, workspace实例) | (temp dir path, workspace instance)
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             # 创建包结构 | Create package structure
@@ -666,7 +664,7 @@ def test_process():
             with open(os.path.join(temp_dir, "README.md"), "w", encoding="utf-8") as f:
                 f.write("# Test Project\n\nThis is a test project.\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="verbose_test_project", diagnostics_timeout=15.0)
+            workspace = Workspace(root_dir=temp_dir, project_name="verbose_test_project", diagnostics_timeout=15.0)
             yield temp_dir, workspace
             workspace.close()
 
@@ -925,7 +923,7 @@ def test_process():
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write("# Empty module\npass\n")
 
-            workspace = PyWorkspace(root_dir=temp_dir, project_name="empty_pkg_test", diagnostics_timeout=15.0)
+            workspace = Workspace(root_dir=temp_dir, project_name="empty_pkg_test", diagnostics_timeout=15.0)
             try:
                 workspace.open_file(uri=f"file://{test_file}")
 

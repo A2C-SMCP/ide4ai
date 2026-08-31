@@ -5,33 +5,34 @@
 # @Software: PyCharm
 import json
 import os.path
-import signal
 import subprocess
 import threading
-import time
+import weakref
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from io import BufferedReader
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
 import gymnasium as gym
-from cachetools import TTLCache
 from gymnasium.core import RenderFrame
 from loguru import logger
+from lsprotocol import converters, types
 from pydantic import AnyUrl
 from typing_extensions import SupportsFloat
 
-from ide4ai.dtos.base_protocol import LSPResponseMessage
-from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, PreviousResultId, WorkspaceDiagnosticReport
+from ide4ai.dtos.diagnostics import DocumentDiagnosticReport, WorkspaceDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
-from ide4ai.environment.stream_io import wait_for_readable
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
+from ide4ai.lsp.diagnostics import DiagnosticsRegistry
+from ide4ai.lsp.errors import LspError
+from ide4ai.lsp.manager import LanguageProfile, LspManager, LspSettings, LspStatus
+from ide4ai.lsp.session import LspSession
 from ide4ai.schema import ACTION_CATEGORY_MAP, IDEAction, IDEObs
 from ide4ai.utils import is_subdirectory, list_directory_tree, render_symbols
+
+LSP_CONVERTER = converters.get_converter()
 
 
 class BaseWorkspace(gym.Env, ABC):
@@ -65,6 +66,7 @@ class BaseWorkspace(gym.Env, ABC):
         header_generators: dict[str, Callable[["BaseWorkspace", str], str]] | None = None,
         shortcut_commands: dict[str, list[str]] | None = None,
         diagnostics_timeout: float = 10.0,
+        lsp_settings: LspSettings | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -78,25 +80,29 @@ class BaseWorkspace(gym.Env, ABC):
         self.project_name = project_name
         self.models: list[TextModel] = []
         self._active_models: OrderedDict[str, TextModel] = OrderedDict()
-        self.lsp_stdout_mutex = threading.Lock()
-        self.lsp_stdin_mutex = threading.Lock()
-        self.lsp_mutex = threading.Lock()
-        self.lsp: subprocess.Popen[bytes] | None = None
-        self._lsp_msg_id = 1
+        self._lsp_lifecycle_lock = threading.RLock()
+        self._lsp_session: LspSession | None = None
+        self._diagnostics = DiagnosticsRegistry()
+        self._lsp_open_documents: weakref.WeakKeyDictionary[LspSession, set[str]] = weakref.WeakKeyDictionary()
+        self._lsp_response_condition = threading.Condition()
+        self._lsp_response_cache: OrderedDict[int, str] = OrderedDict()
+        self._lsp_response_failures: set[int] = set()
+        self._lsp_generation = 0
+        self._lsp_response_waiter_count = 0
         self._max_active_models = max_active_models
         self._render_with_symbols = render_with_symbols
         self._enable_simple_view_mode = enable_simple_view_mode
-        self.lsp_output_monitor_thread: threading.Thread | None = None
-        # LSP输出缓冲区，用于累积未完整的消息 / LSP output buffer for accumulating incomplete messages
-        self._lsp_buffer: str = ""
         # 诊断信息拉取超时时间（秒）/ Diagnostics pull timeout in seconds
         self._diagnostics_timeout = diagnostics_timeout
-        # 请注意，对以下两个缓存的操作，需要在with self.lsp_mutex 上下文中进行，保证线程安全
-        # 其中key一般使用lsp Notification的method字段，因为对于每个method，我们只需要处理最后一次的通知。但有时候也会使用method+uri的方式，
-        # 比如diagnostic。
-        self.lsp_server_notifications: TTLCache = TTLCache(maxsize=1000, ttl=300)
-        # 对于发起的request，我们需要等待response，因此需要缓存response，key值是request_id
-        self.lsp_server_response: TTLCache = TTLCache(maxsize=1000, ttl=300)
+        self._lsp_manager = LspManager(
+            self.root_dir,
+            self._lsp_profiles(),
+            settings=lsp_settings,
+            request_timeout=diagnostics_timeout,
+            initialize_session=self._initialize_managed_lsp_session,
+        )
+        self._is_closing = False
+        self._is_closed = False
         # 初始化动作空间与观察空间
         self.action_space = gym.spaces.Dict(
             {
@@ -112,10 +118,6 @@ class BaseWorkspace(gym.Env, ABC):
                 "obs": gym.spaces.Text(100000),
             },
         )
-        self.launch_lsp()
-        self._initial_lsp()
-        self._is_closing = False
-        self._is_closed = False
         self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] | None = header_generators
         self.shortcut_commands: dict[str, list[str]] | None = shortcut_commands
 
@@ -126,10 +128,20 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             int: The next available message id.
         """
-        if not self._lsp_msg_id:
-            self._lsp_msg_id = 1
-        self._lsp_msg_id += 1
-        return self._lsp_msg_id
+        return self._require_lsp_session().next_request_id()
+
+    @property
+    def lsp_status(self) -> LspStatus:
+        """Return the selected language server state without starting it."""
+        return self._lsp_manager.status
+
+    def reload_lsp(self) -> LspStatus:
+        """Explicitly re-detect the primary language without eager startup."""
+        status = self._lsp_manager.reload()
+        with self._lsp_lifecycle_lock:
+            self._lsp_session = None
+            self._invalidate_lsp_responses()
+        return status
 
     def launch_lsp(self) -> None:
         """
@@ -138,11 +150,11 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             None
         """
-        with self.lsp_mutex:
-            if self.lsp:
-                self.kill_lsp()
-            self.lsp = self._launch_lsp()
-            self._start_lsp_monitor_thread()
+        if self._is_closed or self._is_closing:
+            raise ValueError("Cannot launch LSP for a closed Workspace")
+        if self._lsp_manager.session is not None:
+            self._lsp_manager.reload()
+        self._lsp_manager.start()
 
     def send_lsp_msg(
         self,
@@ -167,40 +179,40 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             Optional[str]: The response of the LSP server.
         """
-        if not self.lsp:
-            raise ValueError("LSP server is not running.")
-        msg: dict = {
+        with self._lsp_lifecycle_lock:
+            session = self._require_lsp_session()
+            generation = self._lsp_generation
+        message: dict[str, Any] = {
             "jsonrpc": "2.0",
             "method": method,
             "params": params or {},
         }
         if message_id is not None:
-            msg["id"] = message_id
-        # 转换为JSON字符串
-        msg_str = json.dumps(msg)
-        # 计算 content_length
-        content_length = len(msg_str.encode("utf-8"))
-        # 发送请求
-        with self.lsp_stdin_mutex:
-            full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
-            if self.lsp.stdin:
-                self.lsp.stdin.write(
-                    full_message.encode("utf-8"),
-                )  # LSP进程以bytes模式打开，因为LSP协议也是按照bytes进行传输的与长度计算
-                self.lsp.stdin.flush()
-        return self.read_response(message_id) if message_id else None
-
-    def _start_lsp_monitor_thread(self) -> None:
-        """
-        Start the thread to monitor the output of the Language Server Protocol (LSP) server.
-
-        Returns:
-            None
-        """
-        if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
-            return
-        self.lsp_output_monitor_thread = threading.Thread(target=self.__read_lsp_output, daemon=True)
-        self.lsp_output_monitor_thread.start()
+            message["id"] = message_id
+            with self._lsp_response_condition:
+                self._lsp_response_cache.pop(message_id, None)
+                self._lsp_response_failures.discard(message_id)
+            try:
+                response = session.request(message, dict[str, Any], timeout=self._diagnostics_timeout)
+            except BaseException:
+                with self._lsp_response_condition:
+                    if self._lsp_session is session and self._lsp_generation == generation:
+                        self._lsp_response_cache.pop(message_id, None)
+                        if len(self._lsp_response_failures) >= 1000:
+                            self._lsp_response_failures.pop()
+                        self._lsp_response_failures.add(message_id)
+                        self._lsp_response_condition.notify_all()
+                raise
+            serialized = json.dumps(response)
+            with self._lsp_response_condition:
+                if self._lsp_session is session and self._lsp_generation == generation:
+                    if len(self._lsp_response_cache) >= 1000:
+                        self._lsp_response_cache.popitem(last=False)
+                    self._lsp_response_cache[message_id] = serialized
+                    self._lsp_response_condition.notify_all()
+            return serialized
+        session.notify(message)
+        return None
 
     @abstractmethod
     def _initial_lsp(self) -> None:
@@ -212,158 +224,30 @@ class BaseWorkspace(gym.Env, ABC):
         """
         ...
 
-    def __read_lsp_output(self) -> None:
+    def read_response(self, request_id: int, timeout: float | None = 1) -> str | None:
+        """Read a completed response without polling.
+
+        ``send_lsp_msg`` remains synchronous, but responses are retained once
+        for callers that use the historical send-then-read public API.
         """
-        Read the output of the Language Server Protocol (LSP) server.
-
-        注意要设置合理的退出机制，在self.lsp停止的情况下，退出循环
-        同时修改数据时需要使用self.lsp_mutex上锁
-
-        Returns:
-            None
-        """
-        while True:
-            if self.lsp and self.lsp.poll() is None and self.lsp.stdout:
-                with self.lsp_stdout_mutex:
-                    # 检查LSP进程状态 / Check LSP process status
-                    if not self.lsp or not self.lsp.stdout or self.lsp.poll() is not None:
-                        break
-                    # 再次检测就绪，确保在获取锁的过程中不出现其它意外 / Recheck readiness after acquiring the lock
-                    # selectors 取代 select.select：fd≥1024 时 select 会抛
-                    # ValueError: filedescriptor out of range（TFROB-588）。
-                    ready = wait_for_readable([self.lsp.stdout], 0.1)  # 100ms 防止CPU占用过高
-                    if not ready:
-                        continue
-
-                    logger.info("获取到LSP服务器返回数据 / Got LSP server response data")
-
-                    # 持续读取所有可用数据，直到没有完整消息为止 / Continuously read all available data until no complete messages
-                    while True:
-                        # 尝试从缓冲区解析完整消息 / Try to parse complete messages from buffer
-                        message_parsed = self._try_parse_one_message()
-                        if not message_parsed:
-                            # 缓冲区中没有完整消息，尝试读取更多数据 / No complete message in buffer, try to read more data
-                            # 使用非阻塞就绪检测是否还有数据 / Non-blocking readiness check for more data
-                            if not self.lsp.stdout:
-                                break
-                            ready = wait_for_readable([self.lsp.stdout], 0)
-                            if not ready:
-                                # 没有更多数据可读 / No more data to read
-                                break
-
-                            # 使用read1进行单次读取，不会等待填满缓冲区 / Use read1 for single read, won't wait to fill buffer
-                            try:
-                                # read1(n) 最多读取n字节，但不会阻塞等待填满n字节 / read1(n) reads at most n bytes without blocking to fill
-                                # subprocess.Popen[bytes].stdout 实际是 BufferedReader 类型 / Actually BufferedReader type
-                                stdout = cast(BufferedReader, self.lsp.stdout)
-                                chunk = stdout.read1(4096)
-                                if not chunk:
-                                    break
-                                self._lsp_buffer += chunk.decode("utf-8")
-                            except Exception as e:
-                                logger.error(f"读取LSP输出时出错 / Error reading LSP output: {e}")
-                                break
-            else:
-                # lsp已经停止 / LSP has stopped
-                break
-
-    def _try_parse_one_message(self) -> bool:
-        """
-        尝试从缓冲区解析一条完整的LSP消息 / Try to parse one complete LSP message from buffer
-
-        Returns:
-            bool: 如果成功解析了一条消息返回True，否则返回False / True if a message was parsed, False otherwise
-        """
-        # LSP消息格式：Content-Length: ...\r\n\r\n{json}
-        if not self._lsp_buffer:
-            return False
-
-        # 查找消息头 / Find message header
-        if not self._lsp_buffer.startswith("Content-Length:"):
-            # 查找下一个消息头 / Find next message header
-            header_start = self._lsp_buffer.find("Content-Length:")
-            if header_start == -1:
-                # 没有完整的消息头，清空无效数据 / No complete header, clear invalid data
-                self._lsp_buffer = ""
-                return False
-            # 丢弃消息头之前的数据 / Discard data before header
-            self._lsp_buffer = self._lsp_buffer[header_start:]
-
-        # 解析内容长度 / Parse content length
-        header_end = self._lsp_buffer.find("\r\n\r\n")
-        if header_end == -1:
-            # 消息头不完整 / Incomplete header
-            return False
-
-        header = self._lsp_buffer[:header_end]
-        length_line = header.split("\r\n")[0]
-        try:
-            length = int(length_line.split(":")[1].strip())
-        except (ValueError, IndexError) as e:
-            logger.error(f"解析Content-Length失败 / Failed to parse Content-Length: {e}")
-            # 跳过这个无效的消息头 / Skip this invalid header
-            self._lsp_buffer = self._lsp_buffer[header_end + 4 :]
-            return False
-
-        # 检查是否有完整的消息体 / Check if complete message body is available
-        message_start = header_end + 4  # 跳过"\r\n\r\n" / Skip "\r\n\r\n"
-        if len(self._lsp_buffer) < message_start + length:
-            # 消息体不完整 / Incomplete message body
-            return False
-
-        # 提取完整消息 / Extract complete message
-        message_body = self._lsp_buffer[message_start : message_start + length]
-        self._lsp_buffer = self._lsp_buffer[message_start + length :]  # 剩余数据 / Remaining data
-
-        logger.info(f"解析到一条完整LSP消息 / Parsed one complete LSP message: {message_body[:100]}...")
-
-        # 处理消息 / Process message
-        try:
-            response_data = json.loads(message_body)
-            with self.lsp_mutex:
-                if "id" in response_data:
-                    self.lsp_server_response[response_data["id"]] = message_body
-                elif "method" in response_data:
-                    params = response_data.get("params", {})
-                    uri = str(params.get("uri")) if isinstance(params, dict) else "NotExists"
-                    key = self.__construct_notification_key(response_data["method"], uri)
-                    self.lsp_server_notifications[key] = message_body
-        except JSONDecodeError as e:
-            logger.error(f"JSON解析失败 / Failed to decode JSON: {e}, message: {message_body}")
-
-        return True
-
-    @staticmethod
-    def __construct_notification_key(method: str, uri: str) -> str:
-        """
-        Construct a key for the notification cache.
-
-        Args:
-            method (str): The method of the notification.
-            uri (str): The URI of the notification.
-
-        Returns:
-            str: The constructed key.
-        """
-        return f"{method}:{uri}" if method == "textDocument/publishDiagnostics" else method
-
-    def read_response(self, request_id: int, timeout: float = 1) -> str | None:
-        """
-        Read the response of the Language Server Protocol (LSP) server.
-
-        Args:
-            request_id (int): The request id.
-            timeout (int): The timeout value in seconds. This parameter is optional and defaults to 1.
-
-        Returns:
-            Optional[str]: The response of the LSP server.
-        """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if request_id in self.lsp_server_response:
-                return cast(str, self.lsp_server_response.pop(request_id))
-            time.sleep(0.1)
-        return None
+        with self._lsp_response_condition:
+            self._lsp_response_waiter_count += 1
+            self._lsp_response_condition.notify_all()
+            try:
+                generation = self._lsp_generation
+                available = self._lsp_response_condition.wait_for(
+                    lambda: request_id in self._lsp_response_cache
+                    or request_id in self._lsp_response_failures
+                    or generation != self._lsp_generation,
+                    timeout=timeout,
+                )
+                if not available or request_id in self._lsp_response_failures or generation != self._lsp_generation:
+                    self._lsp_response_failures.discard(request_id)
+                    return None
+                return self._lsp_response_cache.pop(request_id)
+            finally:
+                self._lsp_response_waiter_count -= 1
+                self._lsp_response_condition.notify_all()
 
     def read_notification(self, method: str, uri: str, timeout: float = 0.05) -> str | None:
         """
@@ -377,13 +261,11 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             Optional[str]: The notification of the LSP server.
         """
-        start_time = time.time()
-        notification_key = self.__construct_notification_key(method, uri)
-        while time.time() - start_time < timeout:
-            if notification_key in self.lsp_server_notifications:
-                return cast(str, self.lsp_server_notifications.pop(notification_key))
-            time.sleep(0.1)
-        return None
+        try:
+            notification = self._require_lsp_session().wait_for_notification(method, uri=uri, timeout=timeout)
+        except TimeoutError:
+            return None
+        return json.dumps(notification)
 
     def pull_diagnostics(
         self,
@@ -428,103 +310,179 @@ class BaseWorkspace(gym.Env, ABC):
             )
         """
         from ide4ai.dtos.diagnostics import (
-            DocumentDiagnosticParams,
             RelatedFullDocumentDiagnosticReport,
             RelatedUnchangedDocumentDiagnosticReport,
-            WorkspaceDiagnosticParams,
-            WorkspaceDiagnosticReport,
         )
 
-        msg_id = self.get_lsp_msg_id()
-
-        # 发送请求但不等待响应 / Send request without waiting for response
-        if not self.lsp:
-            raise ValueError("LSP server is not running.")
-
-        # 根据是否提供 uri 决定使用文档诊断还是工作区诊断 / Choose document or workspace diagnostics based on uri
-        if uri is not None:
-            # 文档诊断模式 / Document diagnostics mode
-            params = DocumentDiagnosticParams(
-                textDocument={"uri": uri},
-                previousResultId=previous_result_id,
-            ).model_dump(exclude_none=True)
-            method = "textDocument/diagnostic"
-        else:
-            # 工作区诊断模式 / Workspace diagnostics mode
-            params = WorkspaceDiagnosticParams(
-                previousResultIds=[
-                    PreviousResultId(uri=item["uri"], value=item["value"]) for item in (previous_result_ids or [])
-                ],
-            ).model_dump(exclude_none=True)
-            method = "workspace/diagnostic"
-
-        msg: dict = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params,
-            "id": msg_id,
-        }
-        msg_str = json.dumps(msg)
-        content_length = len(msg_str.encode("utf-8"))
-
-        with self.lsp_stdin_mutex:
-            full_message = f"Content-Length: {content_length}\r\n\r\n{msg_str}"
-            logger.info("准备发送拉取诊断信息的请求...")
-            if self.lsp.stdin:
-                self.lsp.stdin.write(full_message.encode("utf-8"))
-                self.lsp.stdin.flush()
-
-        # 使用 timeout 等待响应 / Wait for response with timeout
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            logger.info("尝试获取诊断结果...")
-            if msg_id in self.lsp_server_response:
-                res = cast(str, self.lsp_server_response.pop(msg_id))
-                try:
-                    res_json = LSPResponseMessage.model_validate(json.loads(res))
-                    if res_json.error:
-                        logger.error(f"拉取诊断信息失败 / Failed to pull diagnostics: {res_json.error}")
-                        return None
-
-                    # 根据模式解析不同的响应类型 / Parse different response types based on mode
-                    if uri is not None:
-                        # 文档诊断响应 / Document diagnostics response
-                        if isinstance(res_json.result, dict):
-                            kind = res_json.result.get("kind")
-                            if kind == "full":
-                                return RelatedFullDocumentDiagnosticReport.model_validate(res_json.result)
-                            elif kind == "unchanged":
-                                return RelatedUnchangedDocumentDiagnosticReport.model_validate(res_json.result)
-                        else:
-                            logger.error(f"获取到非法诊断数据: {res_json.result}")
-                            return None
-                    else:
-                        # 工作区诊断响应 / Workspace diagnostics response
-                        if isinstance(res_json.result, dict):
-                            return WorkspaceDiagnosticReport.model_validate(res_json.result)
-                        else:
-                            logger.error(f"获取到非法诊断数据: {res_json.result}")
-                            return None
-
-                except json.JSONDecodeError as e:
-                    logger.error(f"解析诊断响应失败 / Failed to parse diagnostic response: {e}")
+        session = self._require_lsp_session()
+        request_id = session.next_request_id()
+        try:
+            if uri is not None:
+                model = self.get_model(uri)
+                if model is None:
                     return None
-            time.sleep(1)
+                requested_version = model.get_version_id()
+                document_response = session.request(
+                    types.DocumentDiagnosticRequest(
+                        id=request_id,
+                        params=types.DocumentDiagnosticParams(
+                            text_document=types.TextDocumentIdentifier(uri=uri),
+                            previous_result_id=previous_result_id,
+                        ),
+                    ),
+                    types.DocumentDiagnosticResponse,
+                    timeout=timeout,
+                )
+                result = document_response.result
+                if result is None:
+                    return None
+                raw_result = LSP_CONVERTER.unstructure(result)
+                if not isinstance(raw_result, dict):
+                    logger.error("获取到非法文档诊断数据: {}", raw_result)
+                    return None
+                if raw_result.get("kind") == "full":
+                    report: DocumentDiagnosticReport = RelatedFullDocumentDiagnosticReport.model_validate(raw_result)
+                elif raw_result.get("kind") == "unchanged":
+                    report = RelatedUnchangedDocumentDiagnosticReport.model_validate(raw_result)
+                else:
+                    logger.error("获取到未知文档诊断类型: {}", raw_result)
+                    return None
+                return report if self._diagnostics.record_pull(uri, requested_version, report) else None
 
-        # 超时未收到响应 / Timeout without receiving response
-        target = uri if uri else "workspace"
-        logger.warning(f"拉取诊断信息超时 / Pull diagnostics timeout for {target}")
-        return None
+            workspace_response = session.request(
+                types.WorkspaceDiagnosticRequest(
+                    id=request_id,
+                    params=types.WorkspaceDiagnosticParams(
+                        previous_result_ids=[
+                            types.PreviousResultId(uri=item["uri"], value=item["value"])
+                            for item in (previous_result_ids or [])
+                        ]
+                    ),
+                ),
+                types.WorkspaceDiagnosticResponse,
+                timeout=timeout,
+            )
+            if workspace_response.result is None:
+                return None
+            raw_result = LSP_CONVERTER.unstructure(workspace_response.result)
+            if not isinstance(raw_result, dict):
+                logger.error("获取到非法工作区诊断数据: {}", raw_result)
+                return None
+            return WorkspaceDiagnosticReport.model_validate(raw_result)
+        except LspError as exc:
+            target = uri if uri else "workspace"
+            logger.warning("拉取诊断信息失败 / Pull diagnostics failed for {}: {}", target, exc)
+            return None
 
-    @abstractmethod
-    def _launch_lsp(self) -> subprocess.Popen[bytes]:
+    def _lsp_command(self) -> Sequence[str]:
         """
-        Launch the Language Server Protocol (LSP) server.
+        Return the command used to launch the Language Server Protocol server.
+
+        Subclasses should override this hook. During the #18 transition, a
+        subclass that only implements the historical ``_launch_lsp`` hook is
+        still supported by discovering the command from that temporary
+        process and immediately reclaiming it.
 
         Returns:
-            subprocess.Popen[bytes]: The process of the LSP server.
+            Sequence[str]: Executable and arguments for the language server.
         """
-        ...
+        legacy_process = self._launch_lsp()
+        command = legacy_process.args
+        legacy_process.terminate()
+        try:
+            legacy_process.wait(timeout=self._diagnostics_timeout)
+        except subprocess.TimeoutExpired:
+            legacy_process.kill()
+            legacy_process.wait(timeout=self._diagnostics_timeout)
+        if isinstance(command, str):
+            return (command,)
+        if not isinstance(command, Sequence) or not all(isinstance(part, str) for part in command):
+            raise TypeError("Legacy _launch_lsp() process must expose a string command in Popen.args")
+        return tuple(cast(Sequence[str], command))
+
+    def _lsp_profiles(self) -> Sequence[LanguageProfile]:
+        """Return registered language profiles; subclasses opt in during #19."""
+        return ()
+
+    def _initialize_managed_lsp_session(self, session: LspSession) -> None:
+        with self._lsp_lifecycle_lock:
+            self._lsp_session = session
+        session.add_close_callback(lambda error: self._on_lsp_session_closed(session, error))
+        session.add_notification_handler("textDocument/publishDiagnostics", self._record_push_diagnostics)
+        self._initial_lsp()
+        self._sync_open_documents(session)
+
+    def _record_push_diagnostics(self, message: dict[str, Any]) -> None:
+        params = message.get("params")
+        if isinstance(params, dict):
+            self._diagnostics.record_push(params)
+
+    def _track_document_version(self, uri: str, model: TextModel) -> None:
+        self._diagnostics.track(uri, model.get_version_id())
+
+    def _sync_open_documents(self, session: LspSession) -> None:
+        for model in self.models:
+            self._sync_open_document(session, model)
+
+    def _sync_open_document(self, session: LspSession, model: TextModel) -> None:
+        uri = str(model.uri)
+        language_id = self._lsp_manager.language_for_path(Path(uri.removeprefix("file://")))
+        if language_id is None or language_id != self._lsp_manager.primary_language_id:
+            return
+        session_documents = self._lsp_open_documents.setdefault(session, set())
+        if uri in session_documents:
+            return
+        self._lsp_manager.did_open(
+            session,
+            uri=uri,
+            language_id=language_id,
+            version=model.get_version_id(),
+            text=model.get_value(),
+        )
+        session_documents.add(uri)
+
+    def _notify_lsp_change(
+        self,
+        session: LspSession,
+        model: TextModel,
+        changes: Sequence[types.TextDocumentContentChangePartial | types.TextDocumentContentChangeWholeDocument],
+    ) -> None:
+        self._lsp_manager.did_change(
+            session,
+            uri=str(model.uri),
+            version=model.get_version_id(),
+            changes=changes,
+            full_text=model.get_value(),
+        )
+
+    def _close_lsp_document(self, session: LspSession | None, uri: str) -> None:
+        self._diagnostics.forget(uri)
+        if session is None:
+            return
+        documents = self._lsp_open_documents.get(session)
+        if documents is None or uri not in documents:
+            return
+        self._lsp_manager.did_close(session, uri=uri)
+        documents.discard(uri)
+
+    def _ensure_lsp_for_uri(self, uri: str, *, semantic: bool = False) -> LspSession | None:
+        path = Path(uri[7:]) if uri.startswith("file://") else Path(uri)
+        language_id = self._lsp_manager.language_for_path(path)
+        return self._lsp_manager.ensure_started(language_id=language_id, semantic=semantic)
+
+    def _language_id_for_uri(self, uri: str) -> str:
+        path = Path(uri[7:]) if uri.startswith("file://") else Path(uri)
+        return self._lsp_manager.language_for_path(path) or "plaintext"
+
+    def _launch_lsp(self) -> subprocess.Popen[bytes]:
+        """Legacy LSP process hook retained until the public switch in #21."""
+        raise NotImplementedError("Workspace subclasses must implement _lsp_command() or legacy _launch_lsp()")
+
+    def _require_lsp_session(self) -> LspSession:
+        session = self._lsp_manager.ensure_started(semantic=True)
+        if session is None or not session.is_running:
+            raise ValueError("LSP server is not running.")
+        return session
 
     def get_model(self, uri: str) -> TextModel | None:
         """
@@ -594,47 +552,26 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             None
         """
-        # 关闭进程
-        if self.lsp:
-            if self.lsp.stdin:
-                try:
-                    self.lsp.stdin.close()
-                except Exception as e:
-                    logger.error(f"关闭LSP进程 stdin 时出错: {e}")
+        with self._lsp_lifecycle_lock:
+            self._lsp_session = None
+            self._invalidate_lsp_responses()
+            self._lsp_manager.stop()
 
-            # 尝试优雅关闭
-            try:
-                self.lsp.send_signal(signal.SIGINT)
-                # 设置超时时间等待进程结束
-                self.lsp.wait(timeout=2)  # 缩短到2秒，加快清理速度
-                logger.info("LSP进程已优雅关闭 / LSP process gracefully terminated")
-            except subprocess.TimeoutExpired:
-                # 优雅关闭失败，强制终止
-                logger.warning(
-                    "LSP进程未响应SIGINT，尝试SIGTERM / LSP process didn't respond to SIGINT, trying SIGTERM"
-                )
-                try:
-                    self.lsp.terminate()
-                    self.lsp.wait(timeout=2)
-                    logger.info("LSP进程已通过SIGTERM终止 / LSP process terminated via SIGTERM")
-                except subprocess.TimeoutExpired:
-                    # 强制终止也失败，使用SIGKILL
-                    logger.warning(
-                        "LSP进程未响应SIGTERM，使用SIGKILL强制终止 / LSP process didn't respond to SIGTERM, using SIGKILL"
-                    )
-                    self.lsp.kill()
-                    self.lsp.wait(timeout=1)
-                    logger.info("LSP进程已通过SIGKILL强制终止 / LSP process killed via SIGKILL")
-            except Exception as e:
-                # 捕获其他异常，确保进程被清理
-                logger.error(f"关闭LSP进程时出错 / Error closing LSP process: {e}")
-                try:
-                    self.lsp.kill()
-                    self.lsp.wait(timeout=1)
-                except Exception:
-                    pass  # 最后的尝试，忽略所有错误
+    def _on_lsp_session_closed(self, session: LspSession, error: BaseException) -> None:
+        del error
+        with self._lsp_response_condition:
+            if self._lsp_session is session:
+                self._invalidate_lsp_responses_locked()
 
-            self.lsp = None
+    def _invalidate_lsp_responses(self) -> None:
+        with self._lsp_response_condition:
+            self._invalidate_lsp_responses_locked()
+
+    def _invalidate_lsp_responses_locked(self) -> None:
+        self._lsp_generation += 1
+        self._lsp_response_cache.clear()
+        self._lsp_response_failures.clear()
+        self._lsp_response_condition.notify_all()
 
     def __del__(self) -> None:
         """
@@ -715,7 +652,9 @@ class BaseWorkspace(gym.Env, ABC):
             1. An instance of the IDEObs class representing the initial
         """
         self._assert_not_closed()
+        session = self._lsp_manager.session
         for m in self.models:
+            self._close_lsp_document(session, str(m.uri))
             m.dispose()
         self.models.clear()
         self.clear_active_models()
@@ -746,37 +685,29 @@ class BaseWorkspace(gym.Env, ABC):
         Returns:
             None
         """
-        # 防止重复关闭
-        if self._is_closed or self._is_closing:
-            return
+        with self._lsp_lifecycle_lock:
+            # 防止重复关闭
+            if self._is_closed or self._is_closing:
+                return
 
-        self._is_closing = True
+            self._is_closing = True
 
-        try:
-            # 清理所有模型
-            for m in self.models:
-                try:
-                    m.dispose()
-                except Exception as e:
-                    logger.error(f"清理模型时出错 / Error disposing model: {e}")
-            self.models.clear()
+            try:
+                # 清理所有模型
+                for m in self.models:
+                    try:
+                        m.dispose()
+                    except Exception as e:
+                        logger.error(f"清理模型时出错 / Error disposing model: {e}")
+                self.models.clear()
 
-            # 关闭LSP进程
-            with self.lsp_mutex:
                 self.kill_lsp()
-
-            # 等待输出监控线程结束
-            if self.lsp_output_monitor_thread and self.lsp_output_monitor_thread.is_alive():
-                self.lsp_output_monitor_thread.join(timeout=3)  # 设置超时避免永久阻塞
-                if self.lsp_output_monitor_thread.is_alive():
-                    logger.warning(
-                        "LSP输出监控线程未能在超时时间内结束 / LSP output monitor thread didn't finish in time"
-                    )
-        except Exception as e:
-            logger.error(f"关闭环境时出错 / Error closing environment: {e}")
-        finally:
-            self._is_closed = True
-            self._is_closing = False
+                self._lsp_manager.close()
+            except Exception as e:
+                logger.error(f"关闭环境时出错 / Error closing environment: {e}")
+            finally:
+                self._is_closed = True
+                self._is_closing = False
 
     def _assert_not_closed(self) -> bool:
         """
@@ -816,16 +747,12 @@ class BaseWorkspace(gym.Env, ABC):
         self._assert_not_closed()
         tm = next(filter(lambda m: m.uri == AnyUrl(uri), self.models), None)
         if tm:
-            # will_save reason
-            # 1: Manually triggered, e.g. by the user pressing save, by starting debugging, or by an API call.
-            # 2: Automatic after a delay
-            # 3: When the editor lost focus
-            self.send_lsp_msg("textDocument/willSave", {"textDocument": {"uri": uri}, "reason": 1})
+            session = self._ensure_lsp_for_uri(uri)
+            if session is not None:
+                self._lsp_manager.will_save(session, uri=uri)
             tm.save()
-            self.send_lsp_msg(
-                "textDocument/didSave",
-                {"textDocument": {"uri": uri}, "text": tm.get_value()},
-            )
+            if session is not None:
+                self._lsp_manager.did_save(session, uri=uri, text=tm.get_value())
 
     @abstractmethod
     def apply_edit(
@@ -946,7 +873,8 @@ class BaseWorkspace(gym.Env, ABC):
             tm.dispose()
             self.deactivate_model(tm.m_id)
             self.models.remove(tm)
-            self.send_lsp_msg("textDocument/didClose", {"textDocument": {"uri": uri}})
+            session = self._ensure_lsp_for_uri(uri)
+            self._close_lsp_document(session, uri)
 
     def read_file(
         self,
@@ -1117,24 +1045,24 @@ class BaseWorkspace(gym.Env, ABC):
             str: The symbols in the file.
         """
         self._assert_not_closed()
-        mid = self.get_lsp_msg_id()
-        lsp_res = self.send_lsp_msg(
-            "textDocument/documentSymbol",
-            {"textDocument": {"uri": uri}},
-            message_id=mid,
-        )
-        if lsp_res:
-            res_model = LSPResponseMessage.model_validate(json.loads(lsp_res))
-            if res_model.error:
-                return res_model.error.message
-            symbols = res_model.result
-            res = render_symbols(cast(list[dict], symbols), kinds)
-            return (
-                res
-                + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
+        session = self._require_lsp_session()
+        try:
+            response = session.request(
+                types.DocumentSymbolRequest(
+                    id=session.next_request_id(),
+                    params=types.DocumentSymbolParams(text_document=types.TextDocumentIdentifier(uri=uri)),
+                ),
+                types.DocumentSymbolResponse,
             )
-        else:
+        except LspError as exc:
+            return str(exc)
+        if response.result is None:
             return "获取文件符号失败"
+        raw_symbols = LSP_CONVERTER.unstructure(response.result)
+        if not isinstance(raw_symbols, list):
+            return "获取文件符号失败"
+        res = render_symbols(cast(list[dict], raw_symbols), kinds)
+        return res + "\n以上是文件的符号信息，每个信息后面跟着的是符号的位置信息，可以通过此位置信息与URI查询具体代码。"
 
     @abstractmethod
     def find_in_path(

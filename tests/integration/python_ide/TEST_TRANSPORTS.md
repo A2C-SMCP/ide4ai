@@ -26,41 +26,41 @@
 
 ```bash
 # 运行所有传输模式相关测试 | Run all transport mode related tests
-pytest tests/integration/python_ide/test_mcp_server_transports.py -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py -v
 
 # 运行配置测试（包括传输模式配置）| Run configuration tests (including transport mode config)
-pytest tests/integration/python_ide/test_mcp_server_config.py -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_config.py -v
 ```
 
 ### 运行特定测试类 | Run Specific Test Class
 
 ```bash
 # 只测试 SSE 传输 | Test SSE transport only
-pytest tests/integration/python_ide/test_mcp_server_transports.py::TestMCPServerSSETransport -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py::TestMCPServerSSETransport -v
 
 # 只测试 Streamable HTTP 传输 | Test Streamable HTTP transport only
-pytest tests/integration/python_ide/test_mcp_server_transports.py::TestMCPServerStreamableHTTPTransport -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py::TestMCPServerStreamableHTTPTransport -v
 
 # 只测试传输模式配置 | Test transport mode configuration only
-pytest tests/integration/python_ide/test_mcp_server_config.py::TestMCPServerConfig::test_transport_mode_config -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_config.py::TestMCPServerConfig::test_transport_mode_config -v
 ```
 
 ### 运行特定测试方法 | Run Specific Test Method
 
 ```bash
 # 测试 SSE 服务器启动和关闭 | Test SSE server startup and shutdown
-pytest tests/integration/python_ide/test_mcp_server_transports.py::TestMCPServerSSETransport::test_sse_server_startup_and_shutdown -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py::TestMCPServerSSETransport::test_sse_server_startup_and_shutdown -v
 
 # 测试 Streamable HTTP 端点可访问性 | Test Streamable HTTP endpoints accessibility
-pytest tests/integration/python_ide/test_mcp_server_transports.py::TestMCPServerStreamableHTTPTransport::test_streamable_http_server_endpoints_accessible -v
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py::TestMCPServerStreamableHTTPTransport::test_streamable_http_server_endpoints_accessible -v
 ```
 
 ### 使用覆盖率运行 | Run with Coverage
 
 ```bash
 # 运行测试并生成覆盖率报告 | Run tests and generate coverage report
-pytest tests/integration/python_ide/test_mcp_server_transports.py \
-    --cov=ide4ai.python_ide.mcp \
+pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py \
+    --cov=ide4ai.a2c_smcp \
     --cov-report=html \
     --cov-report=term-missing \
     -v
@@ -96,7 +96,7 @@ open htmlcov/index.html
 ### Streamable HTTP 传输测试 | Streamable HTTP Transport Tests
 - ✅ 服务器启动和关闭 | Server startup and shutdown
 - ✅ 端点可访问性 | Endpoint accessibility
-- ✅ 消息处理端点 (`POST /message`) | Message handling endpoint
+- ✅ 消息处理端点 (`GET/POST/DELETE /mcp`) | Message handling endpoint
 
 ### 集成测试 | Integration Tests
 - ✅ 传输模式路由逻辑 | Transport mode routing logic
@@ -159,8 +159,8 @@ These tests can be integrated into CI/CD pipelines:
 # .github/workflows/tests.yml 示例 | Example
 - name: Run Transport Mode Tests
   run: |
-    pytest tests/integration/python_ide/test_mcp_server_transports.py -v
-    pytest tests/integration/python_ide/test_mcp_server_config.py -v
+    pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_transports.py -v
+    pytest tests/integration/python_ide/a2c_smcp/test_mcp_server_config.py -v
 ```
 
 ## 贡献指南 | Contributing Guidelines

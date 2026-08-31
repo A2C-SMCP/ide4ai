@@ -8,9 +8,27 @@
 Global pytest configuration, automatically loads .env environment variables
 """
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def preserve_workspace_test_fixtures() -> Generator[None, None, None]:
+    """Restore tracked workspace samples that model disposal rewrites during integration tests."""
+    fixture_dir = Path(__file__).parent / "integration" / "python_ide" / "virtual_project"
+    fixture_paths = [
+        fixture_dir / "file_for_edit.py",
+        fixture_dir / "file_for_render_1.py",
+        fixture_dir / "file_for_test_read.py",
+    ]
+    original_bytes = {path: path.read_bytes() for path in fixture_paths}
+    try:
+        yield
+    finally:
+        for path, content in original_bytes.items():
+            path.write_bytes(content)
 
 
 @pytest.fixture(scope="session", autouse=True)

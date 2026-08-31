@@ -13,15 +13,15 @@ Detailed tests for resource dynamic parameter update mechanism, including edge c
 import pytest
 
 from ide4ai.a2c_smcp.resources import WindowResource
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 @pytest.fixture
 def python_ide(tmp_path):
     """
-    创建 PythonIDE 实例 | Create PythonIDE instance
+    创建 IDE 实例 | Create IDE instance
     """
-    ide = PythonIDE(
+    ide = IDE(
         root_dir=str(tmp_path),
         project_name="test-project",
         cmd_time_out=5,

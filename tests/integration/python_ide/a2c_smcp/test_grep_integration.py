@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
-from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 class TestGrepIntegration:
@@ -28,9 +28,9 @@ class TestGrepIntegration:
         创建临时 MCP Server 用于测试 | Create temporary MCP Server for testing
         """
         # 清理可能存在的单例
-        from ide4ai.ides import PyIDESingleton
+        from ide4ai.ides import IDEInstance
 
-        PyIDESingleton._instances.clear()
+        IDEInstance._instances.clear()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 创建测试文件 | Create test files
@@ -92,7 +92,7 @@ CONFIG = {
                 config = MCPServerConfig()
 
             # 创建 server | Create server
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             yield server, tmpdir
 
@@ -294,9 +294,9 @@ class TestGrepIntegrationRealWorld:
         测试搜索 Python 导入语句 | Test searching Python imports
         """
         # 清理单例
-        from ide4ai.ides import PyIDESingleton
+        from ide4ai.ides import IDEInstance
 
-        PyIDESingleton._instances.clear()
+        IDEInstance._instances.clear()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 创建包含导入语句的文件
@@ -308,7 +308,7 @@ class TestGrepIntegrationRealWorld:
             with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
                 config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 搜索 import 语句
@@ -331,9 +331,9 @@ class TestGrepIntegrationRealWorld:
         测试搜索函数定义 | Test searching function definitions
         """
         # 清理单例
-        from ide4ai.ides import PyIDESingleton
+        from ide4ai.ides import IDEInstance
 
-        PyIDESingleton._instances.clear()
+        IDEInstance._instances.clear()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 创建包含函数定义的文件
@@ -354,7 +354,7 @@ class MyClass:
             with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
                 config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 搜索函数定义
@@ -380,9 +380,9 @@ class TestGrepContextOptions:
         """
         创建包含多行上下文的测试服务器 | Create test server with multi-line context
         """
-        from ide4ai.ides import PyIDESingleton
+        from ide4ai.ides import IDEInstance
 
-        PyIDESingleton._instances.clear()
+        IDEInstance._instances.clear()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 创建包含丰富上下文的测试文件
@@ -474,7 +474,7 @@ class TestDataProcessor(unittest.TestCase):
             ):
                 config = MCPServerConfig()
 
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
             yield server, tmpdir
             server.close()
 

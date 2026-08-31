@@ -6,23 +6,23 @@
 """
 MCP Resources 集成测试 | MCP Resources Integration Tests
 
-测试真实的 PythonIDEMCPServer 中的资源注册和 list_resources 功能
-Test resource registration and list_resources functionality in real PythonIDEMCPServer
+测试真实的 IDEMCPServer 中的资源注册和 list_resources 功能
+Test resource registration and list_resources functionality in real IDEMCPServer
 """
 
 import pytest
 from confz import DataSource
 
+from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
-from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 class TestResourcesIntegration:
     """
     资源集成测试 | Resources Integration Tests
 
-    使用真实的 PythonIDEMCPServer 测试资源功能
-    Test resource functionality using real PythonIDEMCPServer
+    使用真实的 IDEMCPServer 测试资源功能
+    Test resource functionality using real IDEMCPServer
     """
 
     def test_resources_registered(self, tmp_path):
@@ -39,7 +39,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 验证资源已注册 | Verify resources are registered
@@ -72,7 +72,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取窗口资源 | Get window resource
@@ -108,7 +108,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 模拟 list_resources 的处理逻辑 | Simulate list_resources handler logic
@@ -158,7 +158,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取窗口资源 | Get window resource
@@ -190,7 +190,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取窗口资源 | Get window resource
@@ -236,7 +236,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 获取窗口资源 | Get window resource
@@ -270,7 +270,7 @@ class TestResourcesIntegration:
             ),
         ):
             config = MCPServerConfig()
-            server = PythonIDEMCPServer(config)
+            server = IDEMCPServer(config)
 
             try:
                 # 模拟 MCP list_resources 处理器 | Simulate MCP list_resources handler

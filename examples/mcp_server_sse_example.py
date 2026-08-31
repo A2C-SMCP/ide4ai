@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: mcp_server_sse_example.py
 # @Time    : 2025/10/30 11:54
 # @Author  : JQQ
@@ -20,7 +19,7 @@ Demonstrates how to start MCP Server with SSE (Server-Sent Events) mode
 
 import asyncio
 
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import IDEMCPServer, MCPServerConfig
 
 
 async def main() -> None:
@@ -53,7 +52,7 @@ async def main() -> None:
     print("\n按 Ctrl+C 停止服务器 | Press Ctrl+C to stop the server\n")
 
     # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()
 
 

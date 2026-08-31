@@ -21,9 +21,9 @@ The Grep tool is a powerful search tool based on ripgrep for searching file cont
 
 ## 实现位置 | Implementation Location
 
-- **核心方法**: `ide4ai/python_ide/workspace.py::PyWorkspace.grep_files()`
-- **MCP 工具**: `ide4ai/python_ide/mcp/tools/grep.py::GrepTool`
-- **Schema 定义**: `ide4ai/python_ide/mcp/schemas/tools.py::GrepInput/GrepOutput`
+- **核心方法**: `ide4ai/environment/workspace/workspace.py::Workspace.grep_files()`
+- **MCP 工具**: `ide4ai/a2c_smcp/tools/grep.py::GrepTool`
+- **Schema 定义**: `ide4ai/a2c_smcp/schemas/tools.py::GrepInput/GrepOutput`
 
 ## 使用示例 | Usage Examples
 
@@ -32,9 +32,9 @@ The Grep tool is a powerful search tool based on ripgrep for searching file cont
 搜索所有包含 "TODO" 的文件：
 
 ```python
-from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.environment.workspace.workspace import Workspace
 
-workspace = PyWorkspace(root_dir="/path/to/project", project_name="my-project")
+workspace = Workspace(root_dir="/path/to/project", project_name="my-project")
 result = workspace.grep_files(pattern="TODO")
 print(result["output"])
 ```
@@ -193,10 +193,10 @@ result = workspace.grep_files(
 
 ```bash
 # 验证导入
-uv run python -c "from ide4ai.python_ide.a2c_smcp.tools import GrepTool; print('OK')"
+uv run python -c "from ide4ai.a2c_smcp.tools import GrepTool; print('OK')"
 
 # 验证 Schema
-uv run python -c "from ide4ai.python_ide.a2c_smcp.schemas.tools import GrepInput; print(GrepInput.model_json_schema())"
+uv run python -c "from ide4ai.a2c_smcp.schemas.tools import GrepInput; print(GrepInput.model_json_schema())"
 ```
 
 ## 相关工具 | Related Tools

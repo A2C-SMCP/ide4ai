@@ -50,6 +50,7 @@ poetry add pexpect
 
 ```python
 from ide4ai.environment.terminal.base import EnvironmentArguments
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
 
 # 配置参数 | Configure parameters
@@ -59,12 +60,12 @@ args = EnvironmentArguments(
 )
 
 # 命令白名单 | Command whitelist
-white_list = ["echo", "ls", "cat", "python", "pip", "git"]
+cmd_filter = CommandFilterConfig.from_white_list(["echo", "ls", "cat", "python", "pip", "git"])
 
 # 创建环境 | Create environment
 env = PexpectTerminalEnv(
     args=args,
-    white_list=white_list,
+    cmd_filter=cmd_filter,
     work_dir="/path/to/your/project"
 )
 
@@ -93,9 +94,9 @@ This is one of the core features of `PexpectTerminalEnv`:
 ```python
 env = PexpectTerminalEnv(
     args=args,
-    white_list=white_list,
+    cmd_filter=cmd_filter,
     work_dir="/path/to/your/project",
-    init_venv="source .venv/bin/activate"  # 激活 venv | Activate venv
+    active_venv_cmd="source .venv/bin/activate"  # 激活 venv | Activate venv
 )
 
 # 现在所有 Python 命令都在虚拟环境中执行
@@ -115,9 +116,9 @@ obs, _, _, _, _ = env.step(action)
 ```python
 env = PexpectTerminalEnv(
     args=args,
-    white_list=["uv", "python", "pip"],
+    cmd_filter=CommandFilterConfig.from_white_list(["uv", "python", "pip"]),
     work_dir="/path/to/your/project",
-    init_venv="source .venv/bin/activate"  # uv 创建的虚拟环境 | venv created by uv
+    active_venv_cmd="source .venv/bin/activate"  # uv 创建的虚拟环境 | venv created by uv
 )
 
 # 或者使用 uv run (如果 uv 支持) | Or use uv run (if supported by uv)
@@ -133,9 +134,9 @@ action = {
 ```python
 env = PexpectTerminalEnv(
     args=args,
-    white_list=["poetry", "python", "pip"],
+    cmd_filter=CommandFilterConfig.from_white_list(["poetry", "python", "pip"]),
     work_dir="/path/to/your/project",
-    init_venv="source $(poetry env info --path)/bin/activate"
+    active_venv_cmd="source $(poetry env info --path)/bin/activate"
 )
 
 # 或者直接使用 poetry run | Or use poetry run directly
@@ -220,50 +221,23 @@ obs, info = env.reset()
 print(obs.obs)  # 输出: Reset environment successfully
 ```
 
-## 在 PythonIDE 中使用 | Using in PythonIDE
+## 在 IDE 中使用 | Using in IDE
 
-修改 `PythonIDE` 以支持 `PexpectTerminalEnv`:
+公共 `IDE` 已内置 `PexpectTerminalEnv` 支持:
 
-Modify `PythonIDE` to support `PexpectTerminalEnv`:
+The public `IDE` already uses `PexpectTerminalEnv`:
 
 ```python
-from ide4ai.base import IDE
-from ide4ai.environment.terminal.pexpect_terminal_env import PexpectTerminalEnv
-
-
-class PythonIDE(IDE):
-    def __init__(
-            self,
-            cmd_white_list: list[str],
-            root_dir: str,
-            project_name: str,
-            init_venv: str | None = None,  # 新增参数 | New parameter
-            **kwargs
-    ):
-        super().__init__(
-            cmd_white_list,
-            root_dir,
-            project_name,
-            **kwargs
-        )
-        self.init_venv = init_venv
-
-    def init_terminal(self) -> PexpectTerminalEnv:
-        """初始化终端环境 | Initialize terminal environment"""
-        return PexpectTerminalEnv(
-            EnvironmentArguments(image_name="local", timeout=self.cmd_time_out),
-            self.cmd_white_list,
-            self.root_dir,
-            active_venv_cmd=self.init_venv  # 传入虚拟环境初始化命令 | Pass venv init command
-        )
+from ide4ai import IDE
+from ide4ai.environment.terminal.command_filter import CommandFilterConfig
 
 
 # 使用示例 | Usage example
-ide = PythonIDE(
-    cmd_white_list=["python", "pip", "pytest"],
+ide = IDE(
+    cmd_filter=CommandFilterConfig.from_white_list(["python", "pip", "pytest"]),
     root_dir="/path/to/project",
     project_name="my_project",
-    init_venv="source .venv/bin/activate"  # 激活虚拟环境 | Activate venv
+    terminal_activation_command="source .venv/bin/activate",  # 激活虚拟环境 | Activate venv
 )
 ```
 
@@ -274,9 +248,9 @@ ide = PythonIDE(
 ```python
 env = PexpectTerminalEnv(
     args=EnvironmentArguments(image_name="local", timeout=60),
-    white_list=["pytest", "python"],
+    cmd_filter=CommandFilterConfig.from_white_list(["pytest", "python"]),
     work_dir="/path/to/project",
-    init_venv="source .venv/bin/activate"
+    active_venv_cmd="source .venv/bin/activate"
 )
 
 # 运行测试 | Run tests
@@ -296,9 +270,9 @@ print(obs["obs"])
 ```python
 env = PexpectTerminalEnv(
     args=EnvironmentArguments(image_name="local", timeout=120),
-    white_list=["pip", "python"],
+    cmd_filter=CommandFilterConfig.from_white_list(["pip", "python"]),
     work_dir="/path/to/project",
-    init_venv="source .venv/bin/activate"
+    active_venv_cmd="source .venv/bin/activate"
 )
 
 # 安装依赖 | Install dependencies
@@ -326,9 +300,9 @@ if success:
 ```python
 env = PexpectTerminalEnv(
     args=EnvironmentArguments(image_name="local", timeout=60),
-    white_list=["uv", "python"],
+    cmd_filter=CommandFilterConfig.from_white_list(["uv", "python"]),
     work_dir="/path/to/project",
-    init_venv="source .venv/bin/activate"  # uv 创建的虚拟环境 | venv created by uv
+    active_venv_cmd="source .venv/bin/activate"  # uv 创建的虚拟环境 | venv created by uv
 )
 
 # 使用 uv 添加依赖 | Add dependency with uv

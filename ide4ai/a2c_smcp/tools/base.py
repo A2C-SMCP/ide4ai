@@ -34,7 +34,7 @@ class BaseTool(ABC):
         初始化工具 | Initialize tool
 
         Args:
-            ide: PythonIDE 实例 | PythonIDE instance
+            ide: IDE 实例 | IDE instance
         """
         self.ide = ide
 

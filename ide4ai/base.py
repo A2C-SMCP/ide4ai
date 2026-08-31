@@ -40,10 +40,10 @@ class WorkspaceSetting(TypedDict, total=False):
     shortcut_commands: dict[str, list[str]] | None
 
 
-class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
+class BaseIDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
     """
     实现原理是基于Docker容器，在一个容器内跑一个Python版本的slim镜像，然后在这个容器内运行LSP服务，通过LSP服务来实现IDE的功能。
-    而PythonIDE当前这个类的封装，在于将通用的能力通过step调用传入到容器内，然后容器内的LSP服务来处理这些能力。
+    而IDE当前这个类的封装，在于将通用的能力通过step调用传入到容器内，然后容器内的LSP服务来处理这些能力。
 
     Attributes:
         name (str): 环境名称 / The name of the environment.
@@ -108,7 +108,11 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
         atexit.register(self.close)
 
     def __del__(self) -> None:
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            # Construction may fail before lifecycle attributes are assigned.
+            pass
 
     @property
     def terminal(self) -> TerminalT:
@@ -266,7 +270,8 @@ class IDE(gym.Env, ABC, Generic[TerminalT, WorkspaceT]):
         return content
 
     def close(self) -> None:
-        for t in self.terminals:
+        for t in getattr(self, "terminals", ()):
             t.close()
-        if self.workspace:
-            self.workspace.close()
+        workspace = getattr(self, "workspace", None)
+        if workspace is not None:
+            workspace.close()

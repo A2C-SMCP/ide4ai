@@ -40,16 +40,16 @@ Version lives in both `ide4ai/__init__.py` (`__version__`) and `pyproject.toml` 
 
 ### Core layering
 
-1. **`ide4ai/base.py` — `IDE[TerminalT, WorkspaceT]`** (generic gym.Env, ABC).
+1. **`ide4ai/base.py` — `BaseIDE[TerminalT, WorkspaceT]`** (generic gym.Env, ABC).
    - Holds a single `workspace: WorkspaceT` and a list of `terminals: list[TerminalT]`.
    - `step(action: dict)` validates with `IDEAction`, enforces `CommandFilterConfig` on `terminal` actions, then dispatches to `self.terminal.step(...)` or `self.workspace.step(...)` based on `action.category`.
    - Subclasses implement `init_terminal()`; workspace is constructed in the subclass's `__init__`.
 
-2. **`ide4ai/python_ide/ide.py` — `PythonIDE(IDE[PexpectTerminalEnv, PyWorkspace])`**. Pairs:
-   - `PyWorkspace` (`ide4ai/python_ide/workspace.py`) — Monaco-inspired `TextModel`s with pyright LSP wiring, symbol navigation, diagnostics.
-   - `PexpectTerminalEnv` (`ide4ai/environment/terminal/pexpect_terminal_env.py`) — persistent pty session with optional `active_venv_cmd`.
+2. **`ide4ai/ide.py` — `IDE(BaseIDE[PexpectTerminalEnv, Workspace])`**. Pairs:
+   - `Workspace` (`ide4ai/environment/workspace/workspace.py`) — Monaco-inspired `TextModel`s with injectable language profiles, LSP wiring, symbol navigation, and diagnostics.
+   - `PexpectTerminalEnv` (`ide4ai/environment/terminal/pexpect_terminal_env.py`) — persistent pty session with an optional activation command.
 
-3. **`ide4ai/ides.py` — `PyIDESingleton`** via the `IDESingleton` metaclass. **The singleton is keyed only on `project_name`** (`cls.__name__ + project_name`), not on `root_dir` or other args. Inside one process, calling `PyIDESingleton(...)` with the same `project_name` returns the first-created instance and ignores any later arguments. This is load-bearing for the MCP server's lifetime.
+3. **`ide4ai/ides.py` — `IDEInstance`** via the `IDESingleton` metaclass. **The singleton is keyed only on `project_name`** (`cls.__name__ + project_name`), not on `root_dir` or other args. Inside one process, calling `IDEInstance(...)` with the same `project_name` returns the first-created instance and ignores any later arguments. This is load-bearing for the MCP server's lifetime.
 
 ### Action schema (`ide4ai/schema.py`)
 
@@ -63,12 +63,11 @@ For `terminal`, `action_name` is the command; the allow/deny check goes through 
 
 ### MCP server layer
 
-The published entry point is `py-ide4ai-mcp` → `ide4ai.python_ide.a2c_smcp.server:main`. Layout:
+The published entry point is `ide4ai-mcp` → `ide4ai.a2c_smcp.cli:main`. Layout:
 
-- **`ide4ai/a2c_smcp/`** — transport-agnostic base. `BaseMCPServer` (`server.py`) implements stdio / SSE / Streamable-HTTP runloops and calls abstract `_create_ide_instance`, `_register_tools`, `_register_resources`. `config.py` uses `confz` to merge defaults < env vars < CLI flags. Tool base + built-ins (`bash`, `glob`, `grep`, `read`, `edit`, `write`) live in `tools/`; resource base + `window` resource in `resources/`.
-- **`ide4ai/python_ide/a2c_smcp/`** — `PythonIDEMCPServer` wires `PyIDESingleton` into `BaseMCPServer` and registers the Python toolset + `WindowResource`. Python-only tools belong under `ide4ai/python_ide/a2c_smcp/tools/`.
+- **`ide4ai/a2c_smcp/`** — `BaseMCPServer` (`server.py`) implements stdio / SSE / Streamable-HTTP runloops. `IDEMCPServer` (`cli.py`) wires `IDEInstance` into it and registers the common toolset + `WindowResource`. `config.py` uses `confz` to merge defaults < env vars < CLI flags, including generic LSP profile settings. Optional Python-only tools remain under `ide4ai/python_ide/a2c_smcp/tools/`.
 
-When adding a tool: define its input schema in `ide4ai/a2c_smcp/schemas/tools.py` (or the python-specific analogue), subclass `BaseTool`, and register it in the corresponding server's `_register_tools()`. Implement behavior by delegating to `IDE` / `PyWorkspace` / `PexpectTerminalEnv` methods rather than re-implementing filesystem or LSP logic (see `.windsurf/workflows/pyide-mcp.md`). MCP-facing tests live in `tests/integration/a2c_smcp/` and `tests/integration/python_ide/a2c_smcp/`.
+When adding a tool: define its input schema in `ide4ai/a2c_smcp/schemas/tools.py` (or the python-specific analogue), subclass `BaseTool`, and register it in the corresponding server's `_register_tools()`. Implement behavior by delegating to `IDE` / `Workspace` / `PexpectTerminalEnv` methods rather than re-implementing filesystem or LSP logic. MCP-facing tests live in `tests/a2c_smcp/` and `tests/integration/python_ide/a2c_smcp/`.
 
 ### DTOs and LSP
 

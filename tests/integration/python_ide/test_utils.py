@@ -28,7 +28,7 @@ from typing import Any
 
 import pytest
 
-from ide4ai.python_ide.utils import (
+from ide4ai.languages.python_utils import (
     _collect_package_info,
     _extract_module_info,
     _format_descriptions,

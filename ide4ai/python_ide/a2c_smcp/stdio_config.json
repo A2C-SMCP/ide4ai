@@ -8,7 +8,7 @@
     "command": "uvx",
     "args": [
       "--from", "ide4ai",
-      "py-ide4ai-mcp",
+      "ide4ai-mcp",
       "--transport", "stdio",
       "--root-dir", "/tmp/test-workspace",
       "--project-name", "test-project",

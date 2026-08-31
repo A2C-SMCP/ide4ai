@@ -15,8 +15,8 @@ from ide4ai.environment.workspace.schema import (
     Range,
     SingleEditOperation,
 )
-from ide4ai.python_ide.const import DEFAULT_SYMBOL_VALUE_SET
-from ide4ai.python_ide.workspace import PyWorkspace
+from ide4ai.environment.workspace.workspace import Workspace
+from ide4ai.languages.python import PYTHON_SYMBOL_VALUE_SET as DEFAULT_SYMBOL_VALUE_SET
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ def project_root_dir() -> str:
 
 
 @pytest.fixture
-def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
+def py_workspace(project_root_dir) -> Generator[Workspace, Any, None]:
     # 使用更长的超时时间以适应低配置电脑 / Use longer timeout for low-spec computers
-    workspace = PyWorkspace(
+    workspace = Workspace(
         root_dir=project_root_dir,
         project_name="test_python_workspace",
         diagnostics_timeout=15.0,  # 增加到15秒 / Increase to 15 seconds
@@ -38,7 +38,7 @@ def py_workspace(project_root_dir) -> Generator[PyWorkspace, Any, None]:
 
 def test_py_workspace_init(py_workspace) -> None:
     """
-    测试PyWorkspace初始化
+    测试Workspace初始化
     Args:
         py_workspace:
 
@@ -61,7 +61,7 @@ def test_py_workspace_read_file(project_root_dir, py_workspace) -> None:
 
 def test_py_workspace_render(project_root_dir, py_workspace) -> None:
     """
-    测试PyWorkspace渲染
+    测试Workspace渲染
 
     测试激活Model，测试渲染环境
 
@@ -86,7 +86,7 @@ def test_py_workspace_render(project_root_dir, py_workspace) -> None:
 
 def test_py_workspace_create_and_apply_edit(project_root_dir, py_workspace) -> None:
     """
-    测试PyWorkspace应用编辑
+    测试Workspace应用编辑
 
     Args:
         project_root_dir:
@@ -164,8 +164,8 @@ def test_create_file_with_init_content(py_workspace, file_uri) -> None:
 
 
 def test_create_file_with_not_header_generator(project_root_dir, file_uri) -> None:
-    """如果PyWorkspace没有header_generator，不会添加文件头"""
-    py_workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_python_workspace", header_generators={})
+    """如果Workspace没有header_generator，不会添加文件头"""
+    py_workspace = Workspace(root_dir=project_root_dir, project_name="test_python_workspace", header_generators={})
     try:
         tm, diagnostics = py_workspace.create_file(uri=file_uri, init_content="print(undefined_var)")
         tm.save()
@@ -288,7 +288,7 @@ def test_function():
         temp_file_path = f.name
 
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_auto_diagnostics")
+    workspace = Workspace(root_dir=project_root_dir, project_name="test_auto_diagnostics")
 
     try:
         # 打开文件 / Open file
@@ -335,7 +335,7 @@ def test_create_file_with_auto_diagnostics(project_root_dir) -> None:
 
     temp_file_path = os.path.join(project_root_dir, "test_new_file_with_error.py")
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_create_diagnostics")
+    workspace = Workspace(root_dir=project_root_dir, project_name="test_create_diagnostics")
 
     try:
         # 创建文件并包含错误代码 / Create file with error code
@@ -386,7 +386,7 @@ def valid_function():
         temp_file_path = f.name
 
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_syntax_error_diagnostics")
+    workspace = Workspace(root_dir=project_root_dir, project_name="test_syntax_error_diagnostics")
 
     try:
         # 打开文件 / Open file
@@ -455,7 +455,7 @@ def test_create_file_with_syntax_error_must_have_diagnostics(project_root_dir) -
 
     temp_file_path = os.path.join(project_root_dir, "test_file_with_multiple_errors.py")
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_create_syntax_error")
+    workspace = Workspace(root_dir=project_root_dir, project_name="test_create_syntax_error")
 
     try:
         # 创建文件并包含多个明显的语法错误 / Create file with multiple obvious syntax errors
@@ -544,7 +544,7 @@ print(os.path)
     temp_file_uri = f"file://{temp_file_path}"
 
     # 创建workspace实例 / Create workspace instance
-    workspace = PyWorkspace(root_dir=project_root_dir, project_name="test_diagnostics_workspace")
+    workspace = Workspace(root_dir=project_root_dir, project_name="test_diagnostics_workspace")
 
     try:
         # 1. 使用workspace的open_file方法打开文件 / Use workspace's open_file method to open file
@@ -843,7 +843,7 @@ def valid_function():
         temp_file_path = f.name
 
     temp_file_uri = f"file://{temp_file_path}"
-    workspace = PyWorkspace(
+    workspace = Workspace(
         root_dir=project_root_dir,
         project_name="test_replace_diagnostics",
         diagnostics_timeout=15.0,  # 增加超时时间以适应低配置电脑 / Increase timeout for low-spec computers
@@ -881,7 +881,7 @@ def valid_function():
             os.remove(temp_file_path)
 
 
-def test_find_in_folder(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+def test_find_in_folder(project_root_dir: str, py_workspace: Workspace) -> None:
     """
     测试在文件夹中搜索功能 / Test find in folder functionality
     """
@@ -900,7 +900,7 @@ def test_find_in_folder(project_root_dir: str, py_workspace: PyWorkspace) -> Non
     print(f"在文件夹中找到 {len(results)} 个匹配项 / Found {len(results)} matches in folder")
 
 
-def test_find_in_folder_with_limit(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+def test_find_in_folder_with_limit(project_root_dir: str, py_workspace: Workspace) -> None:
     """
     测试在文件夹中搜索时使用结果限制 / Test find in folder with result limit
     """
@@ -915,7 +915,7 @@ def test_find_in_folder_with_limit(project_root_dir: str, py_workspace: PyWorksp
     print(f"限制为5个结果，实际返回 {len(results)} 个 / Limited to 5 results, actually returned {len(results)}")
 
 
-def test_find_in_folder_with_regex(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+def test_find_in_folder_with_regex(project_root_dir: str, py_workspace: Workspace) -> None:
     """
     测试在文件夹中使用正则表达式搜索 / Test find in folder with regex
     """
@@ -930,7 +930,7 @@ def test_find_in_folder_with_regex(project_root_dir: str, py_workspace: PyWorksp
     print(f"使用正则表达式找到 {len(results)} 个类定义 / Found {len(results)} class definitions using regex")
 
 
-def test_find_in_file_vs_folder(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+def test_find_in_file_vs_folder(project_root_dir: str, py_workspace: Workspace) -> None:
     """
     测试在单个文件和文件夹中搜索的区别 / Test difference between searching in file vs folder
     """
@@ -951,7 +951,7 @@ def test_find_in_file_vs_folder(project_root_dir: str, py_workspace: PyWorkspace
     print(f"文件夹搜索: {len(folder_results)} 个结果 / Folder search: {len(folder_results)} results")
 
 
-def test_find_in_folder_with_search_scope_error(project_root_dir: str, py_workspace: PyWorkspace) -> None:
+def test_find_in_folder_with_search_scope_error(project_root_dir: str, py_workspace: Workspace) -> None:
     """
     测试在文件夹搜索时使用 search_scope 参数应该报错 / Test that using search_scope with folder search raises error
     """

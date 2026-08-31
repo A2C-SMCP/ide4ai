@@ -23,8 +23,8 @@ class ReadTool(BaseTool):
     """
     Read 文件读取工具 | Read File Reading Tool
 
-    通过 PythonIDE 的工作区环境读取文件内容
-    Reads file contents through PythonIDE's workspace environment
+    通过 IDE 的工作区环境读取文件内容
+    Reads file contents through IDE's workspace environment
     """
 
     @property

@@ -4,7 +4,7 @@
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
 """
-测试 PythonIDE 的虚拟环境功能 | Test PythonIDE virtual environment functionality
+测试 IDE 的虚拟环境功能 | Test IDE virtual environment functionality
 """
 
 import subprocess
@@ -14,11 +14,11 @@ from pathlib import Path
 import pytest
 
 from ide4ai.environment.terminal import CommandFilterConfig, PexpectTerminalEnv
-from ide4ai.python_ide.ide import PythonIDE
+from ide4ai.ide import IDE
 
 
 class TestPythonIDEVenv:
-    """测试 PythonIDE 虚拟环境功能 | Test PythonIDE virtual environment functionality"""
+    """测试 IDE 虚拟环境功能 | Test IDE virtual environment functionality"""
 
     @pytest.fixture
     def temp_project_dir(self):
@@ -27,8 +27,8 @@ class TestPythonIDEVenv:
             yield tmpdir
 
     def test_python_ide_without_venv(self, temp_project_dir):
-        """测试不使用虚拟环境的 PythonIDE | Test PythonIDE without virtual environment"""
-        ide = PythonIDE(
+        """测试不使用虚拟环境的 IDE | Test IDE without virtual environment"""
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "python", "python3"]),
@@ -52,7 +52,7 @@ class TestPythonIDEVenv:
         ide.close()
 
     def test_python_ide_with_valid_venv(self, temp_project_dir):
-        """测试使用有效虚拟环境的 PythonIDE | Test PythonIDE with valid virtual environment"""
+        """测试使用有效虚拟环境的 IDE | Test IDE with valid virtual environment"""
         # 创建虚拟环境 | Create virtual environment
         venv_path = Path(temp_project_dir) / ".venv"
 
@@ -66,12 +66,12 @@ class TestPythonIDEVenv:
             pytest.skip(f"无法创建虚拟环境 | Cannot create venv: {result.stderr}")
 
         # 使用虚拟环境初始化 IDE | Initialize IDE with virtual environment
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "python", "python3", "which"]),
             cmd_time_out=10,
-            active_venv_cmd=f"source {venv_path}/bin/activate",
+            terminal_activation_command=f"source {venv_path}/bin/activate",
         )
 
         # 验证虚拟环境已激活 | Verify virtual environment is activated
@@ -95,14 +95,14 @@ class TestPythonIDEVenv:
         ide.close()
 
     def test_python_ide_with_invalid_venv_command(self, temp_project_dir):
-        """测试使用无效虚拟环境命令的 PythonIDE | Test PythonIDE with invalid venv command"""
+        """测试使用无效虚拟环境命令的 IDE | Test IDE with invalid venv command"""
         # 使用不存在的虚拟环境路径 | Use non-existent venv path
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "python"]),
             cmd_time_out=10,
-            active_venv_cmd="source /nonexistent/venv/bin/activate",
+            terminal_activation_command="source /nonexistent/venv/bin/activate",
         )
 
         # 虚拟环境激活应该失败,但 IDE 应该正常工作 | Venv activation should fail, but IDE should work
@@ -124,14 +124,14 @@ class TestPythonIDEVenv:
         ide.close()
 
     def test_python_ide_with_wrong_venv_syntax(self, temp_project_dir):
-        """测试使用错误语法的虚拟环境命令 | Test PythonIDE with wrong venv command syntax"""
+        """测试使用错误语法的虚拟环境命令 | Test IDE with wrong venv command syntax"""
         # 使用错误的命令语法 | Use wrong command syntax
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "ls"]),
             cmd_time_out=10,
-            active_venv_cmd="this is not a valid command",
+            terminal_activation_command="this is not a valid command",
         )
 
         # 虚拟环境激活应该失败 | Venv activation should fail
@@ -165,12 +165,12 @@ class TestPythonIDEVenv:
         if result.returncode != 0:
             pytest.skip(f"无法创建虚拟环境 | Cannot create venv: {result.stderr}")
 
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "python3", "which"]),
             cmd_time_out=10,
-            active_venv_cmd=f"source {venv_path}/bin/activate",
+            terminal_activation_command=f"source {venv_path}/bin/activate",
         )
 
         # 执行多个命令 | Execute multiple commands
@@ -203,12 +203,12 @@ class TestPythonIDEVenv:
         if result.returncode != 0:
             pytest.skip(f"无法创建虚拟环境 | Cannot create venv: {result.stderr}")
 
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo", "which"]),
             cmd_time_out=10,
-            active_venv_cmd=f"source {venv_path}/bin/activate",
+            terminal_activation_command=f"source {venv_path}/bin/activate",
         )
 
         # 执行命令 | Execute command
@@ -243,12 +243,12 @@ class TestPythonIDEVenv:
 
     def test_python_ide_venv_status_accessible(self, temp_project_dir):
         """测试可以访问虚拟环境状态 | Test venv status is accessible"""
-        ide = PythonIDE(
+        ide = IDE(
             root_dir=temp_project_dir,
             project_name="test_project",
             cmd_filter=CommandFilterConfig.from_white_list(["echo"]),
             cmd_time_out=10,
-            active_venv_cmd="source /nonexistent/venv/bin/activate",
+            terminal_activation_command="source /nonexistent/venv/bin/activate",
         )
 
         # 应该可以访问虚拟环境状态 | Should be able to access venv status

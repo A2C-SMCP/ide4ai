@@ -11,7 +11,6 @@ import pytest
 from pydantic import AnyUrl
 
 from ide4ai.environment.workspace.model import TextModel
-from ide4ai.schema import LanguageId
 
 
 @pytest.fixture
@@ -25,7 +24,7 @@ def mock_text_model() -> Generator[TextModel, Any, None]:
     with tempfile.NamedTemporaryFile() as f:
         f.write(b"hello world\n")
         f.flush()
-        model = TextModel(language_id=LanguageId.python, uri=AnyUrl(f"file://{f.name}"))
+        model = TextModel(language_id="python", uri=AnyUrl(f"file://{f.name}"))
         yield model
 
 
@@ -41,5 +40,5 @@ def mock_multiline_text_model() -> Generator[TextModel, Any, None]:
         f.write(b"hello world\n")
         f.write(b"hello world\n")
         f.flush()
-        model = TextModel(language_id=LanguageId.python, uri=AnyUrl(f"file://{f.name}"))
+        model = TextModel(language_id="python", uri=AnyUrl(f"file://{f.name}"))
         yield model

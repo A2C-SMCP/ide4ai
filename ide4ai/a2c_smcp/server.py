@@ -27,7 +27,7 @@ from starlette.routing import Mount, Route
 from ide4ai.a2c_smcp.config import MCPServerConfig
 from ide4ai.a2c_smcp.resources.base import BaseResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
-from ide4ai.base import IDE
+from ide4ai.ide import IDE
 
 
 class BaseMCPServer(ABC):

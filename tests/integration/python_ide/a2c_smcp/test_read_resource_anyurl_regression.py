@@ -25,18 +25,18 @@ import pytest
 from confz import DataSource
 from pydantic import AnyUrl
 
+from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
-from ide4ai.python_ide.a2c_smcp.server import PythonIDEMCPServer
 
 
 @pytest.fixture
 def server(tmp_path, request):
     """
-    构造真实的 PythonIDEMCPServer | Build a real PythonIDEMCPServer
+    构造真实的 IDEMCPServer | Build a real IDEMCPServer
 
-    PyIDESingleton 仅以 project_name 作 key（见 CLAUDE.md），同名会跨用例复用同一实例，
+    IDEInstance 仅以 project_name 作 key（见 CLAUDE.md），同名会跨用例复用同一实例，
     而 fixture teardown 会 close 掉 IDE，导致后续用例拿到已关闭实例。故每个用例用唯一 project_name 隔离。
-    PyIDESingleton is keyed only on project_name; reusing a name shares one (closed-after-teardown)
+    IDEInstance is keyed only on project_name; reusing a name shares one (closed-after-teardown)
     instance across tests, so each test uses a unique project_name for isolation.
     """
     project_name = f"anyurl-regression-{request.node.name}"
@@ -50,14 +50,14 @@ def server(tmp_path, request):
         ),
     ):
         config = MCPServerConfig()
-        srv = PythonIDEMCPServer(config)
+        srv = IDEMCPServer(config)
         try:
             yield srv, config
         finally:
             srv.close()
 
 
-async def _dispatch_read(server: PythonIDEMCPServer, uri: AnyUrl) -> mcp_types.ReadResourceResult:
+async def _dispatch_read(server: IDEMCPServer, uri: AnyUrl) -> mcp_types.ReadResourceResult:
     """
     走 mcp lowlevel 注册的 handler 读取资源 | Read via the mcp lowlevel registered handler
 

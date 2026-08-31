@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: mcp_server_streamable_http_example.py
 # @Time    : 2025/10/30 11:54
 # @Author  : JQQ
@@ -14,12 +13,12 @@ Demonstrates how to start MCP Server with Streamable HTTP mode
     python examples/mcp_server_streamable_http_example.py
 
 访问方式 | How to Access:
-    - 消息端点 | Message Endpoint: POST http://localhost:8000/message
+    - 消息端点 | Message Endpoint: POST http://localhost:8000/mcp
 """
 
 import asyncio
 
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import IDEMCPServer, MCPServerConfig
 
 
 async def main() -> None:
@@ -44,14 +43,14 @@ async def main() -> None:
     print("启动 MCP Server (Streamable HTTP 模式) | Starting MCP Server (Streamable HTTP Mode)")
     print("=" * 60)
     print(f"服务器地址 | Server Address: http://{config.host}:{config.port}")
-    print(f"消息端点 | Message Endpoint: http://{config.host}:{config.port}/message")
+    print(f"消息端点 | Message Endpoint: http://{config.host}:{config.port}/mcp")
     print(f"项目根目录 | Project Root: {config.root_dir}")
     print(f"项目名称 | Project Name: {config.project_name}")
     print("=" * 60)
     print("\n按 Ctrl+C 停止服务器 | Press Ctrl+C to stop the server\n")
 
     # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
     await server.run()
 
 

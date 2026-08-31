@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # filename: mcp_server_example.py
 # @Time    : 2025/10/30 11:54
 # @Author  : JQQ
@@ -21,7 +20,7 @@ Demonstrates how to start MCP Server with default stdio mode
 import asyncio
 import os
 
-from ide4ai.python_ide.a2c_smcp import MCPServerConfig, PythonIDEMCPServer
+from ide4ai.a2c_smcp import IDEMCPServer, MCPServerConfig
 
 
 async def main() -> None:
@@ -78,7 +77,7 @@ async def main() -> None:
         enable_simple_view_mode=True,  # 启用简化视图 | Enable simple view mode
     )
 
-    print("🚀 启动 Python IDE MCP Server | Starting Python IDE MCP Server")
+    print("🚀 启动 IDE MCP Server | Starting IDE MCP Server")
     print(f"📁 项目根目录 | Project root: {root_dir}")
     print(f"📦 项目名称 | Project name: {project_name}")
     print(f"✅ 命令白名单 | Command whitelist: {len(cmd_white_list)} commands")
@@ -90,7 +89,7 @@ async def main() -> None:
     print()
 
     # 创建并运行 server | Create and run server
-    server = PythonIDEMCPServer(config)
+    server = IDEMCPServer(config)
 
     try:
         await server.run()

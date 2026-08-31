@@ -22,8 +22,8 @@ class GrepTool(BaseTool):
     """
     Grep 文件内容搜索工具 | Grep File Content Search Tool
 
-    通过 PythonIDE 的工作区环境使用 ripgrep 搜索文件内容
-    Searches file contents using ripgrep through PythonIDE's workspace environment
+    通过 IDE 的工作区环境使用 ripgrep 搜索文件内容
+    Searches file contents using ripgrep through IDE's workspace environment
     """
 
     @property

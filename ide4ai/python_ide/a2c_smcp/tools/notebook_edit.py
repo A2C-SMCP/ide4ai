@@ -23,8 +23,8 @@ class NotebookEditTool(BaseTool):
     """
     NotebookEdit Jupyter Notebook 编辑工具 | NotebookEdit Jupyter Notebook Editing Tool
 
-    通过 PythonIDE 的工作区环境编辑 Jupyter Notebook 文件
-    Edits Jupyter Notebook files through PythonIDE's workspace environment
+    通过 IDE 的工作区环境编辑 Jupyter Notebook 文件
+    Edits Jupyter Notebook files through IDE's workspace environment
     """
 
     @property

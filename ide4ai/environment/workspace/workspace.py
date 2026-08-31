@@ -3,55 +3,44 @@
 # @Author  : JQQ
 # @Email   : jqq1716@gmail.com
 # @Software: PyCharm
-import datetime
-import json
 import os
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, SupportsFloat, cast
 
+from lsprotocol import converters, types
 from pydantic import AnyUrl, ValidationError
 
-from ide4ai.dtos.base_protocol import LSPResponseMessage
 from ide4ai.dtos.diagnostics import DocumentDiagnosticReport
 from ide4ai.dtos.workspace_edit import LSPWorkspaceEdit
 from ide4ai.environment.workspace.base import BaseWorkspace
 from ide4ai.environment.workspace.model import TextModel
 from ide4ai.environment.workspace.schema import Position, Range, SearchResult, SingleEditOperation, TextEdit
 from ide4ai.exceptions import IDEExecutionError
-from ide4ai.python_ide.const import DEFAULT_CAPABILITY, DEFAULT_SYMBOL_VALUE_SET
-from ide4ai.schema import LSP_ACTIONS, TEXT_DOCUMENT_ACTIONS, WORKSPACE_ACTIONS, IDEAction, IDEObs, LanguageId
+from ide4ai.languages import default_language_profiles
+from ide4ai.lsp.errors import LspError
+from ide4ai.lsp.manager import LanguageProfile
+from ide4ai.schema import LSP_ACTIONS, TEXT_DOCUMENT_ACTIONS, WORKSPACE_ACTIONS, IDEAction, IDEObs
 from ide4ai.utils import render_symbols
 
-
-def default_python_header_generator(workspace: BaseWorkspace, file_path: str) -> str:
-    """
-    默认的Python文件头生成器
-
-    Args:
-        workspace (BaseWorkspace): 工作环境
-        file_path (str): 文件路径
-
-    Returns:
-        str: 文件头
-    """
-    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
-    return (
-        f"# -*- coding: utf-8 -*-\n"
-        f"# filename : {os.path.basename(file_path)}\n"
-        f"# @Time    : {now.strftime('%Y/%m/%d %H:%M')}\n"
-        f"# @Author  : TuringFocus\n"
-        f"# @Email   : support@turingfocus.com\n"
-        f"# @Software: {workspace.project_name}\n"
-    )
+LSP_CONVERTER = converters.get_converter()
 
 
-class PyWorkspace(BaseWorkspace):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+class Workspace(BaseWorkspace):
+    def __init__(
+        self,
+        *args: Any,
+        language_profiles: Sequence[LanguageProfile] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._language_profiles = tuple(default_language_profiles() if language_profiles is None else language_profiles)
         super().__init__(*args, **kwargs)
         if self.header_generators is None:
-            self.header_generators: dict[str, Callable[[BaseWorkspace, str], str]] = {
-                ".py": default_python_header_generator,
+            self.header_generators = {
+                extension: generator
+                for profile in self._language_profiles
+                for extension, generator in profile.header_generators.items()
             }
         # 如果没有提供shortcut_commands，尝试自动检测Makefile | Auto-detect Makefile if no shortcut_commands provided
         if self.shortcut_commands is None:
@@ -106,23 +95,19 @@ class PyWorkspace(BaseWorkspace):
 
         return result
 
-    def _launch_lsp(self) -> subprocess.Popen[bytes]:
+    def _lsp_command(self) -> Sequence[str]:
         """
         启动 Pyright 语言服务器 / Launch Pyright language server
 
         注意启动时需要使用Bytes模式，而不是Str模式，即text设置为False。因为LSP协议长度计算是按bytes来计算的。
 
         Returns:
-            subprocess.Popen[bytes]: Pyright 语言服务器进程 | Pyright language server process
+            Sequence[str]: Pyright language-server executable and arguments.
         """
-        # 启动 Pyright 语言服务器
-        process = subprocess.Popen(
-            ["pyright-langserver", "--stdio"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=False,
-        )
-        return process
+        return self._language_profiles[0].server.command
+
+    def _lsp_profiles(self) -> Sequence[LanguageProfile]:
+        return self._language_profiles
 
     def _initial_lsp(self) -> None:
         """
@@ -131,32 +116,24 @@ class PyWorkspace(BaseWorkspace):
         Returns:
 
         """
-        msg_id = self.get_lsp_msg_id()
-        res = self.send_lsp_msg(
-            "initialize",
-            {
-                "processId": None,
-                "workspaceFolders": [
-                    {
-                        "uri": f"file://{self.root_dir}",
-                        "name": self.project_name,
-                    },
+        session = self._require_lsp_session()
+        profile = self._lsp_manager.profile
+        if profile is None:
+            raise ValueError("Cannot initialize LSP without a selected language profile")
+        capabilities = LSP_CONVERTER.structure(profile.client_capabilities, types.ClientCapabilities)
+        session.initialize(
+            types.InitializeParams(
+                process_id=None,
+                workspace_folders=[
+                    types.WorkspaceFolder(
+                        uri=Path(self.root_dir).resolve().as_uri(),
+                        name=self.project_name,
+                    )
                 ],
-                "initializationOptions": {
-                    "disablePullDiagnostics": False,  # 启用 Pull Diagnostics / Enable Pull Diagnostics
-                },
-                "capabilities": DEFAULT_CAPABILITY,
-            },
-            message_id=msg_id,
+                initialization_options=profile.initialization_options,
+                capabilities=capabilities,
+            )
         )
-        if res:
-            try:
-                res_json = LSPResponseMessage.model_validate(json.loads(res))
-            except json.JSONDecodeError as e:  # pragma: no cover
-                raise ValueError(f"初始化LSP服务失败，返回结果无法解析为json: {res}") from e  # pragma: no cover
-            if res_json.error:
-                raise ValueError(f"初始化LSP服务失败: {res_json.error}")  # pragma: no cover
-            self.send_lsp_msg("initialized")
 
     def construct_action(self, action: dict) -> IDEAction:
         """
@@ -447,6 +424,21 @@ class PyWorkspace(BaseWorkspace):
                     return IDEObs(obs=clear_res).model_dump(), 100, True, True, {}
                 except Exception as e:
                     return IDEObs(obs=str(e)).model_dump(), 0, True, False, {}
+            case "restart_lsp":
+                status = self.reload_lsp()
+                return (
+                    {
+                        "lsp_status": {
+                            "state": status.state.value,
+                            "language_id": status.language_id,
+                            "reason": status.reason,
+                        }
+                    },
+                    100,
+                    True,
+                    True,
+                    {},
+                )
             case (
                 "get_definition_and_implementation"
                 | "hover"
@@ -467,9 +459,7 @@ class PyWorkspace(BaseWorkspace):
         Render current workspace state, extract active_models info, show full view for last model and symbols for others
 
         Args:
-            verbose (bool): 是否使用详细模式。True时返回包含Python包/模块描述的丰富信息，False时返回简化版本
-                           | Whether to use verbose mode. True returns rich info with Python package/module descriptions,
-                           False returns simplified version
+            verbose (bool): Whether to use the selected language profile's rich tree renderer when available.
 
         Returns:
             str: 以字符串的形式来返回渲染结果 | Render result as string
@@ -477,13 +467,17 @@ class PyWorkspace(BaseWorkspace):
         self._assert_not_closed()
 
         # 1. 渲染最小化展开的目录树 | Render minimally expanded directory tree
-        # 根据verbose参数选择使用简化版本或丰富版本 | Choose simplified or rich version based on verbose parameter
-        if verbose:
-            from ide4ai.python_ide.utils import get_minimal_expanded_tree_with_desc as get_minimal_tree
-            from ide4ai.python_ide.utils import list_directory_tree_with_desc as list_dir_tree
-        else:
-            from ide4ai.utils import get_minimal_expanded_tree as get_minimal_tree  # type: ignore[assignment]
-            from ide4ai.utils import list_directory_tree as list_dir_tree  # type: ignore[assignment]
+        from ide4ai.utils import get_minimal_expanded_tree as get_minimal_tree
+        from ide4ai.utils import list_directory_tree as list_dir_tree
+
+        tree_profile = None
+        if self.active_models:
+            tree_profile = self._lsp_manager.profile_for_language(self.active_models[-1].get_language_id())
+        elif self._lsp_manager.profile is not None:
+            tree_profile = self._lsp_manager.profile
+        if verbose and tree_profile is not None:
+            get_minimal_tree = tree_profile.verbose_minimal_tree or get_minimal_tree
+            list_dir_tree = tree_profile.verbose_directory_tree or list_dir_tree
 
         if self.active_models:
             # 获取最后一个active_model的文件路径 | Get the last active_model's file path
@@ -524,22 +518,33 @@ class PyWorkspace(BaseWorkspace):
             for active_view in self.active_models[:-1]:
                 uri = active_view.uri
                 view += f"文件URI: {uri}\n"
-                mid = self.get_lsp_msg_id()
-                lsp_res = self.send_lsp_msg(
-                    "textDocument/documentSymbol",
-                    {"textDocument": {"uri": str(uri)}},
-                    message_id=mid,
-                )
-                if lsp_res:
-                    res_model = LSPResponseMessage.model_validate(json.loads(lsp_res))
-                    if res_model.error:
-                        view += f"获取Symbols信息失败: {res_model.error}\n"  # pragma: no cover
-                        continue  # pragma: no cover
-                    symbols = res_model.result
-                    view += render_symbols(symbols, DEFAULT_SYMBOL_VALUE_SET)  # type: ignore
-                    view += "\n"
-                else:
+                profile = self._lsp_manager.profile
+                if (
+                    not self._render_with_symbols
+                    or profile is None
+                    or active_view.get_language_id() != profile.language_id
+                ):
+                    continue
+                session = self._ensure_lsp_for_uri(str(uri), semantic=True)
+                if session is None:
+                    continue
+                try:
+                    response = session.request(
+                        types.DocumentSymbolRequest(
+                            id=session.next_request_id(),
+                            params=types.DocumentSymbolParams(text_document=types.TextDocumentIdentifier(uri=str(uri))),
+                        ),
+                        types.DocumentSymbolResponse,
+                    )
+                except LspError as exc:
+                    view += f"获取Symbols信息失败: {exc}\n"  # pragma: no cover
+                    continue
+                symbols = LSP_CONVERTER.unstructure(response.result)
+                if not isinstance(symbols, list):
                     view += "无法获取Symbols信息\n"  # pragma: no cover
+                    continue
+                view += render_symbols(symbols, list(profile.symbol_kinds))
+                view += "\n"
         if active_models_count > 0:
             view += f"当前打开的文件内容如下：\n{self.active_models[-1].get_view()}\n"
         return view
@@ -558,21 +563,17 @@ class PyWorkspace(BaseWorkspace):
         self._assert_not_closed()
         if tm := next(filter(lambda model: model.uri == AnyUrl(uri), self.models), None):
             self.active_model(tm.m_id)  # pragma: no cover
+            session = self._ensure_lsp_for_uri(uri)
+            if session is not None:
+                self._sync_open_document(session, tm)
             return tm  # pragma: no cover
-        text_model = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
+        text_model = TextModel(language_id=self._language_id_for_uri(uri), uri=AnyUrl(uri))
         self.models.append(text_model)
         self.active_model(text_model.m_id)
-        self.send_lsp_msg(
-            "textDocument/didOpen",
-            {
-                "textDocument": {
-                    "uri": uri,
-                    "languageId": LanguageId.python.value,
-                    "version": text_model.get_version_id(),
-                    "text": text_model.get_value(),
-                },
-            },
-        )
+        self._track_document_version(uri, text_model)
+        session = self._ensure_lsp_for_uri(uri)
+        if session is not None:
+            self._sync_open_document(session, text_model)
         return text_model
 
     def apply_edit(
@@ -614,20 +615,44 @@ class PyWorkspace(BaseWorkspace):
                 f"不要使用0基索引"
             )
             raise IDEExecutionError(message=err_info, detail_for_llm=err_info) from e
-        res = text_model.apply_edits(model_edits, compute_undo_edits)
 
-        self.send_lsp_msg(
-            "textDocument/didChange",
-            {
-                "textDocument": {"uri": uri, "version": text_model.get_version_id()},
-                "contentChanges": [
-                    {"range": edit.range.to_lsp_range().model_dump(), "text": edit.text} for edit in model_edits
-                ],
-            },
-        )
+        session = self._ensure_lsp_for_uri(uri)
+        normalized_edits = text_model.normalize_edit_operations(model_edits)
+        content_changes: list[types.TextDocumentContentChangePartial] = []
+        if session is not None:
+            position_codec = session.position_codec
+            ordered_edits = sorted(normalized_edits, key=lambda edit: edit.range, reverse=True)
+        else:
+            ordered_edits = []
+        for edit in ordered_edits:
+            start = edit.range.start_position
+            end = edit.range.end_position
+            start_line = text_model.get_line_content(start.line)
+            end_line = text_model.get_line_content(end.line)
+            content_changes.append(
+                types.TextDocumentContentChangePartial(
+                    range=types.Range(
+                        start=types.Position(
+                            line=start.line - 1,
+                            character=position_codec.to_lsp_character(start_line, start.character - 1),
+                        ),
+                        end=types.Position(
+                            line=end.line - 1,
+                            character=position_codec.to_lsp_character(end_line, end.character - 1),
+                        ),
+                    ),
+                    text=edit.text or "",
+                )
+            )
 
-        # 编辑后主动拉取诊断信息 / Pull diagnostics after editing
-        diagnostics = self.pull_diagnostics(uri=uri, timeout=self._diagnostics_timeout)
+        res = text_model.apply_edits(normalized_edits, compute_undo_edits)
+        self._track_document_version(uri, text_model)
+
+        if session is not None:
+            self._notify_lsp_change(session, text_model, content_changes)
+            diagnostics = self.pull_diagnostics(uri=uri, timeout=self._diagnostics_timeout)
+        else:
+            diagnostics = None
 
         return res, cast(
             DocumentDiagnosticReport | None,
@@ -730,26 +755,16 @@ class PyWorkspace(BaseWorkspace):
                 raise FileExistsError(f"The file at {file_path} already exists and overwrite is not set to True.")
             # Overwrite is True, delete the file before creating a new one
             os.remove(file_path)
-        # Pyright 目前好像不支持 workspace/willCreateFiles 方法
-        # msg_id = self.get_lsp_msg_id()
-        # lsp_res_will_create = self.send_lsp_msg("workspace/willCreateFiles", {"files": [{"uri": uri}]}, msg_id)
-        # if not lsp_res_will_create:
-        #     raise ValueError(f"无法创建文件: {uri}， LSP校验未通过")
-        # lsp_res = LSPResponseMessage.model_validate(json.loads(lsp_res_will_create))
-        # if lsp_res.error:
-        #     raise ValueError(f"无法创建文件: {uri}， LSP校验未通过: {lsp_res.error}")
-        # TODO LSP会响应 workspace/willCreateFiles Request，返回的结构中会包括一个workspaceEdit。 \
-        #  完成apply_workspace方法的封装后，需要在此调用并响应
         # Create the file
         try:
             # Using 'x' mode to create file will raise an error if the file already exists
             with open(file_path, "x") as file:
-                for file_type, header_generator in self.header_generators.items():
+                for file_type, header_generator in (self.header_generators or {}).items():
                     if file_path.endswith(file_type):
                         header = header_generator(self, file_path)
                         file.write(header)
                         break
-            tm = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
+            tm = TextModel(language_id=self._language_id_for_uri(uri), uri=AnyUrl(uri))
 
             # 在文件创建后追加初始化内容（如果存在）/ Append initial content after file creation (if exists)
             if init_content:
@@ -770,25 +785,17 @@ class PyWorkspace(BaseWorkspace):
 
             self.models.append(tm)
             self.active_model(tm.m_id)
+            self._track_document_version(uri, tm)
 
-            # 通知LSP文件已创建 / Notify LSP that file has been created
-            self.send_lsp_msg("workspace/didCreateFiles", {"files": [{"uri": uri}]})
-
-            # 通知LSP打开文件，发送完整内容（包含header和init_content）/ Notify LSP to open file with complete content
-            self.send_lsp_msg(
-                "textDocument/didOpen",
-                {
-                    "textDocument": {
-                        "uri": uri,
-                        "languageId": LanguageId.python.value,
-                        "version": tm.get_version_id(),
-                        "text": tm.get_value(),
-                    },
-                },
-            )
-
-            # 创建文件后主动拉取诊断信息 / Pull diagnostics after file creation
-            diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+            session = self._ensure_lsp_for_uri(uri)
+            if session is not None:
+                session.notify(
+                    types.DidCreateFilesNotification(params=types.CreateFilesParams(files=[types.FileCreate(uri=uri)]))
+                )
+                self._sync_open_document(session, tm)
+                diagnostics = self.pull_diagnostics(uri=uri, timeout=5.0)
+            else:
+                diagnostics = None
 
             return tm, cast(DocumentDiagnosticReport | None, diagnostics)
         except FileExistsError:
@@ -867,7 +874,7 @@ class PyWorkspace(BaseWorkspace):
         if file_path.is_file():
             text_model = self.get_model(uri)
             if not text_model:
-                text_model = TextModel(language_id=LanguageId.python, uri=AnyUrl(uri))
+                text_model = TextModel(language_id=self._language_id_for_uri(uri), uri=AnyUrl(uri))
             return text_model.find_matches(
                 query,
                 search_scope,
@@ -907,7 +914,7 @@ class PyWorkspace(BaseWorkspace):
 
                                 # 创建临时文本模型 / Create temporary text model
                                 text_model = TextModel(
-                                    language_id=LanguageId.python,
+                                    language_id=self._language_id_for_uri(file_uri),
                                     uri=AnyUrl(file_uri),
                                     auto_save_during_dispose=False,  # 临时模型不需要自动保存 / Temporary model doesn't need auto-save
                                 )

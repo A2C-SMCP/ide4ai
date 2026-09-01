@@ -90,8 +90,36 @@ def test_catalog_without_selection_only_exposes_project_management(tmp_path) -> 
     assert names == ["project_create", "project_delete", "project_list", "project_switch"]
     switch = catalog.find(None, "project_switch")
     assert switch is not None
-    assert len(switch.definition.inputSchema["oneOf"]) == 2
+    assert switch.definition.inputSchema["required"] == ["name"]
+    assert set(switch.definition.inputSchema["properties"]) == {"name"}
     assert created == []
+
+
+@pytest.mark.asyncio
+async def test_project_tools_expose_name_as_the_only_public_identifier(tmp_path) -> None:
+    host, _ = _host(tmp_path)
+    provider = ProjectToolProvider(host)
+    create = next(binding for binding in provider.bindings(None) if binding.definition.name == "project_create")
+
+    created = await create.invoke({"name": "one", "root_dir": str(tmp_path)})
+
+    assert "id" not in created.result["project"]
+    bindings = provider.bindings(host.current_project)
+    project_list = next(binding for binding in bindings if binding.definition.name == "project_list")
+    listed = await project_list.invoke({})
+    assert "id" not in listed.result["projects"][0]
+
+    switch = next(binding for binding in bindings if binding.definition.name == "project_switch")
+    switched = await switch.invoke({"name": "one"})
+    assert "id" not in switched.result["project"]
+
+    unload = next(binding for binding in bindings if binding.definition.name == "project_unload")
+    unloaded = await unload.invoke({})
+    assert "id" not in unloaded.result["project"]
+
+    delete = next(binding for binding in bindings if binding.definition.name == "project_delete")
+    deleted = await delete.invoke({"name": "one"})
+    assert "id" not in deleted.result["project"]
 
 
 def test_selected_catalog_is_sorted_and_discovery_does_not_load_ide(tmp_path) -> None:
@@ -175,7 +203,7 @@ async def test_project_mutations_report_exact_catalog_invalidations(tmp_path) ->
     assert unloaded.changes.resources is True
 
     switch = next(binding for binding in selected_bindings if binding.definition.name == "project_switch")
-    switched = await switch.invoke({"project_id": str(selected.id)})
+    switched = await switch.invoke({"name": selected.name})
     assert switched.changes.tools is True
     assert switched.changes.resources is True
 

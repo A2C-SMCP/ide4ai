@@ -51,6 +51,9 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
                 "project_list",
                 "project_switch",
             ]
+            switch_tool = next(tool for tool in initial_tools.tools if tool.name == "project_switch")
+            assert switch_tool.inputSchema["required"] == ["name"]
+            assert set(switch_tool.inputSchema["properties"]) == {"name"}
             assert (await client.list_resources()).resources == []
 
             missing = await client.call_tool("project_switch", {"name": "does-not-exist"})
@@ -69,7 +72,7 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             )
             assert created.isError is False
             assert created.structuredContent is not None
-            project_id = created.structuredContent["project"]["id"]
+            assert "id" not in created.structuredContent["project"]
             assert notifications == [
                 "notifications/tools/list_changed",
                 "notifications/resources/list_changed",
@@ -83,6 +86,8 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             assert invalid.isError is True
             assert invalid.structuredContent is not None
             assert invalid.structuredContent["error"]["code"] == "TOOL_INPUT_VALIDATION_FAILED"
+            assert invalid.structuredContent["error"]["project_name"] == "stdio-project"
+            assert "project_id" not in invalid.structuredContent["error"]
             unloaded_after_invalid = await client.call_tool("project_unload", {})
             assert unloaded_after_invalid.structuredContent is not None
             assert unloaded_after_invalid.structuredContent["unloaded"] is False
@@ -93,7 +98,7 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             notifications.clear()
             resources = await client.list_resources()
             assert len(resources.resources) == 1
-            assert str(resources.resources[0].uri).startswith(f"window://{project_id}")
+            assert str(resources.resources[0].uri).startswith("window://")
             rendered = await client.read_resource(resources.resources[0].uri)
             assert rendered.contents
 
@@ -102,28 +107,36 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
                 {"name": "second-project", "root_dir": str(second_root)},
             )
             assert second.structuredContent is not None
-            second_id = second.structuredContent["project"]["id"]
-            await client.call_tool("project_list", {})
+            assert "id" not in second.structuredContent["project"]
+            listed = await client.call_tool("project_list", {})
+            assert listed.structuredContent is not None
+            assert all("id" not in project for project in listed.structuredContent["projects"])
             assert notifications == []
 
-            switched = await client.call_tool("project_switch", {"project_id": second_id})
+            switched = await client.call_tool("project_switch", {"name": "second-project"})
             assert switched.isError is False
+            assert switched.structuredContent is not None
+            assert "id" not in switched.structuredContent["project"]
             assert notifications == [
                 "notifications/tools/list_changed",
                 "notifications/resources/list_changed",
             ]
             notifications.clear()
 
-            deleted_second = await client.call_tool("project_delete", {"project_id": second_id})
+            deleted_second = await client.call_tool("project_delete", {"name": "second-project"})
             assert deleted_second.isError is False
+            assert deleted_second.structuredContent is not None
+            assert "id" not in deleted_second.structuredContent["project"]
             assert notifications == [
                 "notifications/tools/list_changed",
                 "notifications/resources/list_changed",
             ]
             notifications.clear()
 
-            deleted_first = await client.call_tool("project_delete", {"project_id": project_id})
+            deleted_first = await client.call_tool("project_delete", {"name": "stdio-project"})
             assert deleted_first.isError is False
+            assert deleted_first.structuredContent is not None
+            assert "id" not in deleted_first.structuredContent["project"]
             assert notifications == [
                 "notifications/tools/list_changed",
                 "notifications/resources/list_changed",

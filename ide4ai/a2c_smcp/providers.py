@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
-from uuid import UUID
 
 from mcp.types import Resource, Tool
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 from ide4ai.a2c_smcp.catalog import (
     CatalogChanges,
@@ -22,40 +21,13 @@ from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
 
 
-class _ProjectIdentifier(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "oneOf": [
-                {
-                    "required": ["project_id"],
-                    "properties": {"project_id": {"type": "string", "format": "uuid"}},
-                    "not": {"required": ["name"]},
-                },
-                {
-                    "required": ["name"],
-                    "properties": {"name": {"type": "string", "minLength": 1}},
-                    "not": {"required": ["project_id"]},
-                },
-            ]
-        },
-    )
+class _ProjectNameInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    project_id: UUID | None = Field(default=None, description="Stable project UUID")
-    name: str | None = Field(default=None, description="Case-insensitive project name")
-
-    @model_validator(mode="after")
-    def require_one_identifier(self) -> _ProjectIdentifier:
-        if (self.project_id is None) == (self.name is None):
-            raise ValueError("Provide exactly one of project_id or name")
-        return self
-
-    @property
-    def identifier(self) -> UUID | str:
-        return self.project_id if self.project_id is not None else self.name or ""
+    name: str = Field(min_length=1, description="Unique, case-insensitive project name")
 
 
-class _ProjectDeleteInput(_ProjectIdentifier):
+class _ProjectDeleteInput(_ProjectNameInput):
     force: bool = Field(default=False, description="Release a loaded runtime even when it has active calls")
 
 
@@ -71,6 +43,20 @@ class _ProjectUnloadInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     force: bool = Field(default=False, description="Release resources even when the project has active calls")
+
+
+class _ProjectOutput(BaseModel):
+    """Public project representation; internal runtime identity is intentionally hidden."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    name: str
+    root_dir: str
+    lsp: ProjectLspConfig
+
+
+def _project_output(project: Project) -> dict[str, Any]:
+    return _ProjectOutput.model_validate(project).model_dump(mode="json")
 
 
 class ProjectToolProvider:
@@ -92,7 +78,7 @@ class ProjectToolProvider:
             ),
             self._binding("project_list", "List registered projects and the current selection.", None, self._list),
             self._binding(
-                "project_switch", "Select a project for subsequent MCP calls.", _ProjectIdentifier, self._switch
+                "project_switch", "Select a project for subsequent MCP calls.", _ProjectNameInput, self._switch
             ),
         ]
         if current_project is not None:
@@ -130,7 +116,7 @@ class ProjectToolProvider:
         project = self._host.create_project(name=data.name, root_dir=data.root_dir, lsp=data.lsp)
         changed = before != self._host.current_project
         return ToolCallOutcome(
-            {"project": project.model_dump(mode="json")},
+            {"project": _project_output(project)},
             CatalogChanges(tools=changed, resources=changed),
         )
 
@@ -139,24 +125,24 @@ class ProjectToolProvider:
             raise ValueError("project_list does not accept arguments")
         current = self._host.current_project
         projects = [
-            {**project.model_dump(mode="json"), "current": current is not None and project.id == current.id}
+            {**_project_output(project), "current": current is not None and project.id == current.id}
             for project in self._host.list_projects()
         ]
         return ToolCallOutcome({"projects": projects})
 
     async def _switch(self, arguments: dict[str, Any]) -> ToolCallOutcome:
-        data = _ProjectIdentifier.model_validate(arguments)
-        project = self._host.switch_project(data.identifier)
+        data = _ProjectNameInput.model_validate(arguments)
+        project = self._host.switch_project(data.name)
         return ToolCallOutcome(
-            {"project": project.model_dump(mode="json")},
+            {"project": _project_output(project)},
             CatalogChanges(tools=True, resources=True),
         )
 
     async def _delete(self, arguments: dict[str, Any]) -> ToolCallOutcome:
         data = _ProjectDeleteInput.model_validate(arguments)
-        project = self._host.delete_project(data.identifier, force=data.force)
+        project = self._host.delete_project(data.name, force=data.force)
         return ToolCallOutcome(
-            {"project": project.model_dump(mode="json")},
+            {"project": _project_output(project)},
             CatalogChanges(tools=True, resources=True),
         )
 
@@ -164,7 +150,7 @@ class ProjectToolProvider:
         data = _ProjectUnloadInput.model_validate(arguments)
         unloaded = self._host.unload_project(project, force=data.force)
         return ToolCallOutcome(
-            {"project": project.model_dump(mode="json"), "unloaded": unloaded},
+            {"project": _project_output(project), "unloaded": unloaded},
             CatalogChanges(tools=True, resources=True),
         )
 

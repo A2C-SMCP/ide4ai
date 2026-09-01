@@ -80,7 +80,7 @@ class BaseMCPServer:
                     "TOOL_NOT_AVAILABLE_FOR_CURRENT_PROJECT",
                     f"Tool is not available for the current project state: {name}",
                     tool=name,
-                    project_id=str(snapshot.id) if snapshot else None,
+                    project_name=snapshot.name if snapshot else None,
                 )
             try:
                 validate_json_schema(
@@ -93,7 +93,7 @@ class BaseMCPServer:
                     "TOOL_INPUT_VALIDATION_FAILED",
                     exc.message,
                     tool=name,
-                    project_id=str(snapshot.id) if snapshot else None,
+                    project_name=snapshot.name if snapshot else None,
                 )
             try:
                 outcome = await binding.invoke(arguments)
@@ -102,7 +102,7 @@ class BaseMCPServer:
                     "TOOL_NOT_AVAILABLE_FOR_CURRENT_PROJECT",
                     f"The project captured for tool {name} no longer exists",
                     tool=name,
-                    project_id=str(snapshot.id) if snapshot else None,
+                    project_name=snapshot.name if snapshot else None,
                 )
             except PydanticValidationError as exc:
                 return self._tool_error("TOOL_INPUT_VALIDATION_FAILED", str(exc), tool=name)

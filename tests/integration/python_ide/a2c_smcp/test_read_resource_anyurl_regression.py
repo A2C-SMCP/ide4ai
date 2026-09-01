@@ -27,6 +27,7 @@ from pydantic import AnyUrl
 
 from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectRegistry
 
 
 @pytest.fixture
@@ -40,13 +41,13 @@ def server(tmp_path, request):
     instance across tests, so each test uses a unique project_name for isolation.
     """
     project_name = f"anyurl-regression-{request.node.name}"
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name=project_name, root_dir=tmp_path)
     with MCPServerConfig.change_config_sources(
         DataSource(
             data={
                 "transport": "stdio",
-                "root_dir": str(tmp_path),
-                "project_name": project_name,
-                "project_registry_path": str(tmp_path / "projects.json"),
+                "project_registry_path": str(registry_path),
             },
         ),
     ):

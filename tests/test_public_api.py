@@ -15,6 +15,7 @@ from ide4ai import IDE, IDEInstance, IDESingleton, LanguageId, Workspace
 from ide4ai.a2c_smcp import IDEMCPServer
 from ide4ai.a2c_smcp.cli import main as mcp_cli_main
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectLspConfig, ProjectRegistry
 from ide4ai.a2c_smcp.tools.lsp import LspTool
 from ide4ai.lsp.manager import LanguageProfile, LspServerSpec, LspSettings, LspState, LspStatus
 
@@ -46,7 +47,9 @@ def test_generic_mcp_cli_help_does_not_start_server(monkeypatch, capsys) -> None
     mcp_cli_main()
     output = capsys.readouterr().out
     assert "usage: ide4ai-mcp" in output
-    assert "--lsp-profile-language-id" in output
+    assert "--lsp-profile-language-id" not in output
+    assert "--root-dir" not in output
+    assert "--project-name" not in output
     assert "--project-registry-path" in output
 
 
@@ -59,6 +62,22 @@ def test_generic_mcp_module_entrypoint_displays_help() -> None:
         timeout=10,
     )
     assert "usage: ide4ai-mcp" in result.stdout
+
+
+def test_removed_project_bootstrap_and_lsp_arguments_fail_fast() -> None:
+    for arguments in (
+        ("--root-dir", "/tmp", "--project-name", "removed"),
+        ("--lsp-mode", "auto"),
+    ):
+        result = subprocess.run(
+            [sys.executable, "-m", "ide4ai.a2c_smcp.cli", *arguments],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 2
+        assert "unrecognized arguments" in result.stderr
+        assert "MCP Server initialized" not in result.stderr
 
 
 def test_public_docs_use_executable_distribution_commands_and_paths() -> None:
@@ -74,25 +93,17 @@ def test_public_docs_use_executable_distribution_commands_and_paths() -> None:
     assert "init_venv=" not in pexpect_docs
 
 
-def test_mcp_config_registers_custom_lsp_profile(tmp_path: Path) -> None:
-    with MCPServerConfig.change_config_sources(
-        DataSource(
-            data={
-                "root_dir": str(tmp_path),
-                "project_name": "custom-rust-config",
-                "lsp_mode": "explicit",
-                "lsp_language_id": "rust",
-                "lsp_server_command": "rust-analyzer",
-                "lsp_file_extensions": ".rs,.rlib",
-                "lsp_root_markers": "Cargo.toml,.git",
-            }
-        )
-    ):
-        config = MCPServerConfig()
-    kwargs = config.to_ide_kwargs()
-    assert kwargs["lsp_settings"].mode == "explicit"
-    assert kwargs["lsp_settings"].language_id == "rust"
-    rust = next(profile for profile in kwargs["language_profiles"] if profile.language_id == "rust")
+def test_project_config_registers_custom_lsp_profile() -> None:
+    config = ProjectLspConfig(
+        mode="explicit",
+        language_id="rust",
+        server_command=("rust-analyzer",),
+        file_extensions=(".rs", ".rlib"),
+        root_markers=("Cargo.toml", ".git"),
+    )
+    assert config.to_settings().mode == "explicit"
+    assert config.to_settings().language_id == "rust"
+    rust = next(profile for profile in config.to_profiles() if profile.language_id == "rust")
     assert rust.server.command == ("rust-analyzer",)
     assert rust.file_extensions == (".rs", ".rlib")
     assert rust.root_markers == ("Cargo.toml", ".git")
@@ -174,26 +185,26 @@ def test_public_ide_render_degrades_without_lsp(tmp_path: Path) -> None:
 def test_generic_mcp_server_constructs_custom_language_ide(tmp_path: Path) -> None:
     (tmp_path / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
     project_name = "custom-rust-mcp-profile"
-    with MCPServerConfig.change_config_sources(
-        DataSource(
-            data={
-                "root_dir": str(tmp_path),
-                "project_name": project_name,
-                "project_registry_path": str(tmp_path / "projects.json"),
-                "lsp_mode": "auto",
-                "lsp_profile_language_id": "rust",
-                "lsp_server_command": "rust-analyzer",
-                "lsp_file_extensions": ".rs",
-                "lsp_root_markers": "Cargo.toml",
-            }
-        )
-    ):
+    registry_path = tmp_path / "projects.json"
+    project = ProjectRegistry(registry_path).create(
+        name=project_name,
+        root_dir=tmp_path,
+        lsp=ProjectLspConfig(
+            mode="auto",
+            profile_language_id="rust",
+            server_command=("rust-analyzer",),
+            file_extensions=(".rs",),
+            root_markers=("Cargo.toml",),
+        ),
+    )
+    with MCPServerConfig.change_config_sources(DataSource(data={"project_registry_path": str(registry_path)})):
         config = MCPServerConfig()
     server = IDEMCPServer(config)
     try:
-        assert server.ide.workspace.lsp_status == LspStatus(LspState.READY, "rust")
-        assert server.ide.workspace._lsp_manager.profile is not None
-        assert server.ide.workspace._lsp_manager.profile.server.command == ("rust-analyzer",)
+        with server.project_host.lease_project(project) as (_, ide):
+            assert ide.workspace.lsp_status == LspStatus(LspState.READY, "rust")
+            assert ide.workspace._lsp_manager.profile is not None
+            assert ide.workspace._lsp_manager.profile.server.command == ("rust-analyzer",)
     finally:
         server.close()
         IDESingleton._instances.pop(f"IDEInstance{project_name}", None)

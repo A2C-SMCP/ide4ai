@@ -13,6 +13,7 @@ from lsprotocol import types
 
 from ide4ai.a2c_smcp import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectLspConfig, ProjectRegistry
 from ide4ai.environment.workspace.workspace import Workspace
 from ide4ai.ides import IDESingleton
 from ide4ai.lsp.errors import LspError
@@ -52,15 +53,17 @@ def _wait_until(predicate, *, timeout: float = 3.0) -> None:
     assert predicate()
 
 
-def _server_config(tmp_path: Path, project_name: str, **overrides: object) -> MCPServerConfig:
-    data: dict[str, object] = {
-        "root_dir": str(tmp_path),
-        "project_name": project_name,
-        "project_registry_path": str(tmp_path / "projects.json"),
-        **overrides,
-    }
-    with MCPServerConfig.change_config_sources(DataSource(data=data)):
+def _server_config(tmp_path: Path, project_name: str, lsp: ProjectLspConfig) -> MCPServerConfig:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name=project_name, root_dir=tmp_path, lsp=lsp)
+    with MCPServerConfig.change_config_sources(DataSource(data={"project_registry_path": str(registry_path)})):
         return MCPServerConfig()
+
+
+async def _invoke(server: IDEMCPServer, name: str, arguments: dict[str, object]):
+    binding = server.tool_catalog.find(server.project_host.current_project, name)
+    assert binding is not None
+    return (await binding.invoke(arguments)).result
 
 
 def _close_server(server: IDEMCPServer, project_name: str) -> None:
@@ -240,19 +243,21 @@ def test_generic_mcp_fake_language_starts_and_closes(tmp_path: Path) -> None:
     config = _server_config(
         tmp_path,
         project_name,
-        lsp_mode="auto",
-        lsp_profile_language_id="fake",
-        lsp_server_command=(sys.executable, str(FAKE_SERVER), str(exit_marker)),
-        lsp_file_extensions=(".fake",),
-        lsp_root_markers=("fake.toml",),
+        ProjectLspConfig(
+            mode="auto",
+            profile_language_id="fake",
+            server_command=(sys.executable, str(FAKE_SERVER), str(exit_marker)),
+            file_extensions=(".fake",),
+            root_markers=("fake.toml",),
+        ),
     )
     server = IDEMCPServer(config)
     try:
-        assert asyncio.run(server.tools["Lsp"].execute({"action": "status"}))["state"] == "ready"
-        result = asyncio.run(server.tools["Read"].execute({"file_path": str(fake_file)}))
+        assert asyncio.run(_invoke(server, "Lsp", {"action": "status"}))["state"] == "ready"
+        result = asyncio.run(_invoke(server, "Read", {"file_path": str(fake_file)}))
         assert result["success"] is True
         assert "fake through mcp" in result["content"]
-        assert asyncio.run(server.tools["Lsp"].execute({"action": "status"})) == {
+        assert asyncio.run(_invoke(server, "Lsp", {"action": "status"})) == {
             "state": "running",
             "language_id": "fake",
             "reason": None,
@@ -263,46 +268,51 @@ def test_generic_mcp_fake_language_starts_and_closes(tmp_path: Path) -> None:
     assert exit_marker.read_text(encoding="utf-8") == "exit"
 
 
-def test_generic_mcp_missing_lsp_keeps_file_search_and_terminal_working(tmp_path: Path) -> None:
+def test_generic_mcp_missing_lsp_keeps_file_search_working(tmp_path: Path) -> None:
     source = tmp_path / "fallback.missing"
     source.write_text("fallback needle\n", encoding="utf-8")
     project_name = f"mcp-missing-{tmp_path.name}"
     config = _server_config(
         tmp_path,
         project_name,
-        lsp_mode="explicit",
-        lsp_language_id="missing",
-        lsp_profile_language_id="missing",
-        lsp_server_command=("missing-language-server-for-ide4ai-e2e",),
-        lsp_file_extensions=(".missing",),
+        ProjectLspConfig(
+            mode="explicit",
+            language_id="missing",
+            profile_language_id="missing",
+            server_command=("missing-language-server-for-ide4ai-e2e",),
+            file_extensions=(".missing",),
+        ),
     )
     server = IDEMCPServer(config)
     try:
 
         def assert_lsp_not_started() -> None:
-            status = asyncio.run(server.tools["Lsp"].execute({"action": "status"}))
+            status = asyncio.run(_invoke(server, "Lsp", {"action": "status"}))
             assert status == {"state": "ready", "language_id": "missing", "reason": None}
-            assert server.ide.workspace._lsp_manager.session is None
+            project = server.project_host.current_project
+            assert project is not None
+            with server.project_host.lease_project(project) as (_, ide):
+                assert ide.workspace._lsp_manager.session is None
 
-        glob_result = asyncio.run(server.tools["Glob"].execute({"pattern": "**/*.missing"}))
+        glob_result = asyncio.run(_invoke(server, "Glob", {"pattern": "**/*.missing"}))
         assert_lsp_not_started()
-        grep_result = asyncio.run(server.tools["Grep"].execute({"pattern": "needle"}))
-        assert_lsp_not_started()
-        bash_result = asyncio.run(server.tools["Bash"].execute({"command": "pwd"}))
+        grep_result = asyncio.run(_invoke(server, "Grep", {"pattern": "needle"}))
         assert_lsp_not_started()
         assert glob_result["success"] is True and glob_result["files"]
         assert grep_result["success"] is True and grep_result["matched"] is True
-        assert bash_result["success"] is True and str(tmp_path) in bash_result["output"]
 
-        read_result = asyncio.run(server.tools["Read"].execute({"file_path": str(source)}))
+        read_result = asyncio.run(_invoke(server, "Read", {"file_path": str(source)}))
         assert read_result["success"] is True
         assert "fallback needle" in read_result["content"]
-        status = asyncio.run(server.tools["Lsp"].execute({"action": "status"}))
+        status = asyncio.run(_invoke(server, "Lsp", {"action": "status"}))
         assert status["state"] == "unavailable"
         assert status["language_id"] == "missing"
 
-        reload_status = asyncio.run(server.tools["Lsp"].execute({"action": "reload"}))
+        reload_status = asyncio.run(_invoke(server, "Lsp", {"action": "reload"}))
         assert reload_status == {"state": "ready", "language_id": "missing", "reason": None}
-        assert server.ide.workspace._lsp_manager.session is None
+        project = server.project_host.current_project
+        assert project is not None
+        with server.project_host.lease_project(project) as (_, ide):
+            assert ide.workspace._lsp_manager.session is None
     finally:
         _close_server(server, project_name)

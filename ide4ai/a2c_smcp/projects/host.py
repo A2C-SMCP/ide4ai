@@ -17,12 +17,11 @@ from ide4ai.ide import IDE
 
 
 class ProjectHost:
-    """Own session-local selection and process-local project runtimes."""
+    """Own process-local runtimes backed by the server's persisted project selection."""
 
     def __init__(self, registry: ProjectRegistry, ide_factory: IDEFactory) -> None:
         self.registry = registry
         self._ide_factory = ide_factory
-        self._current_project_id: UUID | None = None
         self._runtimes: dict[UUID, ProjectRuntime] = {}
         self._deleting_project_ids: set[UUID] = set()
         self._closed = False
@@ -32,14 +31,18 @@ class ProjectHost:
     def current_project(self) -> Project | None:
         with self._lock:
             self._ensure_open()
-            return self._current_project_unlocked()
+            return self.registry.current()
 
     def list_projects(self) -> tuple[Project, ...]:
         with self._lock:
             self._ensure_open()
-            projects = self.registry.list()
-            self._reconcile_selection(projects)
-            return projects
+            return self.registry.list()
+
+    def project_view(self) -> tuple[tuple[Project, ...], Project | None]:
+        """Return projects and current selection from one persisted snapshot."""
+        with self._lock:
+            self._ensure_open()
+            return self.registry.view()
 
     def create_project(
         self,
@@ -50,17 +53,12 @@ class ProjectHost:
     ) -> Project:
         with self._lock:
             self._ensure_open()
-            project = self.registry.create(name=name, root_dir=root_dir, lsp=lsp)
-            projects = self.registry.list()
-            self._reconcile_selection(projects)
-            return project
+            return self.registry.create(name=name, root_dir=root_dir, lsp=lsp)
 
     def switch_project(self, identifier: str | UUID) -> Project:
         with self._lock:
             self._ensure_open()
-            project = self.registry.find(identifier)
-            self._current_project_id = project.id
-            return project
+            return self.registry.select(identifier)
 
     def unload_current(self, *, force: bool = False) -> bool:
         with self._lock:
@@ -116,10 +114,7 @@ class ProjectHost:
                 self._deleting_project_ids.discard(project.id)
                 raise
             self._runtimes.pop(project.id, None)
-            if self._current_project_id == project.id:
-                self._current_project_id = None
             self._deleting_project_ids.discard(project.id)
-            self._reconcile_selection(self.registry.list())
             return deleted
 
     def cancel_delete(self, project: Project) -> None:
@@ -161,7 +156,6 @@ class ProjectHost:
                 return
             self._closed = True
             runtimes = tuple(self._runtimes.items())
-            self._current_project_id = None
             self._deleting_project_ids.clear()
         errors: list[BaseException] = []
         closed_ids: list[UUID] = []
@@ -178,11 +172,7 @@ class ProjectHost:
             raise ProjectError(f"Failed to close {len(errors)} project runtime(s)") from errors[0]
 
     def _current_project_unlocked(self) -> Project | None:
-        projects = self.registry.list()
-        self._reconcile_selection(projects)
-        if self._current_project_id is None:
-            return None
-        return next((project for project in projects if project.id == self._current_project_id), None)
+        return self.registry.current()
 
     def _require_current_unlocked(self) -> Project:
         self._ensure_open()
@@ -190,11 +180,6 @@ class ProjectHost:
         if project is None:
             raise ProjectNotSelectedError("No project selected; call project_switch first")
         return project
-
-    def _reconcile_selection(self, projects: tuple[Project, ...]) -> None:
-        known_ids = {project.id for project in projects}
-        if self._current_project_id not in known_ids:
-            self._current_project_id = projects[0].id if projects else None
 
     def _ensure_open(self) -> None:
         if self._closed:

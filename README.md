@@ -77,12 +77,12 @@ ide.step(edit.model_dump())
 
 - **从 TestPyPI 运行（无需安装到全局环境）**：
 ```bash
-uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match --prerelease=allow --from ide4ai ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
+uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match --prerelease=allow --from ide4ai ide4ai-mcp --transport stdio
 ```
 
 - **从 PyPi 运行（无需安装到全局环境）**:
 ```bash
-uvx --from ide4ai ide4ai-mcp --transport stdio --root-dir /Users/jqq/PycharmProjects/ide4ai/tests/integration/python_ide/virtual_project --project-name test-project
+uvx --from ide4ai ide4ai-mcp --transport stdio
 ```
 
 - **从本地源码运行（仓库根目录）**：
@@ -101,15 +101,15 @@ uvx --from ide4ai==<version> ide4ai-mcp
 #### 常用启动参数（CLI 与环境变量）
 
 - **传输模式**：`--transport`（默认 `stdio`）
-  - 多项目 V1 仅支持 `stdio`；`sse` 与 `streamable-http` 会明确拒绝启动
+  - 当前多项目 Server 仅支持 `stdio`；`sse` 与 `streamable-http` 会明确拒绝启动
   - 环境变量：`TRANSPORT`
 - **主机/端口**：`--host`（默认 `127.0.0.1`）、`--port`（默认 `8000`）
   - 仅用于 `sse` 与 `streamable-http`
   - 环境变量：`HOST`、`PORT`
-- **项目根目录/名称**：可选的 `--root-dir`、`--project-name`，必须成对提供
-  - 未提供时由 MCP 的 `project_create`、`project_list`、`project_switch`、`project_delete` 管理项目
-  - 成对提供时仅用于兼容旧配置：启动时注册并选择该项目
-  - 环境变量：`PROJECT_ROOT`、`PROJECT_NAME`
+- **项目元数据**：`--project-registry-path` 指定 Server 保存和恢复项目的 JSON 文件
+  - 项目名称、根目录和 LSP 配置只通过 MCP `project_create` 提交
+  - 项目由 `project_create`、`project_list`、`project_switch`、`project_delete`、`project_unload` 管理
+  - 环境变量：`PROJECT_REGISTRY_PATH`
 - **命令白名单**：`--cmd-white-list`（逗号分隔）
   - 默认：`["ls","pwd","echo","cat","grep","find","head","tail","wc"]`
   - 仅用于 legacy `IDE.step(category="terminal")`；MCP 的 TFBash 0.2 工具使用其自身协议与运行时约束
@@ -132,19 +132,11 @@ uvx --from ide4ai==<version> ide4ai-mcp
 uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
 
-启动后，没有注册项目时客户端只会看到项目管理工具。只要存在项目，就始终自动保持唯一的当前项目；新会话默认选择按名称排序后的第一个项目，可调用 `project_switch` 切换。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。`project_list` 在集合顶层返回唯一的 `current_project` 项目名，项目数组内不重复携带 `current` 标记。
+启动后，没有注册项目时客户端只会看到项目管理工具。只要存在项目，Server 就会持久化并恢复唯一的当前项目；首次创建项目或迁移旧元数据时按名称排序选择第一个项目，可调用 `project_switch` 切换。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。`project_list` 在集合顶层返回唯一的 `current_project` 项目名，项目数组内不重复携带 `current` 标记。
 
 关闭状态下调用无参数的 `Terminal`，服务器会为当前项目创建独立的 TFBash 0.2 嵌入式运行时，并通过 `notifications/tools/list_changed` 动态暴露 `shell_open`、`shell_exec`、`shell_read`、`shell_write`、`shell_signal`、`shell_list` 和 `shell_close`。开启状态下再次调用 `Terminal`，会关闭该项目全部 Shell 和受管进程，然后移除这七个工具。`Terminal` 的描述会随状态明确显示下一次操作是开启还是关闭，不再要求提交布尔参数。每个项目的 `workspace_root` 和默认 cwd 都取项目的规范化 `root_dir`。
 
-- **LSP 模式与服务覆盖**：
-```bash
-ide4ai-mcp --lsp-mode auto
-ide4ai-mcp --lsp-mode explicit --lsp-language-id python \
-  --lsp-server-command "pyright-langserver --stdio"
-ide4ai-mcp --lsp-mode disabled
-```
-
-对应环境变量为 `LSP_MODE`、`LSP_LANGUAGE_ID` 与 `LSP_SERVER_COMMAND`。运行中的状态查询和显式重载由 MCP `Lsp` 工具提供。
+- **LSP 模式与服务覆盖**：在 `project_create` 的 `lsp` 参数中配置；运行中的状态查询和显式重载由 MCP `Lsp` 工具提供。
 
 ## 📚 核心概念（使用者）
 

@@ -18,7 +18,8 @@ Demonstrates how to start MCP Server with default stdio mode
 """
 
 import asyncio
-import os
+
+from confz import DataSource
 
 from ide4ai.a2c_smcp import IDEMCPServer, MCPServerConfig
 
@@ -30,10 +31,6 @@ async def main() -> None:
     启动 MCP Server 并配置基本参数
     Start MCP Server with basic configuration
     """
-    # 从环境变量获取配置，或使用默认值 | Get config from env vars or use defaults
-    root_dir = os.getenv("PROJECT_ROOT", ".")
-    project_name = os.getenv("PROJECT_NAME", "example-project")
-
     # 定义命令白名单 | Define command whitelist
     # 这些是允许执行的命令 | These are the allowed commands
     cmd_white_list = [
@@ -67,25 +64,27 @@ async def main() -> None:
     ]
 
     # 创建配置 | Create configuration
-    config = MCPServerConfig(
-        cmd_white_list=cmd_white_list,
-        root_dir=root_dir,
-        project_name=project_name,
-        render_with_symbols=True,  # 启用符号渲染 | Enable symbol rendering
-        max_active_models=3,  # 最大活跃模型数 | Max active models
-        cmd_time_out=30,  # 命令超时 30 秒 | Command timeout 30 seconds
-        enable_simple_view_mode=True,  # 启用简化视图 | Enable simple view mode
-    )
+    with MCPServerConfig.change_config_sources(
+        DataSource(
+            data={
+                "cmd_white_list": cmd_white_list,
+                "render_with_symbols": True,
+                "max_active_models": 3,
+                "cmd_time_out": 30,
+                "enable_simple_view_mode": True,
+            }
+        )
+    ):
+        config = MCPServerConfig()
 
     print("🚀 启动 IDE MCP Server | Starting IDE MCP Server")
-    print(f"📁 项目根目录 | Project root: {root_dir}")
-    print(f"📦 项目名称 | Project name: {project_name}")
     print(f"✅ 命令白名单 | Command whitelist: {len(cmd_white_list)} commands")
     print(f"⏱️  命令超时 | Command timeout: {config.cmd_time_out}s")
     print()
     print("💡 提示 | Tip:")
     print("   MCP Server 将通过 stdio 与客户端通信")
     print("   MCP Server will communicate with client via stdio")
+    print("   启动后请通过 project_create 注册项目 | Register projects with project_create after startup")
     print()
 
     # 创建并运行 server | Create and run server

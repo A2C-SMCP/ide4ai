@@ -36,9 +36,9 @@ ide4ai/a2c_smcp/
 
 ### 1. stdio 多项目会话 | stdio Multi-project Session
 
-多项目 V1 使用 legacy stdio。SSE 与 Streamable HTTP 尚未定义会话隔离语义，因此会拒绝启动。
+多项目 Server 当前使用 stdio。SSE 与 Streamable HTTP 尚未定义会话隔离语义，因此会拒绝启动。
 
-Multi-project V1 uses legacy stdio. SSE and Streamable HTTP are rejected until their session-isolation semantics are defined.
+The multi-project server currently uses stdio. SSE and Streamable HTTP are rejected until their session-isolation semantics are defined.
 
 ### 2. 动态目录与懒加载 | Dynamic Catalog and Lazy Loading
 
@@ -126,9 +126,7 @@ uv run ide4ai-mcp
 python -m ide4ai.a2c_smcp.cli
 ```
 
-默认启动不隐式创建项目。客户端先使用 `project_create` 注册目录；只要存在注册项目，Server 就始终维护唯一的当前项目，新会话默认选择按名称排序后的第一个项目，可使用 `project_switch` 主动切换。`project_list` 将唯一项目名放在集合顶层的 `current_project` 字段，只有项目列表为空时该字段才为 `null`。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
-
-For legacy configurations, pass both `--root-dir` and `--project-name` to bootstrap and select one project. Omitting both starts with the persisted registry and no forced selection.
+默认启动不隐式创建项目。客户端使用 `project_create` 注册目录；只要存在注册项目，Server 就持久化并恢复唯一的当前项目，可使用 `project_switch` 主动切换。`project_list` 将唯一项目名放在集合顶层的 `current_project` 字段，只有项目列表为空时该字段才为 `null`。项目名称、根目录和 LSP 配置只属于 `project_create`，不是 Server 启动参数。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
 
 ### 在代码中使用 | Use in Code
 
@@ -156,15 +154,16 @@ if __name__ == "__main__":
 **使用 stdio 模式 | Using stdio mode:**
 ```python
 import asyncio
+from confz import DataSource
 from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
-    config = MCPServerConfig(
-        transport="stdio",  # 默认模式 | Default mode
-        cmd_white_list=["ls", "pwd", "echo", "cat"],
-        root_dir="/path/to/project",
-        project_name="my-project",
-    )
+    with MCPServerConfig.change_config_sources(DataSource(data={
+        "transport": "stdio",
+        "cmd_white_list": ["ls", "pwd", "echo", "cat"],
+        "project_registry_path": "/path/to/projects.json",
+    })):
+        config = MCPServerConfig()
     
     server = IDEMCPServer(config)
     await server.run()
@@ -193,8 +192,6 @@ Add to MCP client configuration file:
       "args": ["--from", "ide4ai", "ide4ai-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30",
         "RENDER_WITH_SYMBOLS": "true",
@@ -217,8 +214,6 @@ Add to MCP client configuration file:
         "--from", "ide4ai",
         "ide4ai-mcp",
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30",
         "--render-with-symbols", "true",
@@ -240,12 +235,10 @@ Add to MCP client configuration file:
       "args": [
         "--from", "ide4ai",
         "ide4ai-mcp",
-        "--root-dir", "/path/to/project",
         "--cmd-timeout", "60"
       ],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat"
       }
     }
@@ -264,8 +257,6 @@ Add to MCP client configuration file:
       "args": [],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30"
       }
@@ -282,8 +273,6 @@ Add to MCP client configuration file:
       "command": "ide4ai-mcp",
       "args": [
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30"
       ]
@@ -303,8 +292,6 @@ Add to MCP client configuration file:
       "args": ["-m", "ide4ai.a2c_smcp.cli"],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30"
       }
@@ -322,8 +309,6 @@ Add to MCP client configuration file:
       "args": [
         "-m", "ide4ai.a2c_smcp.cli",
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30"
       ]
@@ -338,11 +323,10 @@ Add to MCP client configuration file:
 
 | 参数名 Parameter | 环境变量 Environment Variable | 命令行参数 CLI Argument | 默认值 Default | 说明 Description |
 |-----------------|------------------------------|------------------------|---------------|------------------|
-| transport | TRANSPORT | --transport | "stdio" | 多项目 V1 仅支持 stdio \| Multi-project V1 supports stdio only |
+| transport | TRANSPORT | --transport | "stdio" | 当前多项目 Server 仅支持 stdio \| The multi-project server currently supports stdio only |
 | host | HOST | --host | "127.0.0.1" | 服务器主机 \| Server host (for sse/streamable-http) |
 | port | PORT | --port | 8000 | 服务器端口 \| Server port (for sse/streamable-http) |
-| root_dir | PROJECT_ROOT | --root-dir | null | 可选兼容启动项目根目录，须与名称同时提供 \| Optional legacy bootstrap root; pair with name |
-| project_name | PROJECT_NAME | --project-name | null | 可选兼容启动项目名称，须与根目录同时提供 \| Optional legacy bootstrap name; pair with root |
+| project_registry_path | PROJECT_REGISTRY_PATH | --project-registry-path | platform config/ide4ai/projects.json | Server 持久化项目及当前选择的元数据文件 \| Server-owned project and selection metadata |
 | cmd_white_list | CMD_WHITE_LIST | --cmd-white-list | ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"] | 命令白名单（逗号分隔）\| Command whitelist (comma separated) |
 | cmd_time_out | CMD_TIMEOUT | --cmd-timeout | 10 | 命令超时时间(秒) \| Command timeout (seconds) |
 | render_with_symbols | RENDER_WITH_SYMBOLS | --render-with-symbols | true | 是否渲染符号 \| Whether to render symbols |
@@ -357,7 +341,7 @@ Command-line Arguments > Environment Variables > Default Values
 
 ### 传输范围 | Transport Scope
 
-当前动态多项目服务器仅支持 legacy stdio。网络传输需要先实现每个 MCP 会话独立的项目选择和运行态所有权。
+当前动态多项目服务器仅支持 stdio transport。网络传输需要先实现每个 MCP 会话独立的项目选择和运行态所有权。
 
 ## 开发指南 | Development Guide
 

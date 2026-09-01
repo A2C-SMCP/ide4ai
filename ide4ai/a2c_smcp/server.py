@@ -200,7 +200,7 @@ class BaseMCPServer:
         )
 
     def initialization_options(self) -> Any:
-        """Advertise dynamic list support to legacy stdio clients."""
+        """Advertise dynamic list support to stdio clients."""
         return self.server.create_initialization_options(
             notification_options=NotificationOptions(tools_changed=True, resources_changed=True)
         )
@@ -208,7 +208,7 @@ class BaseMCPServer:
     async def run(self) -> None:
         if self.config.transport != "stdio":
             raise ValueError(
-                "Multi-project MCP currently supports legacy stdio only; "
+                "Multi-project MCP currently supports stdio transport only; "
                 f"unsupported transport: {self.config.transport}"
             )
         try:

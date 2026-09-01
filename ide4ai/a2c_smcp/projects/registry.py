@@ -18,6 +18,7 @@ from ide4ai.a2c_smcp.projects.models import (
     Project,
     ProjectLspConfig,
     ProjectRegistryDocument,
+    ProjectRegistryDocumentV1,
     roots_refer_to_same_location,
 )
 
@@ -29,11 +30,32 @@ class ProjectRegistry:
         self.path = Path(path).expanduser().resolve()
         self._lock = threading.RLock()
         self._file_lock = FileLock(f"{self.path}.lock")
+        self._migrate_legacy_document()
+
+    def snapshot(self) -> ProjectRegistryDocument:
+        """Read the complete canonical project metadata document."""
+
+        with self._locked():
+            return self._read_unlocked()
+
+    def view(self) -> tuple[tuple[Project, ...], Project | None]:
+        """Return the sorted projects and selected project from one locked read."""
+        document = self.snapshot()
+        projects = self._sorted_projects(document.projects)
+        current = (
+            next(project for project in projects if project.id == document.current_project_id)
+            if document.current_project_id is not None
+            else None
+        )
+        return projects, current
 
     def list(self) -> tuple[Project, ...]:
-        with self._locked():
-            document = self._read_unlocked()
-            return tuple(sorted(document.projects, key=lambda project: (project.name.casefold(), str(project.id))))
+        projects, _ = self.view()
+        return projects
+
+    def current(self) -> Project | None:
+        _, current = self.view()
+        return current
 
     def create(self, *, name: str, root_dir: str | Path, lsp: ProjectLspConfig | None = None) -> Project:
         canonical_root = self._canonical_root(root_dir)
@@ -41,15 +63,42 @@ class ProjectRegistry:
         with self._locked():
             document = self._read_unlocked()
             self._ensure_unique(document.projects, candidate)
-            self._write_unlocked(ProjectRegistryDocument(projects=(*document.projects, candidate)))
+            projects = (*document.projects, candidate)
+            self._write_unlocked(
+                ProjectRegistryDocument(
+                    projects=projects,
+                    current_project_id=document.current_project_id or candidate.id,
+                )
+            )
         return candidate
+
+    def select(self, identifier: str | UUID) -> Project:
+        with self._locked():
+            document = self._read_unlocked()
+            project = self._find(document.projects, identifier)
+            self._write_unlocked(
+                ProjectRegistryDocument(
+                    projects=document.projects,
+                    current_project_id=project.id,
+                )
+            )
+            return project
 
     def delete(self, identifier: str | UUID) -> Project:
         with self._locked():
             document = self._read_unlocked()
             project = self._find(document.projects, identifier)
             remaining = tuple(item for item in document.projects if item.id != project.id)
-            self._write_unlocked(ProjectRegistryDocument(projects=remaining))
+            current_project_id = document.current_project_id
+            if current_project_id == project.id:
+                sorted_remaining = self._sorted_projects(remaining)
+                current_project_id = sorted_remaining[0].id if sorted_remaining else None
+            self._write_unlocked(
+                ProjectRegistryDocument(
+                    projects=remaining,
+                    current_project_id=current_project_id,
+                )
+            )
             return project
 
     def find(self, identifier: str | UUID) -> Project:
@@ -67,6 +116,26 @@ class ProjectRegistry:
             return ProjectRegistryDocument.model_validate_json(content)
         except (OSError, ValidationError, ValueError) as exc:
             raise ProjectRegistryError(f"Cannot read project registry {self.path}: {exc}") from exc
+
+    def _migrate_legacy_document(self) -> None:
+        with self._locked():
+            if not self.path.exists():
+                return
+            try:
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+                if payload.get("version") != 1:
+                    ProjectRegistryDocument.model_validate(payload)
+                    return
+                legacy = ProjectRegistryDocumentV1.model_validate(payload)
+                projects = self._sorted_projects(legacy.projects)
+                self._write_unlocked(
+                    ProjectRegistryDocument(
+                        projects=legacy.projects,
+                        current_project_id=projects[0].id if projects else None,
+                    )
+                )
+            except (OSError, ValidationError, ValueError, AttributeError) as exc:
+                raise ProjectRegistryError(f"Cannot migrate project registry {self.path}: {exc}") from exc
 
     def _write_unlocked(self, document: ProjectRegistryDocument) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +184,10 @@ class ProjectRegistry:
                 raise ProjectConflictError(f"Project name already exists: {candidate.name}")
             if roots_refer_to_same_location(project.root_dir, candidate.root_dir):
                 raise ProjectConflictError(f"Project root already exists: {candidate.root_dir}")
+
+    @staticmethod
+    def _sorted_projects(projects: tuple[Project, ...]) -> tuple[Project, ...]:
+        return tuple(sorted(projects, key=lambda project: (project.name.casefold(), str(project.id))))
 
     @staticmethod
     def _find(projects: tuple[Project, ...], identifier: str | UUID) -> Project:

@@ -139,8 +139,8 @@ class ProjectToolProvider:
     async def _list(self, arguments: dict[str, Any]) -> ToolCallOutcome:
         if arguments:
             raise ValueError("project_list does not accept arguments")
-        current = self._host.current_project
-        projects = [_project_output(project) for project in self._host.list_projects()]
+        registered, current = self._host.project_view()
+        projects = [_project_output(project) for project in registered]
         return ToolCallOutcome(
             {
                 "projects": projects,

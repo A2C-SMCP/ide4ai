@@ -567,6 +567,34 @@ async def test_project_list_reports_single_collection_level_current_project(tmp_
     assert selected.result["current_project"] == "second"
     assert all("current" not in project for project in selected.result["projects"])
 
+    restored = ProjectHost(
+        ProjectRegistry(host.registry.path),
+        lambda project: cast(IDE, _FakeIDE(project.name)),
+    )
+    assert restored.current_project is not None
+    assert restored.current_project.name == "second"
+
+
+@pytest.mark.asyncio
+async def test_project_list_uses_one_atomic_registry_view(tmp_path, monkeypatch) -> None:
+    host, _ = _host(tmp_path)
+    project = host.create_project(name="only", root_dir=tmp_path)
+    provider = ProjectToolProvider(host)
+    project_list = next(binding for binding in provider.bindings(project) if binding.definition.name == "project_list")
+    calls = 0
+
+    def view():
+        nonlocal calls
+        calls += 1
+        return (project,), project
+
+    monkeypatch.setattr(host, "project_view", view)
+    result = await project_list.invoke({})
+
+    assert calls == 1
+    assert result.result["current_project"] == "only"
+    assert [item["name"] for item in result.result["projects"]] == ["only"]
+
 
 def test_resource_uri_uses_project_id_and_old_uri_cannot_cross_switch(tmp_path) -> None:
     host, _ = _host(tmp_path)

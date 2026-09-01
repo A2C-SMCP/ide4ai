@@ -9,7 +9,7 @@ from mcp.types import CallToolResult
 
 from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
-from ide4ai.a2c_smcp.projects import ProjectError
+from ide4ai.a2c_smcp.projects import ProjectError, ProjectRegistry
 
 
 @pytest.mark.parametrize("transport", ["stdio", "sse", "streamable-http"])
@@ -36,16 +36,17 @@ def test_default_server_starts_without_loading_an_ide(tmp_path) -> None:
             server.close()
 
 
-def test_legacy_bootstrap_selects_project_without_loading_ide(tmp_path) -> None:
+def test_server_exposes_only_dynamic_catalogs_not_direct_compatibility_views() -> None:
+    assert not hasattr(IDEMCPServer, "ide")
+    assert not hasattr(IDEMCPServer, "tools")
+    assert not hasattr(IDEMCPServer, "resources")
+
+
+def test_persisted_project_restores_without_loading_ide(tmp_path) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
     with MCPServerConfig.change_config_sources(
-        DataSource(
-            data={
-                "transport": "stdio",
-                "root_dir": str(tmp_path),
-                "project_name": "bootstrap",
-                "project_registry_path": str(tmp_path / "projects.json"),
-            }
-        )
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
     ):
         server = IDEMCPServer(MCPServerConfig())
         try:
@@ -61,15 +62,10 @@ def test_legacy_bootstrap_selects_project_without_loading_ide(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_async_server_close_releases_enabled_terminal_runtime(tmp_path) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
     with MCPServerConfig.change_config_sources(
-        DataSource(
-            data={
-                "transport": "stdio",
-                "root_dir": str(tmp_path),
-                "project_name": "bootstrap",
-                "project_registry_path": str(tmp_path / "projects.json"),
-            }
-        )
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
     ):
         server = IDEMCPServer(MCPServerConfig())
         project = server.project_host.current_project
@@ -96,15 +92,10 @@ async def test_async_server_close_releases_enabled_terminal_runtime(tmp_path) ->
 
 @pytest.mark.asyncio
 async def test_sync_close_rejects_terminal_factory_in_progress(tmp_path, monkeypatch) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
     with MCPServerConfig.change_config_sources(
-        DataSource(
-            data={
-                "transport": "stdio",
-                "root_dir": str(tmp_path),
-                "project_name": "bootstrap",
-                "project_registry_path": str(tmp_path / "projects.json"),
-            }
-        )
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
     ):
         server = IDEMCPServer(MCPServerConfig())
         project = server.project_host.current_project
@@ -156,5 +147,5 @@ def test_network_transports_are_explicitly_rejected(tmp_path, transport: str) ->
     with MCPServerConfig.change_config_sources(
         DataSource(data={"transport": transport, "project_registry_path": str(tmp_path / "projects.json")})
     ):
-        with pytest.raises(ValueError, match="legacy stdio only"):
+        with pytest.raises(ValueError, match="stdio transport only"):
             IDEMCPServer(MCPServerConfig())

@@ -46,6 +46,7 @@ def test_generic_mcp_cli_help_does_not_start_server(monkeypatch, capsys) -> None
     output = capsys.readouterr().out
     assert "usage: ide4ai-mcp" in output
     assert "--lsp-profile-language-id" in output
+    assert "--project-registry-path" in output
 
 
 def test_generic_mcp_module_entrypoint_displays_help() -> None:

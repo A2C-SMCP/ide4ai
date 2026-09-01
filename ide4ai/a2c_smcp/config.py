@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from confz import BaseConfig, CLArgSource, EnvSource
 from confz.base_config import BaseConfigMetaclass
+from platformdirs import user_config_path
 from pydantic import Field, field_validator
 
 from ide4ai.base import WorkspaceSetting
@@ -80,6 +81,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
                 "PORT": "port",
                 "PROJECT_ROOT": "root_dir",
                 "PROJECT_NAME": "project_name",
+                "PROJECT_REGISTRY_PATH": "project_registry_path",
                 "CMD_WHITE_LIST": "cmd_white_list",
                 "CMD_TIMEOUT": "cmd_time_out",
                 "RENDER_WITH_SYMBOLS": "render_with_symbols",
@@ -101,6 +103,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
                 "port": "port",
                 "root-dir": "root_dir",
                 "project-name": "project_name",
+                "project-registry-path": "project_registry_path",
                 "cmd-white-list": "cmd_white_list",
                 "cmd-timeout": "cmd_time_out",
                 "render-with-symbols": "render_with_symbols",
@@ -139,6 +142,10 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     )
     root_dir: str = Field(default=".", description="项目根目录 | Project root directory")
     project_name: str = Field(default="mcp-project", description="项目名称 | Project name")
+    project_registry_path: str = Field(
+        default_factory=lambda: str(user_config_path("ide4ai") / "projects.json"),
+        description="持久化项目注册表路径 | Persistent project registry path",
+    )
     render_with_symbols: bool = Field(default=True, description="是否渲染符号 | Whether to render symbols")
     max_active_models: int = Field(default=3, description="最大活跃模型数 | Maximum active models")
     cmd_time_out: int = Field(default=10, description="命令超时时间(秒) | Command timeout (seconds)")
@@ -238,3 +245,10 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
             ),
             "lsp_settings": LspSettings(mode=self.lsp_mode, language_id=self.lsp_language_id),
         }
+
+    def to_project_ide_defaults(self) -> dict[str, Any]:
+        """Return server-wide IDE defaults overridden by each project record."""
+        kwargs = self.to_ide_kwargs()
+        for project_field in ("root_dir", "project_name", "language_profiles", "lsp_settings"):
+            kwargs.pop(project_field)
+        return kwargs

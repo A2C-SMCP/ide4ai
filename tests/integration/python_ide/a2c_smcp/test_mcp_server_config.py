@@ -33,6 +33,7 @@ class TestMCPServerConfig:
 
             assert config.root_dir == "."
             assert config.project_name == "mcp-project"
+            assert config.project_registry_path.endswith("ide4ai/projects.json")
             assert config.cmd_time_out == 10
             # 默认白名单不为空 | Default whitelist is not empty
             assert config.cmd_white_list == ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"]
@@ -54,6 +55,19 @@ class TestMCPServerConfig:
             assert "cmd_filter" in kwargs
             assert "cmd_time_out" in kwargs
             assert "render_with_symbols" in kwargs
+
+            project_defaults = config.to_project_ide_defaults()
+            assert "root_dir" not in project_defaults
+            assert "project_name" not in project_defaults
+            assert "language_profiles" not in project_defaults
+            assert "lsp_settings" not in project_defaults
+
+    def test_custom_project_registry_path(self, tmp_path) -> None:
+        registry_path = tmp_path / "projects.json"
+        with MCPServerConfig.change_config_sources(DataSource(data={"project_registry_path": str(registry_path)})):
+            config = MCPServerConfig()
+
+        assert config.project_registry_path == str(registry_path)
 
 
 class TestEnvironmentVariables:

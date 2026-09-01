@@ -457,6 +457,15 @@ wheels = [
 ]
 
 [[package]]
+name = "filelock"
+version = "3.32.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/30/03b03951873a1a0ffc7e8ca0e10c15597b59e8d0e39260704cd2ea087bc4/filelock-3.32.4.tar.gz", hash = "sha256:2bde2e4cf732e0153406d8a7bc80620ecf5e621fe0d25e41143c4e3b4733ff30", size = 222126, upload-time = "2026-08-23T17:37:55.363Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/a4/9b63d595d748e3aff8812b65eacc1a2c4bd90b7c2012e08e72373b4835eb/filelock-3.32.4-py3-none-any.whl", hash = "sha256:22e58ca3b1ae3b98993b762d7338367ae64fe50252bf78d59da3bfebcdf1cedd", size = 99864, upload-time = "2026-08-23T17:37:53.913Z" },
+]
+
+[[package]]
 name = "gymnasium"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -527,6 +536,7 @@ dependencies = [
     { name = "confz" },
     { name = "docker" },
     { name = "emoji" },
+    { name = "filelock" },
     { name = "gymnasium" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -535,6 +545,7 @@ dependencies = [
     { name = "mcp" },
     { name = "paramiko" },
     { name = "pexpect" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "regex" },
     { name = "simple-parsing" },
@@ -570,6 +581,7 @@ requires-dist = [
     { name = "confz", specifier = ">=2.1.0" },
     { name = "docker", specifier = ">=7.0.0" },
     { name = "emoji", specifier = ">=2.11.1" },
+    { name = "filelock", specifier = ">=3.16.0,<4.0.0" },
     { name = "gymnasium", specifier = ">=0.29.1" },
     { name = "httpx", specifier = ">=0.25.0,<1.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
@@ -578,6 +590,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.19.0,<2.0.0" },
     { name = "paramiko", specifier = ">=3.4.0" },
     { name = "pexpect", specifier = ">=4.9.0" },
+    { name = "platformdirs", specifier = ">=4.3.0,<5.0.0" },
     { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
     { name = "regex", specifier = ">=2025.10.23" },
     { name = "simple-parsing", specifier = ">=0.1.5" },
@@ -969,6 +982,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/c3/059298687310d527a58bb01f3b1965787ee3b40dce76752eda8b44e9a2c5/pexpect-4.9.0-py2.py3-none-any.whl", hash = "sha256:7236d1e080e4936be2dc3e326cec0af72acf9212a7e1d060210e70a47e253523", size = 63772, upload-time = "2023-11-25T06:56:14.81Z" },
+]
+
+[[package]]
+name = "platformdirs"
+version = "4.11.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/06/cf1564dcc2e2261c8c8c6c05628dc8b418943bdae2a4e58640ceb2f770fa/platformdirs-4.11.5.tar.gz", hash = "sha256:e8b31f4f8bcbbedef91a6b57a706255e4f148d2a4e01648382a0a47342539173", size = 34823, upload-time = "2026-08-27T21:36:37.46Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/12/6f3fcd5067a9cbf4f8664b32957973498da8b083455203c8d9cab83a725c/platformdirs-4.11.5-py3-none-any.whl", hash = "sha256:89f8d42695853b89c7170bd49bc3dc593f98a71e695ede88e06a3b247bc4563b", size = 23900, upload-time = "2026-08-27T21:36:36.227Z" },
 ]
 
 [[package]]

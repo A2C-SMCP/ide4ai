@@ -31,6 +31,7 @@ def _print_help_if_requested() -> bool:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--root-dir", default=".")
     parser.add_argument("--project-name", default="mcp-project")
+    parser.add_argument("--project-registry-path")
     parser.add_argument("--cmd-white-list")
     parser.add_argument("--cmd-timeout", type=int, default=10)
     parser.add_argument("--render-with-symbols")

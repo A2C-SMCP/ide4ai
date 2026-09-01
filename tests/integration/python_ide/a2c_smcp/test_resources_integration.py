@@ -35,6 +35,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-resources",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -68,6 +69,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-base-uri",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -104,6 +106,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-to-dict",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -154,6 +157,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-read-content",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -186,6 +190,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-dynamic-params",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -232,6 +237,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-same-base",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):
@@ -266,6 +272,7 @@ class TestResourcesIntegration:
                     "transport": "stdio",
                     "root_dir": str(tmp_path),
                     "project_name": "test-mcp-spec",
+                    "project_registry_path": str(tmp_path / "projects.json"),
                 },
             ),
         ):

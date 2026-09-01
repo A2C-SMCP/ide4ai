@@ -64,6 +64,13 @@ class ProjectHost:
     def unload_current(self, *, force: bool = False) -> bool:
         with self._lock:
             project = self._require_current_unlocked()
+        return self.unload_project(project, force=force)
+
+    def unload_project(self, project: Project, *, force: bool = False) -> bool:
+        """Unload a captured project without following a later selection change."""
+        with self._lock:
+            self._ensure_open()
+            self.registry.find(project.id)
             runtime = self._runtimes.get(project.id)
             if runtime is None:
                 return False
@@ -88,14 +95,23 @@ class ProjectHost:
         """Pin the selected project before a call starts, surviving later switches."""
         with self._lock:
             project = self._require_current_unlocked()
+        with self.lease_project(project) as leased:
+            yield leased
+
+    @contextmanager
+    def lease_project(self, project: Project) -> Iterator[tuple[Project, IDE]]:
+        """Lease an already captured project without consulting later selection changes."""
+        with self._lock:
+            self._ensure_open()
+            persisted_project = self.registry.find(project.id)
             runtime = self._runtimes.get(project.id)
             if runtime is None:
-                runtime = ProjectRuntime(project, self._ide_factory)
+                runtime = ProjectRuntime(persisted_project, self._ide_factory)
                 self._runtimes[project.id] = runtime
             lease = runtime.lease()
             ide = lease.__enter__()
         try:
-            yield project, ide
+            yield persisted_project, ide
         finally:
             lease.__exit__(*sys.exc_info())
 

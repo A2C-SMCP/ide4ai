@@ -84,6 +84,7 @@ CONFIG = {
                     data={
                         "root_dir": tmpdir,
                         "project_name": "test-grep-integration",
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
                         "transport": "stdio",
                         "render_with_symbols": False,
                     },
@@ -305,7 +306,15 @@ class TestGrepIntegrationRealWorld:
 
             from confz import DataSource
 
-            with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
+            with MCPServerConfig.change_config_sources(
+                DataSource(
+                    data={
+                        "root_dir": tmpdir,
+                        "project_name": "test",
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                )
+            ):
                 config = MCPServerConfig()
 
             server = IDEMCPServer(config)
@@ -351,7 +360,15 @@ class MyClass:
 
             from confz import DataSource
 
-            with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
+            with MCPServerConfig.change_config_sources(
+                DataSource(
+                    data={
+                        "root_dir": tmpdir,
+                        "project_name": "test",
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                )
+            ):
                 config = MCPServerConfig()
 
             server = IDEMCPServer(config)
@@ -470,7 +487,13 @@ class TestDataProcessor(unittest.TestCase):
             from confz import DataSource
 
             with MCPServerConfig.change_config_sources(
-                DataSource(data={"root_dir": tmpdir, "project_name": "test-context"}),
+                DataSource(
+                    data={
+                        "root_dir": tmpdir,
+                        "project_name": "test-context",
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                ),
             ):
                 config = MCPServerConfig()
 

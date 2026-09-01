@@ -101,12 +101,14 @@ uvx --from ide4ai==<version> ide4ai-mcp
 #### 常用启动参数（CLI 与环境变量）
 
 - **传输模式**：`--transport`（默认 `stdio`）
-  - 取值：`stdio` | `sse` | `streamable-http`
+  - 多项目 V1 仅支持 `stdio`；`sse` 与 `streamable-http` 会明确拒绝启动
   - 环境变量：`TRANSPORT`
 - **主机/端口**：`--host`（默认 `127.0.0.1`）、`--port`（默认 `8000`）
   - 仅用于 `sse` 与 `streamable-http`
   - 环境变量：`HOST`、`PORT`
-- **项目根目录/名称**：`--root-dir`（默认 `.`）、`--project-name`（默认 `mcp-project`）
+- **项目根目录/名称**：可选的 `--root-dir`、`--project-name`，必须成对提供
+  - 未提供时由 MCP 的 `project_create`、`project_list`、`project_switch`、`project_delete` 管理项目
+  - 成对提供时仅用于兼容旧配置：启动时注册并选择该项目
   - 环境变量：`PROJECT_ROOT`、`PROJECT_NAME`
 - **命令白名单**：`--cmd-white-list`（逗号分隔）
   - 默认：`["ls","pwd","echo","cat","grep","find","head","tail","wc"]`
@@ -124,16 +126,12 @@ uvx --from ide4ai==<version> ide4ai-mcp
 
 #### 示例
 
-- **SSE 模式（本地 8000 端口）**：
-```bash
-uvx --from ide4ai ide4ai-mcp --transport sse --host 127.0.0.1 --port 8000 \
-  --root-dir "/path/to/proj" --project-name my_proj
-```
-
 - **标准输入输出（默认）+ 自定义白名单与超时**：
 ```bash
 uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
+
+启动后，未选择项目时客户端只会看到项目管理工具。只有一个注册项目时自动选择；存在多个项目时调用 `project_switch`。选择后才会出现 IDE 工具和 `window://` 资源。
 
 - **LSP 模式与服务覆盖**：
 ```bash

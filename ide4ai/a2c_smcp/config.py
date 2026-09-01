@@ -10,13 +10,15 @@ MCP Server 配置管理 | MCP Server Configuration Management
 This module manages MCP Server configuration, including IDE instance initialization parameters
 """
 
+from __future__ import annotations
+
 import shlex
 from typing import Any, Literal
 
 from confz import BaseConfig, CLArgSource, EnvSource
 from confz.base_config import BaseConfigMetaclass
 from platformdirs import user_config_path
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from ide4ai.base import WorkspaceSetting
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
@@ -32,7 +34,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     Supports loading configuration from environment variables and command-line arguments
 
     Attributes:
-        transport: 传输模式 | Transport mode (stdio, sse, streamable-http)
+        transport: 传输模式 | Transport mode (multi-project V1: stdio only)
         host: 服务器主机地址 | Server host address (for sse/streamable-http)
         port: 服务器端口 | Server port (for sse/streamable-http)
         cmd_white_list: 命令白名单 | Command whitelist
@@ -122,8 +124,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # 传输模式配置 | Transport mode configuration
     transport: Literal["stdio", "sse", "streamable-http"] = Field(
         default="stdio",
-        description="传输模式：stdio(标准输入输出), sse(Server-Sent Events), streamable-http(Streamable HTTP) | "
-        "Transport mode: stdio, sse, streamable-http",
+        description="传输模式；多项目 V1 仅支持 stdio | Transport mode; multi-project V1 supports stdio only",
     )
     host: str = Field(
         default="127.0.0.1",
@@ -140,8 +141,8 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         description="命令白名单，逗号分隔的字符串会被自动解析为列表 | Command whitelist, comma-separated string will be "
         "automatically parsed to list",
     )
-    root_dir: str = Field(default=".", description="项目根目录 | Project root directory")
-    project_name: str = Field(default="mcp-project", description="项目名称 | Project name")
+    root_dir: str | None = Field(default=None, description="Optional legacy bootstrap project root")
+    project_name: str | None = Field(default=None, description="Optional legacy bootstrap project name")
     project_registry_path: str = Field(
         default_factory=lambda: str(user_config_path("ide4ai") / "projects.json"),
         description="持久化项目注册表路径 | Persistent project registry path",
@@ -194,6 +195,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         # 其他情况返回空列表 | Return empty list for other cases
         return []
 
+    @model_validator(mode="after")
+    def validate_bootstrap_project(self) -> MCPServerConfig:
+        if (self.root_dir is None) != (self.project_name is None):
+            raise ValueError("root_dir and project_name must be provided together for legacy project bootstrap")
+        return self
+
     @field_validator("lsp_server_command", mode="before")
     @classmethod
     def parse_lsp_server_command(cls, value: Any) -> tuple[str, ...] | None:
@@ -224,19 +231,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         Returns:
             dict: IDE 初始化参数字典 | IDE initialization parameters dict
         """
-        # 将 cmd_white_list 转换为 CommandFilterConfig
-        # Convert cmd_white_list to CommandFilterConfig
-        cmd_filter = CommandFilterConfig.from_white_list(self.cmd_white_list)
-
+        if self.root_dir is None or self.project_name is None:
+            raise ValueError("to_ide_kwargs requires an explicit legacy bootstrap project")
         return {
-            "cmd_filter": cmd_filter,
+            **self.to_project_ide_defaults(),
             "root_dir": self.root_dir,
             "project_name": self.project_name,
-            "render_with_symbols": self.render_with_symbols,
-            "max_active_models": self.max_active_models,
-            "cmd_time_out": self.cmd_time_out,
-            "enable_simple_view_mode": self.enable_simple_view_mode,
-            "workspace_setting": self.workspace_setting,
             "language_profiles": configured_language_profiles(
                 language_id=self.lsp_profile_language_id or self.lsp_language_id,
                 server_command=self.lsp_server_command,
@@ -248,7 +248,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
 
     def to_project_ide_defaults(self) -> dict[str, Any]:
         """Return server-wide IDE defaults overridden by each project record."""
-        kwargs = self.to_ide_kwargs()
-        for project_field in ("root_dir", "project_name", "language_profiles", "lsp_settings"):
-            kwargs.pop(project_field)
-        return kwargs
+        cmd_filter = CommandFilterConfig.from_white_list(self.cmd_white_list)
+        return {
+            "cmd_filter": cmd_filter,
+            "render_with_symbols": self.render_with_symbols,
+            "max_active_models": self.max_active_models,
+            "cmd_time_out": self.cmd_time_out,
+            "enable_simple_view_mode": self.enable_simple_view_mode,
+            "workspace_setting": self.workspace_setting,
+        }

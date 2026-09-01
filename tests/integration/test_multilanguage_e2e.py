@@ -53,7 +53,12 @@ def _wait_until(predicate, *, timeout: float = 3.0) -> None:
 
 
 def _server_config(tmp_path: Path, project_name: str, **overrides: object) -> MCPServerConfig:
-    data: dict[str, object] = {"root_dir": str(tmp_path), "project_name": project_name, **overrides}
+    data: dict[str, object] = {
+        "root_dir": str(tmp_path),
+        "project_name": project_name,
+        "project_registry_path": str(tmp_path / "projects.json"),
+        **overrides,
+    }
     with MCPServerConfig.change_config_sources(DataSource(data=data)):
         return MCPServerConfig()
 

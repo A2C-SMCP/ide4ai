@@ -31,8 +31,8 @@ class TestMCPServerConfig:
         with MCPServerConfig.change_config_sources(DataSource(data={})):
             config = MCPServerConfig()
 
-            assert config.root_dir == "."
-            assert config.project_name == "mcp-project"
+            assert config.root_dir is None
+            assert config.project_name is None
             assert config.project_registry_path.endswith("ide4ai/projects.json")
             assert config.cmd_time_out == 10
             # 默认白名单不为空 | Default whitelist is not empty
@@ -45,7 +45,7 @@ class TestMCPServerConfig:
         """
         测试转换为 IDE 初始化参数 | Test conversion to IDE initialization parameters
         """
-        with MCPServerConfig.change_config_sources(DataSource(data={})):
+        with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": ".", "project_name": "mcp-project"})):
             config = MCPServerConfig()
 
             kwargs = config.to_ide_kwargs()
@@ -77,7 +77,7 @@ class TestEnvironmentVariables:
         """
         测试 PROJECT_ROOT 环境变量 | Test PROJECT_ROOT environment variable
         """
-        with patch.dict(os.environ, {"PROJECT_ROOT": "/custom/root"}, clear=True):
+        with patch.dict(os.environ, {"PROJECT_ROOT": "/custom/root", "PROJECT_NAME": "custom-name"}, clear=True):
             with patch.object(sys, "argv", ["test"]):
                 # 重新创建配置源以使用新的环境变量
                 # Recreate config sources to use new environment variables
@@ -99,12 +99,12 @@ class TestEnvironmentVariables:
         """
         测试 PROJECT_NAME 环境变量 | Test PROJECT_NAME environment variable
         """
-        with patch.dict(os.environ, {"PROJECT_NAME": "custom-name"}, clear=True):
+        with patch.dict(os.environ, {"PROJECT_ROOT": "/custom/root", "PROJECT_NAME": "custom-name"}, clear=True):
             with patch.object(sys, "argv", ["test"]):
                 env_source = EnvSource(
                     allow_all=True,
                     prefix="",
-                    remap={"PROJECT_NAME": "project_name"},
+                    remap={"PROJECT_ROOT": "root_dir", "PROJECT_NAME": "project_name"},
                 )
                 with MCPServerConfig.change_config_sources(env_source):
                     config = MCPServerConfig()
@@ -202,10 +202,10 @@ class TestCommandLineArguments:
         测试 --root-dir 命令行参数 | Test --root-dir command-line argument
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch.object(sys, "argv", ["test", "--root-dir", "/cli/root"]):
+            with patch.object(sys, "argv", ["test", "--root-dir", "/cli/root", "--project-name", "cli-project"]):
                 cli_source = CLArgSource(
                     prefix="",
-                    remap={"root-dir": "root_dir"},
+                    remap={"root-dir": "root_dir", "project-name": "project_name"},
                 )
                 with MCPServerConfig.change_config_sources(cli_source):
                     config = MCPServerConfig()
@@ -216,10 +216,10 @@ class TestCommandLineArguments:
         测试 --project-name 命令行参数 | Test --project-name command-line argument
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch.object(sys, "argv", ["test", "--project-name", "cli-project"]):
+            with patch.object(sys, "argv", ["test", "--root-dir", "/cli/root", "--project-name", "cli-project"]):
                 cli_source = CLArgSource(
                     prefix="",
-                    remap={"project-name": "project_name"},
+                    remap={"root-dir": "root_dir", "project-name": "project_name"},
                 )
                 with MCPServerConfig.change_config_sources(cli_source):
                     config = MCPServerConfig()

@@ -78,6 +78,7 @@ def test_mcp_config_registers_custom_lsp_profile(tmp_path: Path) -> None:
         DataSource(
             data={
                 "root_dir": str(tmp_path),
+                "project_name": "custom-rust-config",
                 "lsp_mode": "explicit",
                 "lsp_language_id": "rust",
                 "lsp_server_command": "rust-analyzer",
@@ -177,6 +178,7 @@ def test_generic_mcp_server_constructs_custom_language_ide(tmp_path: Path) -> No
             data={
                 "root_dir": str(tmp_path),
                 "project_name": project_name,
+                "project_registry_path": str(tmp_path / "projects.json"),
                 "lsp_mode": "auto",
                 "lsp_profile_language_id": "rust",
                 "lsp_server_command": "rust-analyzer",

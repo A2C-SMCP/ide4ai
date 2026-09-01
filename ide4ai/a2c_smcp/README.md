@@ -126,7 +126,7 @@ uv run ide4ai-mcp
 python -m ide4ai.a2c_smcp.cli
 ```
 
-默认启动不隐式创建项目。客户端先使用 `project_create` 注册目录，再使用 `project_switch` 选择项目；只有一个项目时会自动选择。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
+默认启动不隐式创建项目。客户端先使用 `project_create` 注册目录；只要存在注册项目，Server 就始终维护唯一的当前项目，新会话默认选择按名称排序后的第一个项目，可使用 `project_switch` 主动切换。`project_list` 将唯一项目名放在集合顶层的 `current_project` 字段，只有项目列表为空时该字段才为 `null`。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
 
 For legacy configurations, pass both `--root-dir` and `--project-name` to bootstrap and select one project. Omitting both starts with the persisted registry and no forced selection.
 

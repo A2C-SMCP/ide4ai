@@ -154,7 +154,11 @@ def test_catalog_without_selection_only_exposes_project_management(tmp_path) -> 
 async def test_project_tools_expose_name_as_the_only_public_identifier(tmp_path) -> None:
     host, _ = _host(tmp_path)
     provider = ProjectToolProvider(host)
-    create = next(binding for binding in provider.bindings(None) if binding.definition.name == "project_create")
+    empty_bindings = provider.bindings(None)
+    project_list = next(binding for binding in empty_bindings if binding.definition.name == "project_list")
+    empty = await project_list.invoke({})
+    assert empty.result == {"projects": [], "current_project": None}
+    create = next(binding for binding in empty_bindings if binding.definition.name == "project_create")
 
     created = await create.invoke({"name": "one", "root_dir": str(tmp_path)})
 
@@ -163,6 +167,8 @@ async def test_project_tools_expose_name_as_the_only_public_identifier(tmp_path)
     project_list = next(binding for binding in bindings if binding.definition.name == "project_list")
     listed = await project_list.invoke({})
     assert "id" not in listed.result["projects"][0]
+    assert "current" not in listed.result["projects"][0]
+    assert listed.result["current_project"] == "one"
 
     switch = next(binding for binding in bindings if binding.definition.name == "project_switch")
     switched = await switch.invoke({"name": "one"})
@@ -516,7 +522,7 @@ async def test_project_delete_cleanup_failure_keeps_project_retryable(tmp_path) 
     assert manager.has_live_runtimes is False
 
 
-def test_multiple_registered_projects_require_explicit_selection(tmp_path) -> None:
+def test_multiple_registered_projects_auto_select_first_project(tmp_path) -> None:
     host, _ = _host(tmp_path)
     first_root = tmp_path / "first"
     second_root = tmp_path / "second"
@@ -527,13 +533,39 @@ def test_multiple_registered_projects_require_explicit_selection(tmp_path) -> No
     restarted = ProjectHost(host.registry, lambda project: cast(IDE, _FakeIDE(project.name)))
     catalog = DynamicToolCatalog((ProjectToolProvider(restarted), IDEToolProvider(restarted, (_ProjectNameTool,))))
 
-    assert restarted.current_project is None
-    assert [binding.definition.name for binding in catalog.bindings(None)] == [
+    assert restarted.current_project is not None
+    assert restarted.current_project.name == "first"
+    assert [binding.definition.name for binding in catalog.bindings(restarted.current_project)] == [
         "project_create",
         "project_delete",
         "project_list",
         "project_switch",
+        "project_unload",
+        "ProjectName",
     ]
+
+
+@pytest.mark.asyncio
+async def test_project_list_reports_single_collection_level_current_project(tmp_path) -> None:
+    host, _ = _host(tmp_path)
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    host.create_project(name="first", root_dir=first_root)
+    host.create_project(name="second", root_dir=second_root)
+    restarted = ProjectHost(host.registry, lambda project: cast(IDE, _FakeIDE(project.name)))
+    provider = ProjectToolProvider(restarted)
+    project_list = next(binding for binding in provider.bindings(None) if binding.definition.name == "project_list")
+
+    initial = await project_list.invoke({})
+    assert initial.result["current_project"] == "first"
+    assert all("current" not in project for project in initial.result["projects"])
+
+    restarted.switch_project("second")
+    selected = await project_list.invoke({})
+    assert selected.result["current_project"] == "second"
+    assert all("current" not in project for project in selected.result["projects"])
 
 
 def test_resource_uri_uses_project_id_and_old_uri_cannot_cross_switch(tmp_path) -> None:

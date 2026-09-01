@@ -13,7 +13,6 @@ from ide4ai.a2c_smcp.projects import (
     ProjectError,
     ProjectHost,
     ProjectLspConfig,
-    ProjectNotSelectedError,
     ProjectRegistry,
     ProjectRuntime,
     create_ide_factory,
@@ -168,10 +167,7 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
     factory = RecordingFactory()
     host = ProjectHost(registry, factory)
 
-    assert host.current_project is None
-    with pytest.raises(ProjectNotSelectedError):
-        with host.lease_current():
-            pass
+    assert host.current_project == first
     assert host.switch_project(first.id) == first
     assert factory.instances == []
 
@@ -186,7 +182,7 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
         assert leased_project == second
 
 
-def test_project_host_auto_selects_only_project_and_manages_delete(tmp_path: Path) -> None:
+def test_project_host_keeps_exactly_one_selection_and_manages_delete(tmp_path: Path) -> None:
     registry = ProjectRegistry(tmp_path / "projects.json")
     factory = RecordingFactory()
     host = ProjectHost(registry, factory)

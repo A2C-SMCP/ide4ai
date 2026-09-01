@@ -140,11 +140,13 @@ class ProjectToolProvider:
         if arguments:
             raise ValueError("project_list does not accept arguments")
         current = self._host.current_project
-        projects = [
-            {**_project_output(project), "current": current is not None and project.id == current.id}
-            for project in self._host.list_projects()
-        ]
-        return ToolCallOutcome({"projects": projects})
+        projects = [_project_output(project) for project in self._host.list_projects()]
+        return ToolCallOutcome(
+            {
+                "projects": projects,
+                "current_project": current.name if current is not None else None,
+            }
+        )
 
     async def _switch(self, arguments: dict[str, Any]) -> ToolCallOutcome:
         data = _ProjectNameInput.model_validate(arguments)

@@ -132,7 +132,7 @@ uvx --from ide4ai==<version> ide4ai-mcp
 uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
 
-启动后，未选择项目时客户端只会看到项目管理工具。只有一个注册项目时自动选择；存在多个项目时调用 `project_switch`。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。
+启动后，没有注册项目时客户端只会看到项目管理工具。只要存在项目，就始终自动保持唯一的当前项目；新会话默认选择按名称排序后的第一个项目，可调用 `project_switch` 切换。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。`project_list` 在集合顶层返回唯一的 `current_project` 项目名，项目数组内不重复携带 `current` 标记。
 
 关闭状态下调用无参数的 `Terminal`，服务器会为当前项目创建独立的 TFBash 0.2 嵌入式运行时，并通过 `notifications/tools/list_changed` 动态暴露 `shell_open`、`shell_exec`、`shell_read`、`shell_write`、`shell_signal`、`shell_list` 和 `shell_close`。开启状态下再次调用 `Terminal`，会关闭该项目全部 Shell 和受管进程，然后移除这七个工具。`Terminal` 的描述会随状态明确显示下一次操作是开启还是关闭，不再要求提交布尔参数。每个项目的 `workspace_root` 和默认 cwd 都取项目的规范化 `root_dir`。
 

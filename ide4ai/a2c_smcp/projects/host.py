@@ -194,7 +194,7 @@ class ProjectHost:
     def _reconcile_selection(self, projects: tuple[Project, ...]) -> None:
         known_ids = {project.id for project in projects}
         if self._current_project_id not in known_ids:
-            self._current_project_id = projects[0].id if len(projects) == 1 else None
+            self._current_project_id = projects[0].id if projects else None
 
     def _ensure_open(self) -> None:
         if self._closed:

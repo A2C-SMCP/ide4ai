@@ -156,6 +156,8 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             listed = await client.call_tool("project_list", {})
             assert listed.structuredContent is not None
             assert all("id" not in project for project in listed.structuredContent["projects"])
+            assert all("current" not in project for project in listed.structuredContent["projects"])
+            assert listed.structuredContent["current_project"] == "stdio-project"
             assert notifications == []
 
             switched = await client.call_tool("project_switch", {"name": "second-project"})

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
-from mcp.types import Resource, Tool
+from mcp.types import CallToolResult, Resource, Tool
 
 from ide4ai.a2c_smcp.projects import Project
 
@@ -28,7 +28,7 @@ class CatalogChanges:
 class ToolCallOutcome:
     """A structured tool result plus any catalog invalidation it caused."""
 
-    result: dict[str, Any]
+    result: dict[str, Any] | CallToolResult
     changes: CatalogChanges = CatalogChanges()
 
 

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
-from ide4ai.a2c_smcp.projects.errors import ProjectError, ProjectNotSelectedError
+from ide4ai.a2c_smcp.projects.errors import ProjectBusyError, ProjectError, ProjectNotSelectedError
 from ide4ai.a2c_smcp.projects.models import Project, ProjectLspConfig
 from ide4ai.a2c_smcp.projects.registry import ProjectRegistry
 from ide4ai.a2c_smcp.projects.runtime import IDEFactory, ProjectRuntime
@@ -24,6 +24,7 @@ class ProjectHost:
         self._ide_factory = ide_factory
         self._current_project_id: UUID | None = None
         self._runtimes: dict[UUID, ProjectRuntime] = {}
+        self._deleting_project_ids: set[UUID] = set()
         self._closed = False
         self._lock = threading.RLock()
 
@@ -77,18 +78,55 @@ class ProjectHost:
             return runtime.unload(force=force)
 
     def delete_project(self, identifier: str | UUID, *, force: bool = False) -> Project:
+        project = self.prepare_delete(identifier, force=force)
+        try:
+            return self.commit_delete(project)
+        except BaseException:
+            self.cancel_delete(project)
+            raise
+
+    def prepare_delete(self, identifier: str | UUID, *, force: bool = False) -> Project:
+        """Reserve a project for deletion and release its IDE before async cleanup."""
+
         with self._lock:
             self._ensure_open()
             project = self.registry.find(identifier)
+            if project.id in self._deleting_project_ids:
+                raise ProjectBusyError(f"Project deletion is already in progress: {project.name}")
+            self._deleting_project_ids.add(project.id)
             runtime = self._runtimes.get(project.id)
-            if runtime is not None:
-                runtime.unload(force=force)
-                self._runtimes.pop(project.id, None)
-            deleted = self.registry.delete(project.id)
+            try:
+                if runtime is not None:
+                    runtime.unload(force=force)
+            except BaseException:
+                self._deleting_project_ids.discard(project.id)
+                raise
+            return project
+
+    def commit_delete(self, project: Project) -> Project:
+        """Persist a prepared deletion after provider-owned resources are closed."""
+
+        with self._lock:
+            self._ensure_open()
+            if project.id not in self._deleting_project_ids:
+                raise ProjectError(f"Project deletion was not prepared: {project.name}")
+            try:
+                deleted = self.registry.delete(project.id)
+            except BaseException:
+                self._deleting_project_ids.discard(project.id)
+                raise
+            self._runtimes.pop(project.id, None)
             if self._current_project_id == project.id:
                 self._current_project_id = None
+            self._deleting_project_ids.discard(project.id)
             self._reconcile_selection(self.registry.list())
             return deleted
+
+    def cancel_delete(self, project: Project) -> None:
+        """Release a deletion reservation so the operation can be retried."""
+
+        with self._lock:
+            self._deleting_project_ids.discard(project.id)
 
     @contextmanager
     def lease_current(self) -> Iterator[tuple[Project, IDE]]:
@@ -104,6 +142,8 @@ class ProjectHost:
         with self._lock:
             self._ensure_open()
             persisted_project = self.registry.find(project.id)
+            if project.id in self._deleting_project_ids:
+                raise ProjectBusyError(f"Project deletion is in progress: {project.name}")
             runtime = self._runtimes.get(project.id)
             if runtime is None:
                 runtime = ProjectRuntime(persisted_project, self._ide_factory)
@@ -122,6 +162,7 @@ class ProjectHost:
             self._closed = True
             runtimes = tuple(self._runtimes.items())
             self._current_project_id = None
+            self._deleting_project_ids.clear()
         errors: list[BaseException] = []
         closed_ids: list[UUID] = []
         for project_id, runtime in runtimes:

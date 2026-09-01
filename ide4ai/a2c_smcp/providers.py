@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from mcp.types import Resource, Tool
+from mcp.types import CallToolResult, Resource, TextContent, Tool
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 from ide4ai.a2c_smcp.catalog import (
@@ -16,7 +16,14 @@ from ide4ai.a2c_smcp.catalog import (
     ToolCallOutcome,
     ToolInvoker,
 )
-from ide4ai.a2c_smcp.projects import Project, ProjectHost, ProjectLspConfig, ProjectNotFoundError
+from ide4ai.a2c_smcp.projects import (
+    Project,
+    ProjectHost,
+    ProjectLspConfig,
+    ProjectNotFoundError,
+    ProjectTerminalNotAvailableError,
+    ProjectTerminalRuntimeManager,
+)
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
 
@@ -45,6 +52,10 @@ class _ProjectUnloadInput(BaseModel):
     force: bool = Field(default=False, description="Release resources even when the project has active calls")
 
 
+class _TerminalActionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class _ProjectOutput(BaseModel):
     """Public project representation; internal runtime identity is intentionally hidden."""
 
@@ -62,8 +73,13 @@ def _project_output(project: Project) -> dict[str, Any]:
 class ProjectToolProvider:
     """Project registry and selection tools, available without loading an IDE."""
 
-    def __init__(self, host: ProjectHost) -> None:
+    def __init__(
+        self,
+        host: ProjectHost,
+        terminal_manager: ProjectTerminalRuntimeManager | None = None,
+    ) -> None:
         self._host = host
+        self._terminal_manager = terminal_manager
 
     def bindings(self, current_project: Project | None) -> tuple[ToolBinding, ...]:
         bindings = [
@@ -93,7 +109,7 @@ class ProjectToolProvider:
             bindings.append(
                 self._binding(
                     "project_unload",
-                    "Release the current project's IDE, Workspace, and LSP runtime.",
+                    "Release the current project's Terminal, IDE, Workspace, and LSP runtime.",
                     _ProjectUnloadInput,
                     unload,
                 )
@@ -140,7 +156,20 @@ class ProjectToolProvider:
 
     async def _delete(self, arguments: dict[str, Any]) -> ToolCallOutcome:
         data = _ProjectDeleteInput.model_validate(arguments)
-        project = self._host.delete_project(data.name, force=data.force)
+        project = self._host.prepare_delete(data.name, force=data.force)
+        try:
+            if self._terminal_manager is not None:
+                await self._terminal_manager.remove(project)
+        except BaseException as exc:
+            self._host.cancel_delete(project)
+            if isinstance(exc, Exception):
+                return self._terminal_cleanup_failure(project, operation="delete", error=exc)
+            raise
+        try:
+            project = self._host.commit_delete(project)
+        except Exception as exc:
+            self._host.cancel_delete(project)
+            return self._delete_commit_failure(project, error=exc)
         return ToolCallOutcome(
             {"project": _project_output(project)},
             CatalogChanges(tools=True, resources=True),
@@ -149,10 +178,165 @@ class ProjectToolProvider:
     async def _unload(self, arguments: dict[str, Any], project: Project) -> ToolCallOutcome:
         data = _ProjectUnloadInput.model_validate(arguments)
         unloaded = self._host.unload_project(project, force=data.force)
+        if self._terminal_manager is not None:
+            try:
+                await self._terminal_manager.set_enabled(project, enabled=False)
+            except Exception as exc:
+                return self._terminal_cleanup_failure(project, operation="unload", error=exc)
         return ToolCallOutcome(
             {"project": _project_output(project), "unloaded": unloaded},
             CatalogChanges(tools=True, resources=True),
         )
+
+    @staticmethod
+    def _terminal_cleanup_failure(
+        project: Project,
+        *,
+        operation: str,
+        error: Exception,
+    ) -> ToolCallOutcome:
+        return ToolCallOutcome(
+            CallToolResult(
+                content=[TextContent(type="text", text=str(error))],
+                structuredContent={
+                    "success": False,
+                    "error": {
+                        "code": "PROJECT_TERMINAL_CLEANUP_FAILED",
+                        "message": str(error),
+                        "operation": operation,
+                        "project_name": project.name,
+                        "project_deleted": False,
+                        "terminal_cleanup_pending": True,
+                    },
+                },
+                isError=True,
+            ),
+            CatalogChanges(tools=True, resources=True),
+        )
+
+    @staticmethod
+    def _delete_commit_failure(project: Project, *, error: Exception) -> ToolCallOutcome:
+        return ToolCallOutcome(
+            CallToolResult(
+                content=[TextContent(type="text", text=str(error))],
+                structuredContent={
+                    "success": False,
+                    "error": {
+                        "code": "PROJECT_DELETE_COMMIT_FAILED",
+                        "message": str(error),
+                        "operation": "delete",
+                        "project_name": project.name,
+                        "project_deleted": False,
+                        "terminal_cleanup_pending": False,
+                    },
+                },
+                isError=True,
+            ),
+            CatalogChanges(tools=True, resources=True),
+        )
+
+
+class TerminalToolProvider:
+    """Expose the project-level switch that owns the embedded TFBash runtime."""
+
+    def __init__(self, host: ProjectHost, terminal_manager: ProjectTerminalRuntimeManager) -> None:
+        self._host = host
+        self._terminal_manager = terminal_manager
+
+    def bindings(self, current_project: Project | None) -> tuple[ToolBinding, ...]:
+        if current_project is None:
+            return ()
+        captured_project = current_project
+        target_enabled = not self._terminal_manager.requires_disable(captured_project)
+
+        async def invoke(arguments: dict[str, Any]) -> ToolCallOutcome:
+            _TerminalActionInput.model_validate(arguments)
+            try:
+                project = self._host.registry.find(captured_project.id)
+            except ProjectNotFoundError as exc:
+                raise ToolBindingNotAvailableError(str(exc)) from exc
+            was_available = bool(self._terminal_manager.list_tools(project))
+            try:
+                await self._terminal_manager.set_enabled(project, enabled=target_enabled)
+            except Exception as exc:
+                is_available = bool(self._terminal_manager.list_tools(project))
+                state = self._terminal_manager.state(project).value
+                return ToolCallOutcome(
+                    CallToolResult(
+                        content=[TextContent(type="text", text=str(exc))],
+                        structuredContent={
+                            "success": False,
+                            "error": {
+                                "code": "TERMINAL_STATE_CHANGE_FAILED",
+                                "message": str(exc),
+                                "project_name": project.name,
+                                "state": state,
+                            },
+                        },
+                        isError=True,
+                    ),
+                    CatalogChanges(tools=was_available != is_available),
+                )
+            return ToolCallOutcome(
+                {
+                    "project": _project_output(project),
+                    "terminal": {
+                        "enabled": bool(self._terminal_manager.list_tools(project)),
+                        "state": self._terminal_manager.state(project).value,
+                        "root_dir": project.root_dir,
+                    },
+                },
+                CatalogChanges(tools=was_available != bool(self._terminal_manager.list_tools(project))),
+            )
+
+        return (
+            ToolBinding(
+                Tool(
+                    name="Terminal",
+                    description=(
+                        "Terminal is disabled. Execute to enable the current project's embedded "
+                        "TFBash 0.2 runtime and expose the seven shell_* tools."
+                        if target_enabled
+                        else "Terminal is enabled. Execute to close all current-project shell sessions "
+                        "and remove the seven shell_* tools."
+                    ),
+                    inputSchema=_TerminalActionInput.model_json_schema(),
+                ),
+                invoke,
+            ),
+        )
+
+
+class TFBashToolProvider:
+    """Forward TFBash's native tool definitions and results without protocol duplication."""
+
+    def __init__(self, host: ProjectHost, terminal_manager: ProjectTerminalRuntimeManager) -> None:
+        self._host = host
+        self._terminal_manager = terminal_manager
+
+    def bindings(self, current_project: Project | None) -> tuple[ToolBinding, ...]:
+        if current_project is None:
+            return ()
+        captured_project = current_project
+        bindings: list[ToolBinding] = []
+        for definition in self._terminal_manager.list_tools(captured_project):
+            tool_name = definition.name
+
+            async def invoke(
+                arguments: dict[str, Any],
+                *,
+                captured: Project = captured_project,
+                name: str = tool_name,
+            ) -> ToolCallOutcome:
+                try:
+                    project = self._host.registry.find(captured.id)
+                    result = await self._terminal_manager.call_tool(project, name, arguments)
+                except (ProjectNotFoundError, ProjectTerminalNotAvailableError) as exc:
+                    raise ToolBindingNotAvailableError(str(exc)) from exc
+                return ToolCallOutcome(result)
+
+            bindings.append(ToolBinding(definition, invoke))
+        return tuple(bindings)
 
 
 class IDEToolProvider:

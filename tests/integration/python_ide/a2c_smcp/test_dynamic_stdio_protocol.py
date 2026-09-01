@@ -13,7 +13,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(40)
 async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
     project_root = tmp_path / "project"
     second_root = tmp_path / "second-project"
@@ -81,7 +81,48 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
 
             selected_tools = await client.list_tools()
             selected_names = {tool.name for tool in selected_tools.tools}
-            assert {"Glob", "Lsp", "project_unload"} <= selected_names
+            assert {"Glob", "Lsp", "Terminal", "project_unload"} <= selected_names
+            assert "Bash" not in selected_names
+            assert not any(name.startswith("shell_") for name in selected_names)
+
+            terminal_enabled = await client.call_tool("Terminal", {})
+            assert terminal_enabled.isError is False
+            assert terminal_enabled.structuredContent is not None
+            assert terminal_enabled.structuredContent["terminal"] == {
+                "enabled": True,
+                "state": "open",
+                "root_dir": str(project_root),
+            }
+            assert notifications == ["notifications/tools/list_changed"]
+            notifications.clear()
+
+            enabled_names = {tool.name for tool in (await client.list_tools()).tools}
+            assert {name for name in enabled_names if name.startswith("shell_")} == {
+                "shell_open",
+                "shell_exec",
+                "shell_read",
+                "shell_write",
+                "shell_signal",
+                "shell_list",
+                "shell_close",
+            }
+            opened = await client.call_tool("shell_open", {})
+            assert opened.isError is False
+            assert opened.structuredContent is not None
+            assert opened.structuredContent["cwd"] == str(project_root)
+            shell_id = opened.structuredContent["shell_id"]
+            executed = await client.call_tool(
+                "shell_exec",
+                {"shell_id": shell_id, "command": "pwd"},
+            )
+            assert executed.isError is False
+            assert executed.structuredContent is not None
+            assert executed.structuredContent["output"].rstrip("\r\n") == str(project_root)
+            shell_list = await client.call_tool("shell_list", {})
+            assert shell_list.isError is False
+            assert shell_list.structuredContent is not None
+            assert shell_list.structuredContent["host"]["workspace_root"] == str(project_root)
+
             invalid = await client.call_tool("Glob", {})
             assert invalid.isError is True
             assert invalid.structuredContent is not None
@@ -96,6 +137,10 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
                 "notifications/resources/list_changed",
             ]
             notifications.clear()
+            stale_shell = await client.call_tool("shell_list", {})
+            assert stale_shell.isError is True
+            assert stale_shell.structuredContent is not None
+            assert stale_shell.structuredContent["error"]["code"] == "TOOL_NOT_AVAILABLE_FOR_CURRENT_PROJECT"
             resources = await client.list_resources()
             assert len(resources.resources) == 1
             assert str(resources.resources[0].uri).startswith("window://")
@@ -148,3 +193,50 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             assert stale.isError is True
             assert stale.structuredContent is not None
             assert stale.structuredContent["error"]["code"] == "TOOL_NOT_AVAILABLE_FOR_CURRENT_PROJECT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(40)
+async def test_stdio_tfbash_runtimes_are_isolated_per_project(tmp_path) -> None:
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "ide4ai.a2c_smcp.cli"],
+        cwd=os.getcwd(),
+        env={
+            **os.environ,
+            "TRANSPORT": "stdio",
+            "PROJECT_REGISTRY_PATH": str(tmp_path / "projects.json"),
+        },
+    )
+
+    async with stdio_client(parameters) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as client:
+            await client.initialize()
+            await client.call_tool("project_create", {"name": "first", "root_dir": str(first_root)})
+            await client.call_tool("Terminal", {})
+            first_open = await client.call_tool("shell_open", {})
+            assert first_open.structuredContent is not None
+            first_shell_id = first_open.structuredContent["shell_id"]
+
+            await client.call_tool("project_create", {"name": "second", "root_dir": str(second_root)})
+            await client.call_tool("project_switch", {"name": "second"})
+            second_initial_names = {tool.name for tool in (await client.list_tools()).tools}
+            assert not any(name.startswith("shell_") for name in second_initial_names)
+            await client.call_tool("Terminal", {})
+            second_open = await client.call_tool("shell_open", {})
+            assert second_open.structuredContent is not None
+            assert second_open.structuredContent["cwd"] == str(second_root)
+
+            await client.call_tool("project_switch", {"name": "first"})
+            first_list = await client.call_tool("shell_list", {})
+            assert first_list.structuredContent is not None
+            assert first_list.structuredContent["host"]["workspace_root"] == str(first_root)
+            assert [shell["shell_id"] for shell in first_list.structuredContent["shells"]] == [first_shell_id]
+
+            await client.call_tool("Terminal", {})
+            await client.call_tool("project_switch", {"name": "second"})
+            await client.call_tool("Terminal", {})

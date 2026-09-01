@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import anyio
 from jsonschema import FormatChecker  # type: ignore[import-untyped]
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate as validate_json_schema
@@ -48,12 +49,43 @@ class BaseMCPServer:
         logger.info("MCP Server initialized: server={}, transport={}", server_name, config.transport)
 
     def close(self) -> None:
+        """Close synchronous project resources.
+
+        Async integrations should call :meth:`aclose`, which also releases
+        provider-owned resources before closing the project host.
+        """
+        self._close_sync_resources()
+
+    def _close_sync_resources(self) -> None:
+        """Close resources that do not require an async context."""
+
         if getattr(self, "_closed", True):
             return
-        self._closed = True
         host = getattr(self, "project_host", None)
         if host is not None:
             host.close()
+        self._closed = True
+
+    async def aclose(self) -> None:
+        """Release async provider resources before synchronous project state."""
+
+        errors: list[BaseException] = []
+        with anyio.CancelScope(shield=True):
+            try:
+                await self._close_async_resources()
+            except BaseException as exc:
+                errors.append(exc)
+            try:
+                self._close_sync_resources()
+            except BaseException as exc:
+                errors.append(exc)
+        if errors:
+            for additional_error in errors[1:]:
+                logger.error("Additional server shutdown error: {}", repr(additional_error))
+            raise errors[0]
+
+    async def _close_async_resources(self) -> None:
+        """Hook for concrete servers that own asynchronous runtimes."""
 
     def __del__(self) -> None:
         try:
@@ -179,5 +211,8 @@ class BaseMCPServer:
                 "Multi-project MCP currently supports legacy stdio only; "
                 f"unsupported transport: {self.config.transport}"
             )
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(read_stream, write_stream, self.initialization_options())
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await self.server.run(read_stream, write_stream, self.initialization_options())
+        finally:
+            await self.aclose()

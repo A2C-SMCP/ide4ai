@@ -112,6 +112,7 @@ uvx --from ide4ai==<version> ide4ai-mcp
   - 环境变量：`PROJECT_ROOT`、`PROJECT_NAME`
 - **命令白名单**：`--cmd-white-list`（逗号分隔）
   - 默认：`["ls","pwd","echo","cat","grep","find","head","tail","wc"]`
+  - 仅用于 legacy `IDE.step(category="terminal")`；MCP 的 TFBash 0.2 工具使用其自身协议与运行时约束
   - 环境变量：`CMD_WHITE_LIST`
 - **命令超时(秒)**：`--cmd-timeout`（默认 `10`）
   - 环境变量：`CMD_TIMEOUT`
@@ -131,7 +132,9 @@ uvx --from ide4ai==<version> ide4ai-mcp
 uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
 
-启动后，未选择项目时客户端只会看到项目管理工具。只有一个注册项目时自动选择；存在多个项目时调用 `project_switch`。选择后才会出现 IDE 工具和 `window://` 资源。
+启动后，未选择项目时客户端只会看到项目管理工具。只有一个注册项目时自动选择；存在多个项目时调用 `project_switch`。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。
+
+关闭状态下调用无参数的 `Terminal`，服务器会为当前项目创建独立的 TFBash 0.2 嵌入式运行时，并通过 `notifications/tools/list_changed` 动态暴露 `shell_open`、`shell_exec`、`shell_read`、`shell_write`、`shell_signal`、`shell_list` 和 `shell_close`。开启状态下再次调用 `Terminal`，会关闭该项目全部 Shell 和受管进程，然后移除这七个工具。`Terminal` 的描述会随状态明确显示下一次操作是开启还是关闭，不再要求提交布尔参数。每个项目的 `workspace_root` 和默认 cwd 都取项目的规范化 `root_dir`。
 
 - **LSP 模式与服务覆盖**：
 ```bash

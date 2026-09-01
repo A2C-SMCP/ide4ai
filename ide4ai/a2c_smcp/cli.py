@@ -16,10 +16,17 @@ from ide4ai.a2c_smcp.projects import (
     ProjectLspConfig,
     ProjectNotFoundError,
     ProjectRegistry,
+    ProjectTerminalRuntimeManager,
     create_ide_factory,
 )
 from ide4ai.a2c_smcp.projects.models import roots_refer_to_same_location
-from ide4ai.a2c_smcp.providers import IDEToolProvider, ProjectToolProvider, WindowResourceProvider
+from ide4ai.a2c_smcp.providers import (
+    IDEToolProvider,
+    ProjectToolProvider,
+    TerminalToolProvider,
+    TFBashToolProvider,
+    WindowResourceProvider,
+)
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.server import BaseMCPServer
 from ide4ai.a2c_smcp.tools import BashTool, EditTool, GlobTool, GrepTool, LspTool, ReadTool, WriteTool
@@ -62,7 +69,8 @@ def _print_help_if_requested() -> bool:
 class IDEMCPServer(BaseMCPServer):
     """Compose project management, generic IDE, and window providers."""
 
-    _IDE_TOOL_TYPES = (BashTool, GlobTool, GrepTool, ReadTool, EditTool, WriteTool, LspTool)
+    _IDE_TOOL_TYPES = (GlobTool, GrepTool, ReadTool, EditTool, WriteTool, LspTool)
+    _COMPAT_TOOL_TYPES = (BashTool, *_IDE_TOOL_TYPES)
 
     def __init__(self, config: MCPServerConfig) -> None:
         """
@@ -77,14 +85,28 @@ class IDEMCPServer(BaseMCPServer):
             )
         registry = ProjectRegistry(config.project_registry_path)
         host = ProjectHost(registry, create_ide_factory(config.to_project_ide_defaults()))
+        self.project_terminal_manager = ProjectTerminalRuntimeManager()
         self._bootstrap_legacy_project(config, host)
         super().__init__(
             config,
             server_name="ide4ai-mcp",
             host=host,
-            tool_providers=(ProjectToolProvider(host), IDEToolProvider(host, self._IDE_TOOL_TYPES)),
+            tool_providers=(
+                ProjectToolProvider(host, self.project_terminal_manager),
+                TerminalToolProvider(host, self.project_terminal_manager),
+                TFBashToolProvider(host, self.project_terminal_manager),
+                IDEToolProvider(host, self._IDE_TOOL_TYPES),
+            ),
             resource_providers=(WindowResourceProvider(host),),
         )
+
+    async def _close_async_resources(self) -> None:
+        await self.project_terminal_manager.aclose_all()
+
+    def close(self) -> None:
+        if hasattr(self, "project_terminal_manager"):
+            self.project_terminal_manager.prepare_sync_close()
+        super().close()
 
     @staticmethod
     def _bootstrap_legacy_project(config: MCPServerConfig, host: ProjectHost) -> None:
@@ -122,7 +144,7 @@ class IDEMCPServer(BaseMCPServer):
     def tools(self) -> dict[str, BaseTool]:
         """Compatibility view of request-bound generic IDE tools."""
         with self.project_host.lease_current() as (_, ide):
-            return {tool.name: tool for tool_type in self._IDE_TOOL_TYPES for tool in (tool_type(ide),)}
+            return {tool.name: tool for tool_type in self._COMPAT_TOOL_TYPES for tool in (tool_type(ide),)}
 
     @property
     def resources(self) -> dict[str, WindowResource]:

@@ -18,7 +18,7 @@ ide4ai/a2c_smcp/
 ├── tools/                   # 工具实现 | Tools implementation
 │   ├── __init__.py
 │   ├── base.py             # 工具基类 | Tool base class
-│   ├── bash.py             # Bash 工具 | Bash tool
+│   ├── bash.py             # Legacy Python API compatibility | 旧 Python API 兼容层
 │   ├── glob.py             # Glob 工具 (待实现) | Glob tool (TODO)
 │   ├── grep.py             # Grep 工具 (待实现) | Grep tool (TODO)
 │   ├── read.py             # Read 工具 (待实现) | Read tool (TODO)
@@ -64,23 +64,21 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ## 已实现工具 | Implemented Tools
 
-### Bash
+### Terminal 与 TFBash 0.2 | Terminal and TFBash 0.2
 
-在 IDE 环境中执行 Bash 命令 | Execute Bash commands in IDE environment
+选择项目后，MCP 目录使用无参数、状态驱动的 `Terminal` 代替旧 `Bash`。关闭状态下执行 `Terminal` 会为当前项目创建进程内 `EmbeddedShellRuntime`；成功后动态暴露 TFBash 原生的七个工具：
 
-**输入参数 | Input Parameters:**
-- `command` (required): 要执行的命令 | Command to execute
-- `timeout` (optional): 超时时间(毫秒) | Timeout in milliseconds
-- `description` (optional): 命令描述 | Command description
-- `run_in_background` (optional): 是否后台运行 | Run in background
-- `dangerously_disable_sandbox` (optional): 禁用沙箱 | Disable sandbox
+- `shell_open`
+- `shell_exec`
+- `shell_read`
+- `shell_write`
+- `shell_signal`
+- `shell_list`
+- `shell_close`
 
-**输出 | Output:**
-- `success`: 是否成功 | Success status
-- `output`: 命令输出 | Command output
-- `error`: 错误信息 | Error message
-- `exit_code`: 退出码 | Exit code
-- `metadata`: 元数据 | Metadata
+工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.0`。开启状态下再次执行 `Terminal`、调用 `project_unload`、`project_delete` 或关闭 Server，都会关闭对应 Runtime。`Terminal` 描述会随状态只指向下一步可执行动作（开启或关闭），因此 UI 不再展示容易误解的 `enabled` 复选框。每个项目拥有独立 Runtime，其 `workspace_root` 与默认 cwd 均为项目 `root_dir`。工具列表变化通过 MCP 事件通知，不使用轮询。
+
+The legacy `BashTool` import remains available for direct Python compatibility, but the project-aware MCP server no longer registers it.
 
 ## 待实现工具 | Tools TODO
 
@@ -128,7 +126,7 @@ uv run ide4ai-mcp
 python -m ide4ai.a2c_smcp.cli
 ```
 
-默认启动不隐式创建项目。客户端先使用 `project_create` 注册目录，再使用 `project_switch` 选择项目；只有一个项目时会自动选择。可用 `project_unload` 释放当前项目的 IDE/Workspace/LSP 运行态。
+默认启动不隐式创建项目。客户端先使用 `project_create` 注册目录，再使用 `project_switch` 选择项目；只有一个项目时会自动选择。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
 
 For legacy configurations, pass both `--root-dir` and `--project-name` to bootstrap and select one project. Omitting both starts with the persisted registry and no forced selection.
 

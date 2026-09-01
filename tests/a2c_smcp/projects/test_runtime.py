@@ -222,6 +222,23 @@ def test_project_host_refuses_busy_delete_without_force(tmp_path: Path) -> None:
         assert factory.instances[0].closed is True
 
 
+def test_prepared_delete_blocks_new_leases_until_cancelled(tmp_path: Path) -> None:
+    registry = ProjectRegistry(tmp_path / "projects.json")
+    root = tmp_path / "root"
+    root.mkdir()
+    registered = registry.create(name="reserved", root_dir=root)
+    host = ProjectHost(registry, RecordingFactory())
+
+    prepared = host.prepare_delete(registered.id)
+    with pytest.raises(ProjectBusyError, match="deletion is in progress"):
+        with host.lease_project(registered):
+            pass
+
+    host.cancel_delete(prepared)
+    with host.lease_project(registered) as (leased, _):
+        assert leased == registered
+
+
 def test_project_host_closes_every_runtime_even_when_one_close_fails(tmp_path: Path) -> None:
     registry = ProjectRegistry(tmp_path / "projects.json")
     roots = [tmp_path / "first", tmp_path / "second"]

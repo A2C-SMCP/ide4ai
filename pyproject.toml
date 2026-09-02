@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "pydantic>=2.11.0,<3.0.0",
+    "pydantic>=2.13.0,<2.14.0",
     "gymnasium>=0.29.1",
     "simple-parsing>=0.1.5",
     "docker>=7.0.0",
@@ -22,7 +22,8 @@ dependencies = [
     "platformdirs>=4.3.0,<5.0.0",
     "regex>=2025.10.23",
     "pexpect>=4.9.0",
-    "mcp>=1.19.0,<2.0.0",
+    "mcp>=1.29.0,<2.0.0",
+    "jsonschema>=4.20.0,<5.0.0",
     "confz>=2.1.0",
     # MCP HTTP/SSE 传输支持 | MCP HTTP/SSE transport support
     # 显式声明 httpx 版本以确保与 httpx-sse 兼容 | Explicitly declare httpx version for httpx-sse compatibility
@@ -31,6 +32,7 @@ dependencies = [
     "starlette>=0.27.0",
     "uvicorn>=0.23.0",
     "sse-starlette>=2.0.0",
+    "tfbash-mcp==0.2.1",
 ]
 license = { text = "MIT" }
 keywords = ["ai", "ide", "lsp", "code-editor", "ai-agent"]

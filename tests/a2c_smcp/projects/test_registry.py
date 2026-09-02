@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 import pytest
+from filelock import FileLock
 from pydantic import ValidationError
 
 from ide4ai.a2c_smcp.projects import (
@@ -36,7 +38,9 @@ def test_registry_persists_versioned_immutable_projects(tmp_path: Path) -> None:
     assert project.name == "backend"
     assert project.root_dir == str(project_root.resolve())
     assert ProjectRegistry(registry_path).list() == (project,)
-    assert json.loads(registry_path.read_text(encoding="utf-8"))["version"] == 1
+    persisted = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert persisted["version"] == 2
+    assert persisted["current_project_id"] == str(project.id)
     assert registry_path.stat().st_mode & 0o777 == 0o600
     with pytest.raises(ValidationError):
         project.name = "changed"  # type: ignore[misc]
@@ -104,9 +108,93 @@ def test_registry_rejects_missing_roots_and_invalid_documents(tmp_path: Path) ->
     with pytest.raises(FileNotFoundError):
         registry.create(name="missing", root_dir=tmp_path / "missing")
 
-    registry_path.write_text('{"version": 2, "projects": []}', encoding="utf-8")
-    with pytest.raises(ProjectRegistryError, match="Cannot read"):
-        registry.list()
+    registry_path.write_text('{"version": 3, "projects": []}', encoding="utf-8")
+    with pytest.raises(ProjectRegistryError, match="Cannot migrate"):
+        ProjectRegistry(registry_path)
+
+
+def test_registry_persists_and_reassigns_current_project(tmp_path: Path) -> None:
+    registry_path = tmp_path / "projects.json"
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    registry = ProjectRegistry(registry_path)
+
+    first = registry.create(name="first", root_dir=first_root)
+    second = registry.create(name="second", root_dir=second_root)
+    assert registry.current() == first
+
+    registry.select(second.name)
+    assert ProjectRegistry(registry_path).current() == second
+
+    registry.delete(second.id)
+    assert ProjectRegistry(registry_path).current() == first
+
+    registry.delete(first.id)
+    assert ProjectRegistry(registry_path).current() is None
+
+
+def test_registry_migrates_v1_and_selects_first_sorted_project(tmp_path: Path) -> None:
+    registry_path = tmp_path / "projects.json"
+    alpha_root = tmp_path / "alpha"
+    zulu_root = tmp_path / "zulu"
+    alpha_root.mkdir()
+    zulu_root.mkdir()
+    registry_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "projects": [
+                    {
+                        "id": "5c4d1aa6-f21a-4247-af97-8662b0f12725",
+                        "name": "Zulu",
+                        "root_dir": str(zulu_root),
+                    },
+                    {
+                        "id": "44c274e9-2910-4836-ae86-f446d0f9d920",
+                        "name": "alpha",
+                        "root_dir": str(alpha_root),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    registry = ProjectRegistry(registry_path)
+
+    assert registry.current() is not None
+    assert registry.current().name == "alpha"  # type: ignore[union-attr]
+    persisted = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert persisted["version"] == 2
+    assert persisted["current_project_id"] == "44c274e9-2910-4836-ae86-f446d0f9d920"
+
+
+def test_registry_checks_for_v1_only_after_acquiring_file_lock(tmp_path: Path) -> None:
+    registry_path = tmp_path / "projects.json"
+    legacy_payload = {
+        "version": 1,
+        "projects": [
+            {
+                "id": "44c274e9-2910-4836-ae86-f446d0f9d920",
+                "name": "legacy",
+                "root_dir": str(tmp_path),
+            }
+        ],
+    }
+    writer_lock = FileLock(f"{registry_path}.lock")
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with writer_lock:
+            constructing = executor.submit(ProjectRegistry, registry_path)
+            with pytest.raises(FutureTimeoutError):
+                constructing.result(timeout=0.2)
+            registry_path.write_text(json.dumps(legacy_payload), encoding="utf-8")
+        registry = constructing.result(timeout=2)
+    assert registry.current() is not None
+    assert registry.current().name == "legacy"  # type: ignore[union-attr]
+    assert json.loads(registry_path.read_text(encoding="utf-8"))["version"] == 2
 
 
 def test_project_rejects_noncanonical_absolute_root(tmp_path: Path) -> None:
@@ -122,6 +210,23 @@ def test_project_rejects_noncanonical_absolute_root(tmp_path: Path) -> None:
                 ]
             }
         )
+
+
+def test_project_metadata_rejects_project_types_and_invalid_selection(tmp_path: Path) -> None:
+    project = {
+        "id": "44c274e9-2910-4836-ae86-f446d0f9d920",
+        "name": "plain-project",
+        "root_dir": str(tmp_path),
+    }
+    with pytest.raises(ValidationError, match="type"):
+        ProjectRegistryDocument.model_validate(
+            {
+                "projects": [{**project, "type": "stdio"}],
+                "current_project_id": project["id"],
+            }
+        )
+    with pytest.raises(ValidationError, match="current_project_id"):
+        ProjectRegistryDocument.model_validate({"projects": [project], "current_project_id": None})
 
 
 def test_registry_rejects_documents_with_duplicate_project_identity(tmp_path: Path) -> None:

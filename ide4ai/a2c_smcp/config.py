@@ -10,7 +10,8 @@ MCP Server 配置管理 | MCP Server Configuration Management
 This module manages MCP Server configuration, including IDE instance initialization parameters
 """
 
-import shlex
+from __future__ import annotations
+
 from typing import Any, Literal
 
 from confz import BaseConfig, CLArgSource, EnvSource
@@ -20,8 +21,6 @@ from pydantic import Field, field_validator
 
 from ide4ai.base import WorkspaceSetting
 from ide4ai.environment.terminal.command_filter import CommandFilterConfig
-from ide4ai.languages import configured_language_profiles
-from ide4ai.lsp.manager import LspMode, LspSettings
 
 
 class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
@@ -32,12 +31,11 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     Supports loading configuration from environment variables and command-line arguments
 
     Attributes:
-        transport: 传输模式 | Transport mode (stdio, sse, streamable-http)
+        transport: 传输模式 | Transport mode (multi-project server: stdio only)
         host: 服务器主机地址 | Server host address (for sse/streamable-http)
         port: 服务器端口 | Server port (for sse/streamable-http)
         cmd_white_list: 命令白名单 | Command whitelist
-        root_dir: 根目录 | Root directory
-        project_name: 项目名称 | Project name
+        project_registry_path: 持久化项目元数据路径 | Persistent project metadata path
         render_with_symbols: 是否渲染符号 | Whether to render symbols
         max_active_models: 最大活跃模型数 | Maximum active models
         cmd_time_out: 命令超时时间(秒) | Command timeout (seconds)
@@ -48,8 +46,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         - TRANSPORT -> transport
         - HOST -> host
         - PORT -> port
-        - PROJECT_ROOT -> root_dir
-        - PROJECT_NAME -> project_name
+        - PROJECT_REGISTRY_PATH -> project_registry_path
         - CMD_WHITE_LIST -> cmd_white_list (逗号分隔 | comma separated)
         - CMD_TIMEOUT -> cmd_time_out
         - RENDER_WITH_SYMBOLS -> render_with_symbols
@@ -60,8 +57,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         - --transport -> transport
         - --host -> host
         - --port -> port
-        - --root-dir -> root_dir
-        - --project-name -> project_name
+        - --project-registry-path -> project_registry_path
         - --cmd-white-list -> cmd_white_list (逗号分隔 | comma separated)
         - --cmd-timeout -> cmd_time_out
         - --render-with-symbols -> render_with_symbols
@@ -79,20 +75,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
                 "TRANSPORT": "transport",
                 "HOST": "host",
                 "PORT": "port",
-                "PROJECT_ROOT": "root_dir",
-                "PROJECT_NAME": "project_name",
                 "PROJECT_REGISTRY_PATH": "project_registry_path",
                 "CMD_WHITE_LIST": "cmd_white_list",
                 "CMD_TIMEOUT": "cmd_time_out",
                 "RENDER_WITH_SYMBOLS": "render_with_symbols",
                 "MAX_ACTIVE_MODELS": "max_active_models",
                 "ENABLE_SIMPLE_VIEW_MODE": "enable_simple_view_mode",
-                "LSP_MODE": "lsp_mode",
-                "LSP_LANGUAGE_ID": "lsp_language_id",
-                "LSP_PROFILE_LANGUAGE_ID": "lsp_profile_language_id",
-                "LSP_SERVER_COMMAND": "lsp_server_command",
-                "LSP_FILE_EXTENSIONS": "lsp_file_extensions",
-                "LSP_ROOT_MARKERS": "lsp_root_markers",
             },
         ),
         CLArgSource(
@@ -101,20 +89,12 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
                 "transport": "transport",
                 "host": "host",
                 "port": "port",
-                "root-dir": "root_dir",
-                "project-name": "project_name",
                 "project-registry-path": "project_registry_path",
                 "cmd-white-list": "cmd_white_list",
                 "cmd-timeout": "cmd_time_out",
                 "render-with-symbols": "render_with_symbols",
                 "max-active-models": "max_active_models",
                 "enable-simple-view-mode": "enable_simple_view_mode",
-                "lsp-mode": "lsp_mode",
-                "lsp-language-id": "lsp_language_id",
-                "lsp-profile-language-id": "lsp_profile_language_id",
-                "lsp-server-command": "lsp_server_command",
-                "lsp-file-extensions": "lsp_file_extensions",
-                "lsp-root-markers": "lsp_root_markers",
             },
         ),
     ]
@@ -122,8 +102,7 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # 传输模式配置 | Transport mode configuration
     transport: Literal["stdio", "sse", "streamable-http"] = Field(
         default="stdio",
-        description="传输模式：stdio(标准输入输出), sse(Server-Sent Events), streamable-http(Streamable HTTP) | "
-        "Transport mode: stdio, sse, streamable-http",
+        description="传输模式；当前多项目 Server 仅支持 stdio | Transport mode; multi-project server supports stdio only",
     )
     host: str = Field(
         default="127.0.0.1",
@@ -140,8 +119,6 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         description="命令白名单，逗号分隔的字符串会被自动解析为列表 | Command whitelist, comma-separated string will be "
         "automatically parsed to list",
     )
-    root_dir: str = Field(default=".", description="项目根目录 | Project root directory")
-    project_name: str = Field(default="mcp-project", description="项目名称 | Project name")
     project_registry_path: str = Field(
         default_factory=lambda: str(user_config_path("ide4ai") / "projects.json"),
         description="持久化项目注册表路径 | Persistent project registry path",
@@ -154,21 +131,6 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         description="是否启用简化视图模式 | Whether to enable simple view mode",
     )
     workspace_setting: WorkspaceSetting | None = Field(default=None, description="工作区设置 | Workspace settings")
-    lsp_mode: LspMode = Field(default="auto", description="LSP selection mode: auto, explicit, or disabled")
-    lsp_language_id: str | None = Field(default=None, description="Language id required by explicit LSP mode")
-    lsp_profile_language_id: str | None = Field(
-        default=None,
-        description="Language id whose profile is configured; required for a custom language in auto mode",
-    )
-    lsp_server_command: tuple[str, ...] | None = Field(default=None, description="Override language-server command")
-    lsp_file_extensions: tuple[str, ...] = Field(
-        default=(),
-        description="File extensions for a configured language, for example .rs,.rlib",
-    )
-    lsp_root_markers: tuple[str, ...] = Field(
-        default=(),
-        description="Workspace root markers for a configured language, for example Cargo.toml,.git",
-    )
 
     @field_validator("cmd_white_list", mode="before")
     @classmethod
@@ -194,61 +156,14 @@ class MCPServerConfig(BaseConfig, metaclass=BaseConfigMetaclass):
         # 其他情况返回空列表 | Return empty list for other cases
         return []
 
-    @field_validator("lsp_server_command", mode="before")
-    @classmethod
-    def parse_lsp_server_command(cls, value: Any) -> tuple[str, ...] | None:
-        if value is None or isinstance(value, tuple):
-            return value
-        if isinstance(value, str):
-            command = tuple(shlex.split(value))
-            return command or None
-        if isinstance(value, list) and all(isinstance(part, str) for part in value):
-            return tuple(value)
-        raise ValueError("lsp_server_command must be a shell-style string or string sequence")
-
-    @field_validator("lsp_file_extensions", "lsp_root_markers", mode="before")
-    @classmethod
-    def parse_lsp_string_tuple(cls, value: Any) -> tuple[str, ...]:
-        if value is None:
-            return ()
-        if isinstance(value, str):
-            return tuple(part.strip() for part in value.split(",") if part.strip())
-        if isinstance(value, (list, tuple)) and all(isinstance(part, str) for part in value):
-            return tuple(value)
-        raise ValueError("LSP extension and root-marker settings must be comma-separated strings or string sequences")
-
-    def to_ide_kwargs(self) -> dict[str, Any]:
-        """
-        转换为 IDE 初始化参数 | Convert to IDE initialization parameters
-
-        Returns:
-            dict: IDE 初始化参数字典 | IDE initialization parameters dict
-        """
-        # 将 cmd_white_list 转换为 CommandFilterConfig
-        # Convert cmd_white_list to CommandFilterConfig
+    def to_project_ide_defaults(self) -> dict[str, Any]:
+        """Return server-wide IDE defaults overridden by each project record."""
         cmd_filter = CommandFilterConfig.from_white_list(self.cmd_white_list)
-
         return {
             "cmd_filter": cmd_filter,
-            "root_dir": self.root_dir,
-            "project_name": self.project_name,
             "render_with_symbols": self.render_with_symbols,
             "max_active_models": self.max_active_models,
             "cmd_time_out": self.cmd_time_out,
             "enable_simple_view_mode": self.enable_simple_view_mode,
             "workspace_setting": self.workspace_setting,
-            "language_profiles": configured_language_profiles(
-                language_id=self.lsp_profile_language_id or self.lsp_language_id,
-                server_command=self.lsp_server_command,
-                file_extensions=self.lsp_file_extensions,
-                root_markers=self.lsp_root_markers,
-            ),
-            "lsp_settings": LspSettings(mode=self.lsp_mode, language_id=self.lsp_language_id),
         }
-
-    def to_project_ide_defaults(self) -> dict[str, Any]:
-        """Return server-wide IDE defaults overridden by each project record."""
-        kwargs = self.to_ide_kwargs()
-        for project_field in ("root_dir", "project_name", "language_profiles", "lsp_settings"):
-            kwargs.pop(project_field)
-        return kwargs

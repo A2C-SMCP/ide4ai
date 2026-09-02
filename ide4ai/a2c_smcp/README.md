@@ -12,10 +12,13 @@ ide4ai/a2c_smcp/
 ├── cli.py                   # 通用 MCP Server 与 CLI | Generic MCP server and CLI
 ├── server.py                # MCP Server 基类 | MCP Server base implementation
 ├── config.py                # 配置管理 | Configuration management
+├── catalog.py               # 动态工具/资源目录 | Dynamic catalogs
+├── providers.py             # 项目感知 Provider | Project-aware providers
+├── projects/                # 持久化项目与懒加载运行态 | Persistent projects and lazy runtimes
 ├── tools/                   # 工具实现 | Tools implementation
 │   ├── __init__.py
 │   ├── base.py             # 工具基类 | Tool base class
-│   ├── bash.py             # Bash 工具 | Bash tool
+│   ├── bash.py             # Legacy Python API compatibility | 旧 Python API 兼容层
 │   ├── glob.py             # Glob 工具 (待实现) | Glob tool (TODO)
 │   ├── grep.py             # Grep 工具 (待实现) | Grep tool (TODO)
 │   ├── read.py             # Read 工具 (待实现) | Read tool (TODO)
@@ -31,18 +34,15 @@ ide4ai/a2c_smcp/
 
 ## 核心特性 | Core Features
 
-### 1. 多种传输模式 | Multiple Transport Modes
+### 1. stdio 多项目会话 | stdio Multi-project Session
 
-支持三种传输模式 | Supports three transport modes:
-- **stdio**: 标准输入输出，适合本地进程间通信 | Standard I/O, suitable for local inter-process communication
-- **SSE (Server-Sent Events)**: 服务器推送事件，适合 Web 应用 | Server-Sent Events, suitable for web applications
-- **Streamable HTTP**: 流式 HTTP，支持双向通信和流式响应 | Streamable HTTP, supports bidirectional communication and streaming responses
+多项目 Server 当前使用 stdio。SSE 与 Streamable HTTP 尚未定义会话隔离语义，因此会拒绝启动。
 
-### 2. 单例模式 | Singleton Pattern
+The multi-project server currently uses stdio. SSE and Streamable HTTP are rejected until their session-isolation semantics are defined.
 
-使用 `IDEInstance` 确保在 MCP Server 生命周期内 IDE 实例的唯一性和状态一致性。
+### 2. 动态目录与懒加载 | Dynamic Catalog and Lazy Loading
 
-Uses `IDEInstance` to ensure IDE instance uniqueness and state consistency throughout MCP Server lifecycle.
+工具和资源由当前项目实时组合。目录发现不会创建 IDE；第一次调用 IDE 工具或读取窗口资源时才加载对应项目的 IDE/Workspace/LSP。切换项目不会改变已经开始的调用。
 
 ### 3. 工具封装 | Tool Encapsulation
 
@@ -64,23 +64,23 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ## 已实现工具 | Implemented Tools
 
-### Bash
+### Terminal 与 TFBash 0.2.1 | Terminal and TFBash 0.2.1
 
-在 IDE 环境中执行 Bash 命令 | Execute Bash commands in IDE environment
+选择项目后，MCP 目录使用状态驱动的 `terminal_start` / `terminal_close` 代替旧 `Bash` 和 toggle 型 `Terminal`。关闭状态下执行 `terminal_start` 会为当前项目创建进程内 `EmbeddedShellRuntime`；成功后动态暴露 TFBash 原生的七个工具：
 
-**输入参数 | Input Parameters:**
-- `command` (required): 要执行的命令 | Command to execute
-- `timeout` (optional): 超时时间(毫秒) | Timeout in milliseconds
-- `description` (optional): 命令描述 | Command description
-- `run_in_background` (optional): 是否后台运行 | Run in background
-- `dangerously_disable_sandbox` (optional): 禁用沙箱 | Disable sandbox
+- `shell_open`
+- `shell_exec`
+- `shell_read`
+- `shell_write`
+- `shell_signal`
+- `shell_list`
+- `shell_close`
 
-**输出 | Output:**
-- `success`: 是否成功 | Success status
-- `output`: 命令输出 | Command output
-- `error`: 错误信息 | Error message
-- `exit_code`: 退出码 | Exit code
-- `metadata`: 元数据 | Metadata
+工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.1`。`terminal_start` 支持可选 cwd、Shell、默认启动命令、环境覆盖和 deadline；项目不可变的 `root_dir` 始终作为 `workspace_root`，且是默认 cwd。它只创建 Runtime，不隐式创建 Shell。开启后只展示 `terminal_close`；该工具、`project_unload`、`project_delete` 和 Server 关闭复用同一有界优雅清理路径，先 terminate、等待 grace period、再 kill 剩余受管进程。生命周期工具按目标状态幂等，工具列表变化通过 MCP 事件通知，不使用轮询。
+
+Runtime 为 open 时还会通过 TFBash 公开的 embedded Resource API 原样暴露 `window://io.github.a2c-smcp.tfbash/shell-overview`。Resource 定义、Markdown 内容、URI 校验和更新事件均由 TFBash 拥有；ide4ai 只负责当前项目绑定及同步生产者线程到 MCP session 的事件桥。Terminal 开关触发 `resources/list_changed`，已订阅客户端在 Shell/Execution/输出变化时收到 `resources/updated`；关闭或切换项目后不会转发旧 Runtime 的迟到事件。
+
+The legacy `BashTool` import remains available for direct Python compatibility, but the project-aware MCP server no longer registers it.
 
 ## 待实现工具 | Tools TODO
 
@@ -128,23 +128,7 @@ uv run ide4ai-mcp
 python -m ide4ai.a2c_smcp.cli
 ```
 
-**使用 SSE 模式 | Using SSE mode:**
-```bash
-# 使用环境变量 | Using environment variable
-TRANSPORT=sse HOST=0.0.0.0 PORT=8000 ide4ai-mcp
-
-# 使用命令行参数 | Using command-line arguments
-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
-```
-
-**使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
-```bash
-# 使用环境变量 | Using environment variable
-TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 ide4ai-mcp
-
-# 使用命令行参数 | Using command-line arguments
-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
-```
+默认启动不隐式创建项目。客户端使用 `project_create` 注册目录；只要存在注册项目，Server 就持久化并恢复唯一的当前项目，可使用 `project_switch` 主动切换。`project_list` 将唯一项目名放在集合顶层的 `current_project` 字段，只有项目列表为空时该字段才为 `null`。项目名称、根目录和 LSP 配置只属于 `project_create`，不是 Server 启动参数。可用 `project_unload` 释放当前项目的 Terminal/IDE/Workspace/LSP 运行态。
 
 ### 在代码中使用 | Use in Code
 
@@ -172,60 +156,19 @@ if __name__ == "__main__":
 **使用 stdio 模式 | Using stdio mode:**
 ```python
 import asyncio
+from confz import DataSource
 from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
 
 async def main():
-    config = MCPServerConfig(
-        transport="stdio",  # 默认模式 | Default mode
-        cmd_white_list=["ls", "pwd", "echo", "cat"],
-        root_dir="/path/to/project",
-        project_name="my-project",
-    )
+    with MCPServerConfig.change_config_sources(DataSource(data={
+        "transport": "stdio",
+        "cmd_white_list": ["ls", "pwd", "echo", "cat"],
+        "project_registry_path": "/path/to/projects.json",
+    })):
+        config = MCPServerConfig()
     
     server = IDEMCPServer(config)
     await server.run()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-**使用 SSE 模式 | Using SSE mode:**
-```python
-import asyncio
-from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
-
-async def main():
-    config = MCPServerConfig(
-        transport="sse",
-        host="0.0.0.0",
-        port=8000,
-        root_dir="/path/to/project",
-        project_name="my-project",
-    )
-    
-    server = IDEMCPServer(config)
-    await server.run()  # 启动 HTTP 服务器 | Start HTTP server
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-**使用 Streamable HTTP 模式 | Using Streamable HTTP mode:**
-```python
-import asyncio
-from ide4ai.a2c_smcp import MCPServerConfig, IDEMCPServer
-
-async def main():
-    config = MCPServerConfig(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=8000,
-        root_dir="/path/to/project",
-        project_name="my-project",
-    )
-    
-    server = IDEMCPServer(config)
-    await server.run()  # 启动 HTTP 服务器 | Start HTTP server
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -251,8 +194,6 @@ Add to MCP client configuration file:
       "args": ["--from", "ide4ai", "ide4ai-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30",
         "RENDER_WITH_SYMBOLS": "true",
@@ -275,8 +216,6 @@ Add to MCP client configuration file:
         "--from", "ide4ai",
         "ide4ai-mcp",
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30",
         "--render-with-symbols", "true",
@@ -298,12 +237,10 @@ Add to MCP client configuration file:
       "args": [
         "--from", "ide4ai",
         "ide4ai-mcp",
-        "--root-dir", "/path/to/project",
         "--cmd-timeout", "60"
       ],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat"
       }
     }
@@ -322,8 +259,6 @@ Add to MCP client configuration file:
       "args": [],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30"
       }
@@ -340,8 +275,6 @@ Add to MCP client configuration file:
       "command": "ide4ai-mcp",
       "args": [
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30"
       ]
@@ -361,8 +294,6 @@ Add to MCP client configuration file:
       "args": ["-m", "ide4ai.a2c_smcp.cli"],
       "env": {
         "TRANSPORT": "stdio",
-        "PROJECT_ROOT": "/path/to/project",
-        "PROJECT_NAME": "my-project",
         "CMD_WHITE_LIST": "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "CMD_TIMEOUT": "30"
       }
@@ -380,8 +311,6 @@ Add to MCP client configuration file:
       "args": [
         "-m", "ide4ai.a2c_smcp.cli",
         "--transport", "stdio",
-        "--root-dir", "/path/to/project",
-        "--project-name", "my-project",
         "--cmd-white-list", "ls,pwd,echo,cat,grep,find,head,tail,wc",
         "--cmd-timeout", "30"
       ]
@@ -390,100 +319,16 @@ Add to MCP client configuration file:
 }
 ```
 
-#### SSE 模式（用于 Web 应用和远程访问）| SSE Mode (For Web Applications and Remote Access)
-
-SSE 模式需要先启动服务器，然后客户端通过 HTTP 连接。
-
-SSE mode requires starting the server first, then the client connects via HTTP.
-
-##### 启动服务器 | Start Server
-
-```bash
-# 使用 uvx | Using uvx
-uvx --from ide4ai ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
-
-# 使用已安装的命令 | Using installed command
-ide4ai-mcp --transport sse --host 0.0.0.0 --port 8000
-
-# 使用环境变量 | Using environment variables
-TRANSPORT=sse HOST=0.0.0.0 PORT=8000 ide4ai-mcp
-```
-
-##### 客户端连接 | Client Connection
-
-**连接端点 | Connection Endpoints:**
-- `GET http://host:port/sse` - SSE 连接端点 | SSE connection endpoint
-- `POST http://host:port/messages/` - 客户端消息发送端点 | Client message sending endpoint
-
-**MCP 客户端配置示例（如果客户端支持 SSE）| MCP Client Configuration Example (If Client Supports SSE):**
-
-```json
-{
-  "mcpServers": {
-    "python-ide-sse": {
-      "url": "http://localhost:8000/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
-
-**注意 | Note:** 大多数 MCP 客户端（如 Claude Desktop）默认只支持 stdio 模式。SSE 模式主要用于自定义客户端或 Web 应用集成。
-
-Most MCP clients (like Claude Desktop) only support stdio mode by default. SSE mode is mainly for custom clients or web application integration.
-
-#### Streamable HTTP 模式（用于复杂双向通信）| Streamable HTTP Mode (For Complex Bidirectional Communication)
-
-Streamable HTTP 模式需要先启动服务器，然后客户端通过 HTTP 连接。
-
-Streamable HTTP mode requires starting the server first, then the client connects via HTTP.
-
-##### 启动服务器 | Start Server
-
-```bash
-# 使用 uvx | Using uvx
-uvx --from ide4ai ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
-
-# 使用已安装的命令 | Using installed command
-ide4ai-mcp --transport streamable-http --host 0.0.0.0 --port 8000
-
-# 使用环境变量 | Using environment variables
-TRANSPORT=streamable-http HOST=0.0.0.0 PORT=8000 ide4ai-mcp
-```
-
-##### 客户端连接 | Client Connection
-
-**连接端点 | Connection Endpoint:**
-- `POST http://host:port/mcp` - 消息处理端点（支持流式响应）| Message handling endpoint (supports streaming responses)
-
-**MCP 客户端配置示例（如果客户端支持 Streamable HTTP）| MCP Client Configuration Example (If Client Supports Streamable HTTP):**
-
-```json
-{
-  "mcpServers": {
-    "python-ide-http": {
-      "url": "http://localhost:8000/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
-```
-
-**注意 | Note:** 大多数 MCP 客户端（如 Claude Desktop）默认只支持 stdio 模式。Streamable HTTP 模式主要用于自定义客户端或需要流式响应的场景。
-
-Most MCP clients (like Claude Desktop) only support stdio mode by default. Streamable HTTP mode is mainly for custom clients or scenarios requiring streaming responses.
-
 ---
 
 **配置参数说明 | Configuration Parameters:**
 
 | 参数名 Parameter | 环境变量 Environment Variable | 命令行参数 CLI Argument | 默认值 Default | 说明 Description |
 |-----------------|------------------------------|------------------------|---------------|------------------|
-| transport | TRANSPORT | --transport | "stdio" | 传输模式 \| Transport mode (stdio/sse/streamable-http) |
+| transport | TRANSPORT | --transport | "stdio" | 当前多项目 Server 仅支持 stdio \| The multi-project server currently supports stdio only |
 | host | HOST | --host | "127.0.0.1" | 服务器主机 \| Server host (for sse/streamable-http) |
 | port | PORT | --port | 8000 | 服务器端口 \| Server port (for sse/streamable-http) |
-| root_dir | PROJECT_ROOT | --root-dir | "." | 项目根目录 \| Project root directory |
-| project_name | PROJECT_NAME | --project-name | "mcp-project" | 项目名称 \| Project name |
+| project_registry_path | PROJECT_REGISTRY_PATH | --project-registry-path | platform config/ide4ai/projects.json | Server 持久化项目及当前选择的元数据文件 \| Server-owned project and selection metadata |
 | cmd_white_list | CMD_WHITE_LIST | --cmd-white-list | ["ls", "pwd", "echo", "cat", "grep", "find", "head", "tail", "wc"] | 命令白名单（逗号分隔）\| Command whitelist (comma separated) |
 | cmd_time_out | CMD_TIMEOUT | --cmd-timeout | 10 | 命令超时时间(秒) \| Command timeout (seconds) |
 | render_with_symbols | RENDER_WITH_SYMBOLS | --render-with-symbols | true | 是否渲染符号 \| Whether to render symbols |
@@ -496,16 +341,9 @@ Most MCP clients (like Claude Desktop) only support stdio mode by default. Strea
 Command-line Arguments > Environment Variables > Default Values
 ```
 
-### 传输模式对比 | Transport Mode Comparison
+### 传输范围 | Transport Scope
 
-| 特性 Feature | stdio | SSE | Streamable HTTP |
-|-------------|-------|-----|-----------------|
-| **适用场景 Use Cases** | 本地进程间通信<br/>Local IPC | Web 应用、远程访问<br/>Web apps, remote access | 复杂双向通信<br/>Complex bidirectional communication |
-| **连接方式 Connection** | 标准输入输出<br/>Standard I/O | HTTP (GET + POST) | HTTP (POST) |
-| **优点 Advantages** | 简单、高效、无需网络配置<br/>Simple, efficient, no network config | 支持远程访问、适合 Web 集成<br/>Remote access, web integration | 双向通信、流式响应<br/>Bidirectional, streaming |
-| **缺点 Disadvantages** | 仅限本地使用<br/>Local only | 单向推送<br/>One-way push | 相对复杂<br/>More complex |
-| **端点 Endpoints** | N/A | `GET /sse`<br/>`POST /messages/` | `GET/POST/DELETE /mcp` |
-| **推荐用于 Recommended For** | Claude Desktop 等本地客户端<br/>Local clients like Claude Desktop | 自定义 Web 客户端<br/>Custom web clients | 需要流式响应的场景<br/>Scenarios requiring streaming |
+当前动态多项目服务器仅支持 stdio transport。网络传输需要先实现每个 MCP 会话独立的项目选择和运行态所有权。
 
 ## 开发指南 | Development Guide
 
@@ -514,7 +352,7 @@ Command-line Arguments > Environment Variables > Default Values
 1. 在 `schemas/tools.py` 中定义输入输出 Schema
 2. 在 `tools/` 目录创建新工具文件
 3. 继承 `BaseTool` 并实现必要方法
-4. 在 `server.py` 的 `_register_tools()` 中注册工具
+4. 将工具类加入 `IDEToolProvider`，或为状态化工具实现独立 `ToolProvider`
 
 Example:
 
@@ -583,7 +421,7 @@ pytest tests/a2c_smcp/tools
 - [x] 基础架构搭建 | Basic architecture setup
 - [x] Bash 工具实现 | Bash tool implementation
 - [ ] 其他工具实现 | Other tools implementation
-- [ ] Resource 支持 | Resource support
+- [x] Resource 支持 | Resource support
 - [ ] 完整的测试覆盖 | Complete test coverage
 - [ ] 性能优化 | Performance optimization
 - [ ] 文档完善 | Documentation improvement

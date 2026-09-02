@@ -1,676 +1,154 @@
-# filename: test_mcp_server_transports.py
-# @Time    : 2025/10/30 11:59
-# @Author  : JQQ
-# @Email   : jqq1716@gmail.com
-# @Software: PyCharm
-"""
-MCP Server 传输模式测试 | MCP Server Transport Mode Tests
+"""Transport-scope and dynamic server initialization tests."""
 
-测试 stdio, SSE 和 Streamable HTTP 三种传输模式
-Tests stdio, SSE and Streamable HTTP transport modes
-"""
+from __future__ import annotations
 
-import asyncio
-
-import httpx
+import anyio
 import pytest
 from confz import DataSource
-from confz.exceptions import ConfigException
+from mcp.types import CallToolResult
 
 from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectError, ProjectRegistry
 
 
-class TestMCPServerTransportModes:
-    """测试 MCP Server 传输模式 | Test MCP Server Transport Modes"""
+@pytest.mark.parametrize("transport", ["stdio", "sse", "streamable-http"])
+def test_transport_values_remain_parseable(transport: str) -> None:
+    with MCPServerConfig.change_config_sources(DataSource(data={"transport": transport})):
+        assert MCPServerConfig().transport == transport
 
-    def test_config_stdio_mode(self) -> None:
-        """
-        测试 stdio 模式配置 | Test stdio mode configuration
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-stdio",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
 
-            assert config.transport == "stdio"
-            assert config.root_dir == "."
-            assert config.project_name == "test-stdio"
+def test_default_server_starts_without_loading_an_ide(tmp_path) -> None:
+    with MCPServerConfig.change_config_sources(
+        DataSource(data={"transport": "stdio", "project_registry_path": str(tmp_path / "projects.json")})
+    ):
+        server = IDEMCPServer(MCPServerConfig())
+        try:
+            assert server.project_host.current_project is None
+            assert [binding.definition.name for binding in server.tool_catalog.bindings(None)] == [
+                "project_create",
+                "project_delete",
+                "project_list",
+                "project_switch",
+            ]
+            assert server.resource_catalog.bindings(None) == ()
+        finally:
+            server.close()
 
-    def test_config_sse_mode(self) -> None:
-        """
-        测试 SSE 模式配置 | Test SSE mode configuration
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "sse",
-                    "host": "0.0.0.0",
-                    "port": 8001,
-                    "root_dir": ".",
-                    "project_name": "test-sse",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
 
-            assert config.transport == "sse"
-            assert config.host == "0.0.0.0"
-            assert config.port == 8001
-            assert config.project_name == "test-sse"
+def test_server_exposes_only_dynamic_catalogs_not_direct_compatibility_views() -> None:
+    assert not hasattr(IDEMCPServer, "ide")
+    assert not hasattr(IDEMCPServer, "tools")
+    assert not hasattr(IDEMCPServer, "resources")
 
-    def test_config_streamable_http_mode(self) -> None:
-        """
-        测试 Streamable HTTP 模式配置 | Test Streamable HTTP mode configuration
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 8002,
-                    "root_dir": ".",
-                    "project_name": "test-http",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
 
-            assert config.transport == "streamable-http"
-            assert config.host == "127.0.0.1"
-            assert config.port == 8002
-            assert config.project_name == "test-http"
-
-    def test_invalid_transport_mode(self) -> None:
-        """
-        测试无效的传输模式 | Test invalid transport mode
-        """
-        with pytest.raises(ConfigException):
-            # 应该抛出验证错误 | Should raise validation error
-            MCPServerConfig(
-                transport="invalid-mode",  # type: ignore
-                root_dir="..",
-            )
-
-    def test_server_initialization_stdio(self) -> None:
-        """
-        测试 stdio 模式服务器初始化 | Test stdio mode server initialization
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-stdio-init",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-
-            server = IDEMCPServer(config)
-            try:
-                assert server.config.transport == "stdio"
-                assert server.server is not None
-                assert server.ide is not None
-                assert len(server.tools) > 0  # 应该有注册的工具 | Should have registered tools
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
-
-    def test_server_initialization_sse(self) -> None:
-        """
-        测试 SSE 模式服务器初始化 | Test SSE mode server initialization
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "sse",
-                    "host": "127.0.0.1",
-                    "port": 8003,
-                    "root_dir": ".",
-                    "project_name": "test-sse-init",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-
-            server = IDEMCPServer(config)
-            try:
-                assert server.config.transport == "sse"
-                assert server.config.host == "127.0.0.1"
-                assert server.config.port == 8003
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
-
-    def test_server_initialization_streamable_http(self) -> None:
-        """
-        测试 Streamable HTTP 模式服务器初始化 | Test Streamable HTTP mode server initialization
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 8004,
-                    "root_dir": ".",
-                    "project_name": "test-http-init",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-
-            server = IDEMCPServer(config)
-            try:
-                assert server.config.transport == "streamable-http"
-                assert server.config.host == "127.0.0.1"
-                assert server.config.port == 8004
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
+def test_persisted_project_restores_without_loading_ide(tmp_path) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
+    with MCPServerConfig.change_config_sources(
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
+    ):
+        server = IDEMCPServer(MCPServerConfig())
+        try:
+            assert server.project_host.current_project is not None
+            names = {
+                binding.definition.name for binding in server.tool_catalog.bindings(server.project_host.current_project)
+            }
+            assert {"terminal_start", "Glob", "Lsp", "project_unload"} <= names
+            assert "Bash" not in names
+        finally:
+            server.close()
 
 
 @pytest.mark.asyncio
-class TestMCPServerSSETransport:
-    """测试 MCP Server SSE 传输 | Test MCP Server SSE Transport"""
+async def test_async_server_close_releases_enabled_terminal_runtime(tmp_path) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
+    with MCPServerConfig.change_config_sources(
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
+    ):
+        server = IDEMCPServer(MCPServerConfig())
+        project = server.project_host.current_project
+        assert project is not None
+        terminal = server.tool_catalog.find(project, "terminal_start")
+        assert terminal is not None
+        await terminal.invoke({})
+        shell_open = server.tool_catalog.find(project, "shell_open")
+        assert shell_open is not None
+        opened = await shell_open.invoke({})
+        assert isinstance(opened.result, CallToolResult)
+        assert opened.result.isError is False
+        with pytest.raises(ProjectError, match="await server.aclose"):
+            server.close()
 
-    async def test_sse_server_startup_and_shutdown(self) -> None:
-        """
-        测试 SSE 服务器启动和关闭 | Test SSE server startup and shutdown
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            await server.aclose()
 
-        注意：这是一个快速启动/关闭测试，不进行实际连接
-        Note: This is a quick startup/shutdown test without actual connections
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "sse",
-                    "host": "127.0.0.1",
-                    "port": 8005,
-                    "root_dir": ".",
-                    "project_name": "test-sse-lifecycle",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                # 创建一个任务来运行服务器 | Create a task to run the server
-                server_task = asyncio.create_task(server.run())
-
-                # 等待一小段时间让服务器启动 | Wait a bit for server to start
-                await asyncio.sleep(0.5)
-
-                # 取消服务器任务 | Cancel server task
-                server_task.cancel()
-
-                try:
-                    await server_task
-                except asyncio.CancelledError:
-                    pass  # 预期的取消 | Expected cancellation
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
-
-    @pytest.mark.timeout(10)
-    async def test_sse_server_endpoints_accessible(self) -> None:
-        """
-        测试 SSE 服务器端点可访问性 | Test SSE server endpoints accessibility
-
-        启动服务器并验证端点是否可访问
-        Start server and verify endpoints are accessible
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "sse",
-                    "host": "127.0.0.1",
-                    "port": 8006,
-                    "root_dir": ".",
-                    "project_name": "test-sse-endpoints",
-                    "cmd_white_list": ["echo", "pwd"],
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            # 在后台运行服务器 | Run server in background
-            server_task = asyncio.create_task(server.run())
-
-            try:
-                # 等待服务器启动 | Wait for server to start
-                await asyncio.sleep(1)
-
-                # 测试端点是否可访问 | Test if endpoints are accessible
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    # 测试 SSE 端点（应该返回 SSE 流）| Test SSE endpoint (should return SSE stream)
-                    try:
-                        response = await client.get(f"http://{config.host}:{config.port}/sse")
-                        # SSE 端点应该开始流式传输 | SSE endpoint should start streaming
-                        assert response.status_code in [
-                            200,
-                            500,
-                        ]  # 可能因为没有完整握手而失败 | May fail due to incomplete handshake
-                    except Exception:
-                        # 连接可能会因为 SSE 握手不完整而失败，这是正常的
-                        # Connection may fail due to incomplete SSE handshake, this is normal
-                        pass
-
-            finally:
-                # 清理：取消服务器任务 | Cleanup: cancel server task
-                server_task.cancel()
-                try:
-                    await server_task
-                except asyncio.CancelledError:
-                    pass
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
+        assert server.project_terminal_manager.has_live_runtimes is False
+        with pytest.raises(ProjectError, match="closed"):
+            _ = server.project_host.current_project
 
 
 @pytest.mark.asyncio
-class TestMCPServerStreamableHTTPTransport:
-    """测试 MCP Server Streamable HTTP 传输 | Test MCP Server Streamable HTTP Transport"""
+async def test_sync_close_rejects_terminal_factory_in_progress(tmp_path, monkeypatch) -> None:
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name="persisted", root_dir=tmp_path)
+    with MCPServerConfig.change_config_sources(
+        DataSource(data={"transport": "stdio", "project_registry_path": str(registry_path)})
+    ):
+        server = IDEMCPServer(MCPServerConfig())
+        project = server.project_host.current_project
+        assert project is not None
+        factory_entered = anyio.Event()
+        release_factory = anyio.Event()
 
-    async def test_streamable_http_server_startup_and_shutdown(self) -> None:
-        """
-        测试 Streamable HTTP 服务器启动和关闭 | Test Streamable HTTP server startup and shutdown
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 8007,
-                    "root_dir": ".",
-                    "project_name": "test-http-lifecycle",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
+        class BlockingRuntime:
+            def __init__(self) -> None:
+                self.closed = False
 
-            try:
-                # 创建一个任务来运行服务器 | Create a task to run the server
-                server_task = asyncio.create_task(server.run())
+            def subscribe_resource_updates(self, listener):
+                return lambda: None
 
-                # 等待一小段时间让服务器启动 | Wait a bit for server to start
-                await asyncio.sleep(0.5)
+            async def aclose(self) -> None:
+                self.closed = True
 
-                # 取消服务器任务 | Cancel server task
-                server_task.cancel()
+        runtime = BlockingRuntime()
 
-                try:
-                    await server_task
-                except asyncio.CancelledError:
-                    pass  # 预期的取消 | Expected cancellation
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
+        async def factory(captured, options):
+            assert captured == project
+            factory_entered.set()
+            await release_factory.wait()
+            return runtime
 
-    @pytest.mark.timeout(10)
-    async def test_streamable_http_server_endpoints_accessible(self) -> None:
-        """
-        测试 Streamable HTTP 服务器端点可访问性 | Test Streamable HTTP server endpoints accessibility
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 8008,
-                    "root_dir": ".",
-                    "project_name": "test-http-endpoints",
-                    "cmd_white_list": ["echo", "pwd"],
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
+        monkeypatch.setattr(server.project_terminal_manager, "_runtime_factory", factory)
+        terminal = server.tool_catalog.find(project, "terminal_start")
+        assert terminal is not None
+        enable_results = []
 
-            # 在后台运行服务器 | Run server in background
-            server_task = asyncio.create_task(server.run())
+        async def enable() -> None:
+            enable_results.append(await terminal.invoke({}))
 
-            try:
-                # 等待服务器启动 | Wait for server to start
-                await asyncio.sleep(1)
-
-                # 测试端点是否可访问 | Test if endpoints are accessible
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    # 测试消息端点（POST 请求）| Test message endpoint (POST request)
-                    try:
-                        # 发送一个简单的测试请求 | Send a simple test request
-                        response = await client.post(
-                            f"http://{config.host}:{config.port}/mcp",
-                            json={"test": "data"},
-                            headers={"Content-Type": "application/json"},
-                        )
-                        # 端点应该可访问（即使请求格式不正确）| Endpoint should be accessible (even if request format is incorrect)
-                        # 406 表示服务器拒绝了请求格式，但服务器本身是正常运行的
-                        # 406 means server rejected the request format, but the server itself is running normally
-                        assert response.status_code in [200, 400, 406, 500]
-                    except httpx.ConnectError:
-                        pytest.fail("无法连接到 Streamable HTTP 服务器 | Cannot connect to Streamable HTTP server")
-
-            finally:
-                # 清理：取消服务器任务 | Cleanup: cancel server task
-                server_task.cancel()
-                try:
-                    await server_task
-                except asyncio.CancelledError:
-                    pass
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
-
-
-@pytest.mark.asyncio
-class TestMCPServerTools:
-    """测试 MCP Server 工具集成 | Test MCP Server Tools Integration"""
-
-    async def test_server_has_glob_tool_registered(self) -> None:
-        """
-        测试服务器是否注册了 Glob 工具 | Test if server has Glob tool registered
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-glob-registration",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                # 验证 Glob 工具已注册 | Verify Glob tool is registered
-                assert "Glob" in server.tools
-                glob_tool = server.tools["Glob"]
-                assert glob_tool.name == "Glob"
-                assert isinstance(glob_tool.description, str)
-                assert len(glob_tool.description) > 0
-            finally:
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(enable)
+            await factory_entered.wait()
+            with pytest.raises(ProjectError, match="await server.aclose"):
                 server.close()
+            assert server.project_host.current_project == project
+            release_factory.set()
 
-    async def test_server_has_bash_tool_registered(self) -> None:
-        """
-        测试服务器是否注册了 Bash 工具 | Test if server has Bash tool registered
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-bash-registration",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                # 验证 Bash 工具已注册 | Verify Bash tool is registered
-                assert "Bash" in server.tools
-                bash_tool = server.tools["Bash"]
-                assert bash_tool.name == "Bash"
-            finally:
-                server.close()
-
-    async def test_list_tools_includes_glob(self) -> None:
-        """
-        测试 list_tools 包含 Glob 工具 | Test list_tools includes Glob tool
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-list-tools",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                # 获取工具列表 | Get tools list
-                tool_names = list(server.tools.keys())
-
-                # 验证包含预期的工具 | Verify expected tools are included
-                assert "Glob" in tool_names
-                assert "Bash" in tool_names
-
-                # 验证至少有这两个工具 | Verify at least these two tools
-                assert len(tool_names) >= 2
-            finally:
-                server.close()
-
-    async def test_glob_tool_execution_through_server(self) -> None:
-        """
-        测试通过服务器执行 Glob 工具 | Test Glob tool execution through server
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-glob-execution",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                # 获取 Glob 工具 | Get Glob tool
-                glob_tool = server.tools["Glob"]
-
-                # 执行 Glob 工具 | Execute Glob tool
-                result = await glob_tool.execute(
-                    {
-                        "pattern": "*.py",
-                    },
-                )
-
-                # 验证结果 | Verify result
-                assert isinstance(result, dict)
-                assert "success" in result
-                assert "files" in result
-                assert isinstance(result["files"], list)
-            finally:
-                server.close()
-
-    async def test_glob_tool_with_recursive_pattern(self) -> None:
-        """
-        测试 Glob 工具递归模式 | Test Glob tool with recursive pattern
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-glob-recursive",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                glob_tool = server.tools["Glob"]
-
-                # 使用递归模式 | Use recursive pattern
-                result = await glob_tool.execute(
-                    {
-                        "pattern": "**/*.py",
-                    },
-                )
-
-                # 验证结果 | Verify result
-                assert isinstance(result, dict)
-                if result["success"]:
-                    assert len(result["files"]) > 0
-                    # 验证文件格式 | Verify file format
-                    first_file = result["files"][0]
-                    assert "path" in first_file
-                    assert "uri" in first_file
-                    assert "mtime" in first_file
-            finally:
-                server.close()
-
-    async def test_glob_tool_with_specific_path(self) -> None:
-        """
-        测试 Glob 工具指定路径 | Test Glob tool with specific path
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-glob-path",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                glob_tool = server.tools["Glob"]
-
-                # 在 ide4ai 目录下搜索 | Search in ide4ai directory
-                result = await glob_tool.execute(
-                    {
-                        "pattern": "*.py",
-                        "path": "ide4ai",
-                    },
-                )
-
-                # 验证结果 | Verify result
-                assert isinstance(result, dict)
-                assert "success" in result
-                if result["success"]:
-                    assert "metadata" in result
-                    assert result["metadata"]["path"] == "ide4ai"
-            finally:
-                server.close()
-
-    async def test_glob_tool_invalid_path_error(self) -> None:
-        """
-        测试 Glob 工具无效路径错误处理 | Test Glob tool invalid path error handling
-        """
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "stdio",
-                    "root_dir": ".",
-                    "project_name": "test-glob-error",
-                },
-            ),
-        ):
-            config = MCPServerConfig()
-            server = IDEMCPServer(config)
-
-            try:
-                glob_tool = server.tools["Glob"]
-
-                # 使用不存在的路径 | Use non-existent path
-                result = await glob_tool.execute(
-                    {
-                        "pattern": "*.py",
-                        "path": "/nonexistent/path",
-                    },
-                )
-
-                # 应该返回错误 | Should return error
-                assert isinstance(result, dict)
-                assert result["success"] is False
-                assert "error" in result
-                assert result["error"] is not None
-            finally:
-                server.close()
+        assert len(enable_results) == 1
+        assert isinstance(enable_results[0].result, CallToolResult)
+        assert enable_results[0].result.isError is True
+        assert runtime.closed is True
+        assert server.project_terminal_manager.has_live_runtimes is False
+        await server.aclose()
 
 
-@pytest.mark.asyncio
-class TestMCPServerTransportIntegration:
-    """测试 MCP Server 传输集成 | Test MCP Server Transport Integration"""
-
-    async def test_server_run_method_routing(self) -> None:
-        """
-        测试服务器 run 方法的路由逻辑 | Test server run method routing logic
-
-        验证不同的传输模式会调用正确的内部方法
-        Verify different transport modes call correct internal methods
-        """
-        # 测试 stdio 模式 | Test stdio mode
-        with MCPServerConfig.change_config_sources(
-            DataSource(data={"transport": "stdio", "root_dir": ".", "project_name": "test-routing-stdio"}),
-        ):
-            config_stdio = MCPServerConfig()
-            server_stdio = IDEMCPServer(config_stdio)
-            try:
-                assert server_stdio.config.transport == "stdio"
-            finally:
-                server_stdio.close()
-
-        # 测试 SSE 模式 | Test SSE mode
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "sse",
-                    "host": "127.0.0.1",
-                    "port": 8009,
-                    "root_dir": ".",
-                    "project_name": "test-routing-sse",
-                },
-            ),
-        ):
-            config_sse = MCPServerConfig()
-            server_sse = IDEMCPServer(config_sse)
-            try:
-                assert server_sse.config.transport == "sse"
-            finally:
-                server_sse.close()
-
-        # 测试 Streamable HTTP 模式 | Test Streamable HTTP mode
-        with MCPServerConfig.change_config_sources(
-            DataSource(
-                data={
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 8010,
-                    "root_dir": ".",
-                    "project_name": "test-routing-http",
-                },
-            ),
-        ):
-            config_http = MCPServerConfig()
-            server_http = IDEMCPServer(config_http)
-            try:
-                assert server_http.config.transport == "streamable-http"
-            finally:
-                server_http.close()
-
-    async def test_invalid_transport_mode_raises_error(self) -> None:
-        """
-        测试无效的传输模式抛出错误 | Test invalid transport mode raises error
-        """
-        # 创建一个配置，然后手动修改 transport 为无效值
-        # Create a config, then manually modify transport to invalid value
-        with MCPServerConfig.change_config_sources(
-            DataSource(data={"transport": "stdio", "root_dir": ".", "project_name": "test-invalid"}),
-        ):
-            config = MCPServerConfig()
-
-            # 手动设置为无效的传输模式（绕过 Pydantic 验证）
-            # Manually set to invalid transport mode (bypass Pydantic validation)
-            config.__dict__["transport"] = "invalid-mode"
-
-            server = IDEMCPServer(config)
-
-            try:
-                # 运行服务器应该抛出 ValueError | Running server should raise ValueError
-                with pytest.raises(ValueError, match="不支持的传输模式|Unsupported transport mode"):
-                    await server.run()
-            finally:
-                server.close()  # 确保清理资源 | Ensure resources are cleaned up
+@pytest.mark.parametrize("transport", ["sse", "streamable-http"])
+def test_network_transports_are_explicitly_rejected(tmp_path, transport: str) -> None:
+    with MCPServerConfig.change_config_sources(
+        DataSource(data={"transport": transport, "project_registry_path": str(tmp_path / "projects.json")})
+    ):
+        with pytest.raises(ValueError, match="stdio transport only"):
+            IDEMCPServer(MCPServerConfig())

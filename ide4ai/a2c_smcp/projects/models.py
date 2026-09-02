@@ -114,8 +114,25 @@ class Project(BaseModel):
         return value
 
 
-class ProjectRegistryDocument(BaseModel):
-    """Versioned on-disk representation of the project registry."""
+def _validate_unique_projects(projects: tuple[Project, ...]) -> None:
+    ids: set[UUID] = set()
+    names: set[str] = set()
+    roots: list[str] = []
+    for project in projects:
+        if project.id in ids:
+            raise ValueError(f"duplicate project id: {project.id}")
+        normalized_name = project.name.casefold()
+        if normalized_name in names:
+            raise ValueError(f"duplicate project name: {project.name}")
+        if any(roots_refer_to_same_location(root, project.root_dir) for root in roots):
+            raise ValueError(f"duplicate project root: {project.root_dir}")
+        ids.add(project.id)
+        names.add(normalized_name)
+        roots.append(project.root_dir)
+
+
+class ProjectRegistryDocumentV1(BaseModel):
+    """Read-only legacy shape used solely for one-time migration."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -123,19 +140,26 @@ class ProjectRegistryDocument(BaseModel):
     projects: tuple[Project, ...] = ()
 
     @model_validator(mode="after")
-    def validate_unique_projects(self) -> ProjectRegistryDocument:
-        ids: set[UUID] = set()
-        names: set[str] = set()
-        roots: list[str] = []
-        for project in self.projects:
-            if project.id in ids:
-                raise ValueError(f"duplicate project id: {project.id}")
-            normalized_name = project.name.casefold()
-            if normalized_name in names:
-                raise ValueError(f"duplicate project name: {project.name}")
-            if any(roots_refer_to_same_location(root, project.root_dir) for root in roots):
-                raise ValueError(f"duplicate project root: {project.root_dir}")
-            ids.add(project.id)
-            names.add(normalized_name)
-            roots.append(project.root_dir)
+    def validate_unique_projects(self) -> ProjectRegistryDocumentV1:
+        _validate_unique_projects(self.projects)
+        return self
+
+
+class ProjectRegistryDocument(BaseModel):
+    """Canonical server-owned project metadata, including the persisted selection."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: Literal[2] = 2
+    projects: tuple[Project, ...] = ()
+    current_project_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_project_metadata(self) -> ProjectRegistryDocument:
+        _validate_unique_projects(self.projects)
+        project_ids = {project.id for project in self.projects}
+        if not project_ids and self.current_project_id is not None:
+            raise ValueError("current_project_id must be null when projects is empty")
+        if project_ids and self.current_project_id not in project_ids:
+            raise ValueError("current_project_id must identify exactly one registered project")
         return self

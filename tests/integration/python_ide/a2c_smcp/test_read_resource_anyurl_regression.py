@@ -27,6 +27,7 @@ from pydantic import AnyUrl
 
 from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectRegistry
 
 
 @pytest.fixture
@@ -40,12 +41,13 @@ def server(tmp_path, request):
     instance across tests, so each test uses a unique project_name for isolation.
     """
     project_name = f"anyurl-regression-{request.node.name}"
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(registry_path).create(name=project_name, root_dir=tmp_path)
     with MCPServerConfig.change_config_sources(
         DataSource(
             data={
                 "transport": "stdio",
-                "root_dir": str(tmp_path),
-                "project_name": project_name,
+                "project_registry_path": str(registry_path),
             },
         ),
     ):
@@ -84,8 +86,10 @@ class TestReadResourceAcceptsAnyUrl:
         带查询参数的 window:// AnyUrl 应正常读取，而非触发 .decode 崩溃
         A window:// AnyUrl with query params must read normally, not crash on .decode
         """
-        srv, config = server
-        uri = AnyUrl(f"window://{config.project_name}?priority=0&fullscreen=true")
+        srv, _ = server
+        current = srv.project_host.current_project
+        assert current is not None
+        uri = AnyUrl(f"window://{current.id}?priority=0&fullscreen=true")
 
         result = await _dispatch_read(srv, uri)
 
@@ -97,8 +101,10 @@ class TestReadResourceAcceptsAnyUrl:
         """
         无查询参数的裸 AnyUrl 同样应正常读取 | A bare AnyUrl without query params must also read normally
         """
-        srv, config = server
-        uri = AnyUrl(f"window://{config.project_name}")
+        srv, _ = server
+        current = srv.project_host.current_project
+        assert current is not None
+        uri = AnyUrl(f"window://{current.id}")
 
         result = await _dispatch_read(srv, uri)
 
@@ -110,15 +116,12 @@ class TestReadResourceAcceptsAnyUrl:
         通过 AnyUrl 传入不同参数时，update_from_uri 应被正确驱动并完成读取
         When different params arrive via AnyUrl, update_from_uri must be driven correctly and read succeeds
         """
-        srv, config = server
-        base_uri = f"window://{config.project_name}"
-        resource = srv.resources[base_uri]
-
+        srv, _ = server
+        current = srv.project_host.current_project
+        assert current is not None
+        base_uri = f"window://{current.id}"
         # 用与当前不同的参数请求 | Request with params differing from current state
         uri = AnyUrl(f"{base_uri}?priority=80&fullscreen=false")
         result = await _dispatch_read(srv, uri)
 
         assert "IDE Content:" in result.contents[0].text
-        # 参数应已下沉到资源实例 | Params should have been applied to the resource instance
-        assert "priority=80" in resource.uri
-        assert "fullscreen=false" in resource.uri

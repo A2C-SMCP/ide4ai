@@ -13,7 +13,6 @@ from ide4ai.a2c_smcp.projects import (
     ProjectError,
     ProjectHost,
     ProjectLspConfig,
-    ProjectNotSelectedError,
     ProjectRegistry,
     ProjectRuntime,
     create_ide_factory,
@@ -168,11 +167,10 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
     factory = RecordingFactory()
     host = ProjectHost(registry, factory)
 
-    assert host.current_project is None
-    with pytest.raises(ProjectNotSelectedError):
-        with host.lease_current():
-            pass
+    assert host.current_project == first
+    assert host.selection_snapshot().generation == 0
     assert host.switch_project(first.id) == first
+    assert host.selection_snapshot().generation == 0
     assert factory.instances == []
 
     with host.lease_current() as (leased_project, leased_ide):
@@ -180,13 +178,14 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
         assert leased_ide.project_name == "first"  # type: ignore[attr-defined]
         host.switch_project(second.name)
         assert host.current_project == second
+        assert host.selection_snapshot().generation == 1
         assert leased_project == first
 
     with host.lease_current() as (leased_project, _):
         assert leased_project == second
 
 
-def test_project_host_auto_selects_only_project_and_manages_delete(tmp_path: Path) -> None:
+def test_project_host_keeps_exactly_one_selection_and_manages_delete(tmp_path: Path) -> None:
     registry = ProjectRegistry(tmp_path / "projects.json")
     factory = RecordingFactory()
     host = ProjectHost(registry, factory)
@@ -197,13 +196,16 @@ def test_project_host_auto_selects_only_project_and_manages_delete(tmp_path: Pat
 
     first = host.create_project(name="first", root_dir=first_root)
     assert host.current_project == first
+    assert host.selection_snapshot().generation == 1
     second = host.create_project(name="second", root_dir=second_root)
     assert host.current_project == first
+    assert host.selection_snapshot().generation == 1
     with host.lease_current():
         pass
     assert host.delete_project(first.id) == first
     assert factory.instances[0].closed is True
     assert host.current_project == second
+    assert host.selection_snapshot().generation == 2
 
 
 def test_project_host_refuses_busy_delete_without_force(tmp_path: Path) -> None:
@@ -220,6 +222,23 @@ def test_project_host_refuses_busy_delete_without_force(tmp_path: Path) -> None:
         assert registry.find(registered.id) == registered
         assert host.delete_project(registered.id, force=True) == registered
         assert factory.instances[0].closed is True
+
+
+def test_prepared_delete_blocks_new_leases_until_cancelled(tmp_path: Path) -> None:
+    registry = ProjectRegistry(tmp_path / "projects.json")
+    root = tmp_path / "root"
+    root.mkdir()
+    registered = registry.create(name="reserved", root_dir=root)
+    host = ProjectHost(registry, RecordingFactory())
+
+    prepared = host.prepare_delete(registered.id)
+    with pytest.raises(ProjectBusyError, match="deletion is in progress"):
+        with host.lease_project(registered):
+            pass
+
+    host.cancel_delete(prepared)
+    with host.lease_project(registered) as (leased, _):
+        assert leased == registered
 
 
 def test_project_host_closes_every_runtime_even_when_one_close_fails(tmp_path: Path) -> None:

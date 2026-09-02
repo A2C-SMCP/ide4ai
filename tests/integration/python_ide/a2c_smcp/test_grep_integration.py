@@ -17,6 +17,34 @@ import pytest
 
 from ide4ai.a2c_smcp.cli import IDEMCPServer
 from ide4ai.a2c_smcp.config import MCPServerConfig
+from ide4ai.a2c_smcp.projects import ProjectRegistry
+
+
+class _CatalogToolAdapter:
+    """Exercise a dynamic tool binding while preserving the tool-focused assertions."""
+
+    def __init__(self, binding):
+        self._binding = binding
+
+    @property
+    def name(self):
+        return self._binding.definition.name
+
+    @property
+    def description(self):
+        return self._binding.definition.description
+
+    @property
+    def input_schema(self):
+        return self._binding.definition.inputSchema
+
+    async def execute(self, arguments):
+        return (await self._binding.invoke(arguments)).result
+
+
+def _tools(server: IDEMCPServer) -> dict[str, _CatalogToolAdapter]:
+    current = server.project_host.current_project
+    return {binding.definition.name: _CatalogToolAdapter(binding) for binding in server.tool_catalog.bindings(current)}
 
 
 class TestGrepIntegration:
@@ -82,8 +110,7 @@ CONFIG = {
             with MCPServerConfig.change_config_sources(
                 DataSource(
                     data={
-                        "root_dir": tmpdir,
-                        "project_name": "test-grep-integration",
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
                         "transport": "stdio",
                         "render_with_symbols": False,
                     },
@@ -92,6 +119,7 @@ CONFIG = {
                 config = MCPServerConfig()
 
             # 创建 server | Create server
+            ProjectRegistry(config.project_registry_path).create(name="test-grep-integration", root_dir=tmpdir)
             server = IDEMCPServer(config)
 
             yield server, tmpdir
@@ -107,8 +135,8 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 验证 Grep 工具已注册
-        assert "Grep" in server.tools
-        grep_tool = server.tools["Grep"]
+        assert "Grep" in _tools(server)
+        grep_tool = _tools(server)["Grep"]
         assert grep_tool.name == "Grep"
 
     @pytest.mark.asyncio
@@ -119,8 +147,8 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 直接验证工具已注册
-        assert "Grep" in server.tools
-        grep_tool = server.tools["Grep"]
+        assert "Grep" in _tools(server)
+        grep_tool = _tools(server)["Grep"]
 
         # 验证 Grep 工具的属性
         assert grep_tool.name == "Grep"
@@ -135,7 +163,7 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 直接调用 Grep 工具
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "TODO",
@@ -155,7 +183,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "def",
@@ -174,7 +202,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "TODO",
@@ -194,7 +222,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "test",
@@ -214,7 +242,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "todo",
@@ -233,7 +261,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute(
             {
                 "pattern": "NONEXISTENT_PATTERN_ABC123",
@@ -252,7 +280,7 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 验证不存在的工具不在注册列表中
-        assert "NonExistentTool" not in server.tools
+        assert "NonExistentTool" not in _tools(server)
 
     @pytest.mark.asyncio
     async def test_grep_invalid_arguments(self, temp_server):
@@ -261,7 +289,7 @@ CONFIG = {
         """
         server, tmpdir = temp_server
 
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
         result = await grep_tool.execute({})  # 缺少 pattern
 
         assert result["success"] is False
@@ -275,14 +303,14 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 验证多个工具已注册
-        assert "Bash" in server.tools
-        assert "Glob" in server.tools
-        assert "Grep" in server.tools
+        assert "terminal_start" in _tools(server)
+        assert "Glob" in _tools(server)
+        assert "Grep" in _tools(server)
 
         # 验证每个工具都可以正常工作
-        assert server.tools["Bash"].name == "Bash"
-        assert server.tools["Glob"].name == "Glob"
-        assert server.tools["Grep"].name == "Grep"
+        assert _tools(server)["terminal_start"].name == "terminal_start"
+        assert _tools(server)["Glob"].name == "Glob"
+        assert _tools(server)["Grep"].name == "Grep"
 
 
 class TestGrepIntegrationRealWorld:
@@ -305,14 +333,21 @@ class TestGrepIntegrationRealWorld:
 
             from confz import DataSource
 
-            with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
+            with MCPServerConfig.change_config_sources(
+                DataSource(
+                    data={
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                )
+            ):
                 config = MCPServerConfig()
 
+            ProjectRegistry(config.project_registry_path).create(name="test", root_dir=tmpdir)
             server = IDEMCPServer(config)
 
             try:
                 # 搜索 import 语句
-                grep_tool = server.tools["Grep"]
+                grep_tool = _tools(server)["Grep"]
                 result = await grep_tool.execute(
                     {
                         "pattern": r"^import\s+",
@@ -351,14 +386,21 @@ class MyClass:
 
             from confz import DataSource
 
-            with MCPServerConfig.change_config_sources(DataSource(data={"root_dir": tmpdir, "project_name": "test"})):
+            with MCPServerConfig.change_config_sources(
+                DataSource(
+                    data={
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                )
+            ):
                 config = MCPServerConfig()
 
+            ProjectRegistry(config.project_registry_path).create(name="test", root_dir=tmpdir)
             server = IDEMCPServer(config)
 
             try:
                 # 搜索函数定义
-                grep_tool = server.tools["Grep"]
+                grep_tool = _tools(server)["Grep"]
                 result = await grep_tool.execute(
                     {
                         "pattern": r"^\s*def\s+\w+",
@@ -470,10 +512,15 @@ class TestDataProcessor(unittest.TestCase):
             from confz import DataSource
 
             with MCPServerConfig.change_config_sources(
-                DataSource(data={"root_dir": tmpdir, "project_name": "test-context"}),
+                DataSource(
+                    data={
+                        "project_registry_path": str(Path(tmpdir) / "projects.json"),
+                    }
+                ),
             ):
                 config = MCPServerConfig()
 
+            ProjectRegistry(config.project_registry_path).create(name="test-context", root_dir=tmpdir)
             server = IDEMCPServer(config)
             yield server, tmpdir
             server.close()
@@ -484,7 +531,7 @@ class TestDataProcessor(unittest.TestCase):
         测试带行号的搜索 | Test search with line numbers (-n)
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -506,7 +553,7 @@ class TestDataProcessor(unittest.TestCase):
         测试带后续上下文的搜索 | Test search with after context (-A)
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -529,7 +576,7 @@ class TestDataProcessor(unittest.TestCase):
         测试带前置上下文的搜索 | Test search with before context (-B)
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -552,7 +599,7 @@ class TestDataProcessor(unittest.TestCase):
         测试带双向上下文的搜索 | Test search with context on both sides (-C)
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -576,7 +623,7 @@ class TestDataProcessor(unittest.TestCase):
         测试同时指定前置和后续上下文 | Test search with both -A and -B
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -600,7 +647,7 @@ class TestDataProcessor(unittest.TestCase):
         测试多个匹配时的上下文显示 | Test context display with multiple matches
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -623,7 +670,7 @@ class TestDataProcessor(unittest.TestCase):
         测试大小写不敏感搜索带上下文 | Test case-insensitive search with context
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -646,7 +693,7 @@ class TestDataProcessor(unittest.TestCase):
         测试文件类型过滤带上下文 | Test file type filter with context
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -668,7 +715,7 @@ class TestDataProcessor(unittest.TestCase):
         测试 glob 模式匹配带上下文 | Test glob pattern with context
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -693,7 +740,7 @@ class TestDataProcessor(unittest.TestCase):
         测试大量上下文行 | Test large context lines
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -717,7 +764,7 @@ class TestDataProcessor(unittest.TestCase):
         测试正则表达式模式带上下文 | Test regex pattern with context
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {
@@ -740,7 +787,7 @@ class TestDataProcessor(unittest.TestCase):
         测试限制匹配数量带上下文 | Test max count with context
         """
         server, tmpdir = context_server
-        grep_tool = server.tools["Grep"]
+        grep_tool = _tools(server)["Grep"]
 
         result = await grep_tool.execute(
             {

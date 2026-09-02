@@ -39,7 +39,7 @@ def test_distribution_exposes_only_generic_mcp_cli() -> None:
 def test_distribution_pins_compatible_mcp_major() -> None:
     pyproject = (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert '"mcp>=1.29.0,<2.0.0"' in pyproject
-    assert '"tfbash-mcp==0.2.0"' in pyproject
+    assert '"tfbash-mcp==0.2.1"' in pyproject
 
 
 def test_generic_mcp_cli_help_does_not_start_server(monkeypatch, capsys) -> None:

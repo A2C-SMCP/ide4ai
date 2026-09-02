@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import base64
+from collections.abc import Callable, Sequence
 from typing import Any
 
-from mcp.types import CallToolResult, Resource, TextContent, Tool
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+from mcp.types import BlobResourceContents, CallToolResult, Resource, TextContent, TextResourceContents, Tool
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 from ide4ai.a2c_smcp.catalog import (
     CatalogChanges,
     ResourceBinding,
+    ResourceUpdateListener,
     ToolBinding,
     ToolBindingNotAvailableError,
     ToolCallOutcome,
@@ -26,6 +29,7 @@ from ide4ai.a2c_smcp.projects import (
     ProjectTerminalRuntimeManager,
     TerminalStartOptions,
 )
+from ide4ai.a2c_smcp.resource_events import ResourceUpdate
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
 
@@ -288,6 +292,7 @@ class TerminalToolProvider:
             except ProjectNotFoundError as exc:
                 raise ToolBindingNotAvailableError(str(exc)) from exc
             was_available = bool(self._terminal_manager.list_tools(project))
+            was_resource_available = bool(self._terminal_manager.list_resources(project))
             try:
                 if must_close:
                     _TerminalCloseInput.model_validate(arguments)
@@ -297,6 +302,7 @@ class TerminalToolProvider:
                     transition = await self._terminal_manager.start(project, data.to_options())
             except Exception as exc:
                 is_available = bool(self._terminal_manager.list_tools(project))
+                is_resource_available = bool(self._terminal_manager.list_resources(project))
                 state = self._terminal_manager.state(project).value
                 return ToolCallOutcome(
                     CallToolResult(
@@ -313,7 +319,10 @@ class TerminalToolProvider:
                         },
                         isError=True,
                     ),
-                    CatalogChanges(tools=was_available != is_available),
+                    CatalogChanges(
+                        tools=was_available != is_available,
+                        resources=was_resource_available != is_resource_available,
+                    ),
                 )
             return ToolCallOutcome(
                 {
@@ -328,7 +337,8 @@ class TerminalToolProvider:
                     },
                 },
                 CatalogChanges(
-                    tools=transition.changed or was_available != bool(self._terminal_manager.list_tools(project))
+                    tools=transition.changed or was_available != bool(self._terminal_manager.list_tools(project)),
+                    resources=was_resource_available != bool(self._terminal_manager.list_resources(project)),
                 ),
             )
 
@@ -382,6 +392,45 @@ class TFBashToolProvider:
         return tuple(bindings)
 
 
+class TFBashResourceProvider:
+    """Forward TFBash Resource definitions, contents, and update events."""
+
+    def __init__(self, host: ProjectHost, terminal_manager: ProjectTerminalRuntimeManager) -> None:
+        self._host = host
+        self._terminal_manager = terminal_manager
+
+    def bindings(self, current_project: Project | None) -> tuple[ResourceBinding, ...]:
+        if current_project is None:
+            return ()
+        captured_project = current_project
+        bindings: list[ResourceBinding] = []
+        for definition in self._terminal_manager.list_resources(captured_project):
+
+            async def read(
+                requested_uri: str, *, captured: Project = captured_project
+            ) -> tuple[ReadResourceContents, ...]:
+                project = self._host.registry.find(captured.id)
+                result = self._terminal_manager.read_resource(project, requested_uri)
+                return tuple(_to_read_resource_contents(content) for content in result.contents)
+
+            bindings.append(ResourceBinding(definition, read))
+        return tuple(bindings)
+
+    def subscribe_updates(self, listener: ResourceUpdateListener) -> Callable[[], None]:
+        return self._terminal_manager.subscribe_resource_updates(listener)
+
+    def is_update_current(self, update: ResourceUpdate) -> bool:
+        return self._terminal_manager.is_resource_update_current(update)
+
+
+def _to_read_resource_contents(content: TextResourceContents | BlobResourceContents) -> ReadResourceContents:
+    if isinstance(content, TextResourceContents):
+        payload: str | bytes = content.text
+    else:
+        payload = base64.b64decode(content.blob, validate=True)
+    return ReadResourceContents(content=payload, mime_type=content.mimeType, meta=content.meta)
+
+
 class IDEToolProvider:
     """Bind generic IDE tool classes to the captured current project per call."""
 
@@ -432,12 +481,16 @@ class WindowResourceProvider:
         # immutable UUID keeps discovery URIs valid, unique, and non-ambiguous.
         uri = f"window://{captured_project.id}?priority=0&fullscreen=true"
 
-        async def read(requested_uri: str, *, captured: Project = captured_project) -> str:
+        async def read(
+            requested_uri: str,
+            *,
+            captured: Project = captured_project,
+        ) -> tuple[ReadResourceContents, ...]:
             with self._host.lease_project(captured) as (_, ide):
                 resource = WindowResource(ide, priority=0, fullscreen=True)
                 if requested_uri != resource.uri:
                     resource.update_from_uri(requested_uri)
-                return await resource.read()
+                return (ReadResourceContents(content=await resource.read(), mime_type="text/plain"),)
 
         return (
             ResourceBinding(

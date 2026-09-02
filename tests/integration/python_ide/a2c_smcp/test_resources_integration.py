@@ -45,8 +45,8 @@ async def test_resource_binding_reads_bare_and_parameterized_uri(server) -> None
     bare = await binding.read(f"window://{project.id}")
     parameterized = await binding.read(f"window://{project.id}?priority=75&fullscreen=false")
 
-    assert "IDE Content:" in bare
-    assert "IDE Content:" in parameterized
+    assert "IDE Content:" in bare[0].content
+    assert "IDE Content:" in parameterized[0].content
 
 
 def test_unloaded_server_has_no_resources(tmp_path) -> None:

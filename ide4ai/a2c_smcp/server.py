@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import anyio
@@ -9,10 +11,12 @@ from jsonschema import FormatChecker  # type: ignore[import-untyped]
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate as validate_json_schema
 from loguru import logger
+from mcp import types
 from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.lowlevel.server import NotificationOptions
 from mcp.server.stdio import stdio_server
+from mcp.shared.exceptions import McpError
 from mcp.types import CallToolResult, Resource, TextContent, Tool
 from pydantic import AnyUrl
 from pydantic import ValidationError as PydanticValidationError
@@ -26,6 +30,29 @@ from ide4ai.a2c_smcp.catalog import (
 )
 from ide4ai.a2c_smcp.config import MCPServerConfig
 from ide4ai.a2c_smcp.projects import ProjectError, ProjectHost, ProjectNotFoundError
+from ide4ai.a2c_smcp.resource_updates import ResourceUpdateHub
+
+
+class _SubscribableResourceServer(Server[object, object]):
+    """Advertise Resource subscriptions supported by the dynamic catalog."""
+
+    def get_capabilities(
+        self,
+        notification_options: NotificationOptions,
+        experimental_capabilities: dict[str, dict[str, Any]],
+    ) -> types.ServerCapabilities:
+        capabilities = super().get_capabilities(notification_options, experimental_capabilities)
+        resources = capabilities.resources
+        if resources is None:
+            return capabilities
+        return capabilities.model_copy(
+            update={
+                "resources": types.ResourcesCapability(
+                    subscribe=True,
+                    listChanged=resources.listChanged,
+                )
+            }
+        )
 
 
 class BaseMCPServer:
@@ -40,10 +67,26 @@ class BaseMCPServer:
         resource_providers: tuple[ResourceProvider, ...],
     ) -> None:
         self.config = config
-        self.server = Server(server_name)
         self.project_host = host
         self.tool_catalog = DynamicToolCatalog(tool_providers)
         self.resource_catalog = DynamicResourceCatalog(resource_providers)
+        self._resource_update_hub = ResourceUpdateHub(
+            host,
+            self.resource_catalog.subscribe_updates,
+            self.resource_catalog.is_update_current,
+        )
+
+        @asynccontextmanager
+        async def lifespan(_: Server[object, object]) -> AsyncIterator[object]:
+            self._resource_update_hub.connect()
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(self._resource_update_hub.run)
+                try:
+                    yield object()
+                finally:
+                    self._resource_update_hub.stop()
+
+        self.server = _SubscribableResourceServer(server_name, lifespan=lifespan)
         self._closed = False
         self._setup_handlers()
         logger.info("MCP Server initialized: server={}, transport={}", server_name, config.transport)
@@ -170,12 +213,23 @@ class BaseMCPServer:
             if binding is None:
                 raise ValueError(f"Resource is not available for the current project state: {uri_str}")
             try:
-                return [
-                    ReadResourceContents(content=await binding.read(uri_str), mime_type=binding.definition.mimeType)
-                ]
+                return list(await binding.read(uri_str))
+            except McpError:
+                raise
             except Exception as exc:
                 logger.exception("Resource read failed: uri={}", uri_str)
                 raise ValueError(f"Resource read failed: {exc}") from exc
+
+        @self.server.subscribe_resource()  # type: ignore[no-untyped-call]
+        async def subscribe_resource(uri: AnyUrl) -> None:
+            snapshot = self.project_host.current_project
+            if self.resource_catalog.find(snapshot, str(uri)) is None:
+                raise ValueError(f"Resource is not available for the current project state: {uri}")
+            self._resource_update_hub.subscribe(self.server.request_context.session, uri)
+
+        @self.server.unsubscribe_resource()  # type: ignore[no-untyped-call]
+        async def unsubscribe_resource(uri: AnyUrl) -> None:
+            self._resource_update_hub.unsubscribe(self.server.request_context.session, uri)
 
     async def _notify_catalog_changes(self, *, tools: bool, resources: bool) -> None:
         if not tools and not resources:

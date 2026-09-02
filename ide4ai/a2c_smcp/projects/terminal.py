@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Awaitable, Callable, Mapping
@@ -12,13 +13,17 @@ from types import MappingProxyType
 from typing import Protocol, cast
 
 import anyio
-from mcp.types import CallToolResult, Tool
+from mcp.types import CallToolResult, ReadResourceResult, Resource, Tool
+from pydantic import AnyUrl
 from tfbash_mcp import EmbeddedShellConfig, EmbeddedShellRuntime  # type: ignore[import-untyped]
 
 from ide4ai.a2c_smcp.projects.errors import ProjectError
 from ide4ai.a2c_smcp.projects.models import Project
+from ide4ai.a2c_smcp.resource_events import ResourceUpdate
 
 MAX_TERMINAL_CLOSE_DEADLINE_MS = 60_000
+_LOGGER = logging.getLogger(__name__)
+TerminalResourceUpdateListener = Callable[[ResourceUpdate], None]
 
 
 class ProjectTerminalNotAvailableError(ProjectError):
@@ -39,6 +44,12 @@ class EmbeddedTerminalRuntime(Protocol):
     """The public subset of TFBash used by the project host."""
 
     def list_tools(self) -> tuple[Tool, ...]: ...
+
+    def list_resources(self) -> tuple[Resource, ...]: ...
+
+    def read_resource(self, uri: str | AnyUrl) -> ReadResourceResult: ...
+
+    def subscribe_resource_updates(self, listener: Callable[[AnyUrl], None]) -> Callable[[], None]: ...
 
     async def call_tool(
         self,
@@ -161,6 +172,8 @@ class _ProjectTerminalEntry:
     state: ProjectTerminalState = ProjectTerminalState.CLOSED
     runtime: EmbeddedTerminalRuntime | None = None
     configuration: TerminalStartOptions | None = None
+    resource_unsubscribe: Callable[[], None] | None = None
+    resource_generation: object | None = None
     failure: str | None = None
     retired: bool = False
 
@@ -172,6 +185,7 @@ class ProjectTerminalRuntimeManager:
         self._runtime_factory = runtime_factory
         self._entries: dict[object, _ProjectTerminalEntry] = {}
         self._lock = threading.RLock()
+        self._resource_update_listeners: set[TerminalResourceUpdateListener] = set()
         self._shutdown_started = False
 
     def state(self, project: Project) -> ProjectTerminalState:
@@ -203,6 +217,53 @@ class ProjectTerminalRuntimeManager:
             return runtime.list_tools()
         except RuntimeError:
             return ()
+
+    def list_resources(self, project: Project) -> tuple[Resource, ...]:
+        runtime = self._open_runtime(project)
+        if runtime is None:
+            return ()
+        try:
+            return runtime.list_resources()
+        except RuntimeError:
+            return ()
+
+    def read_resource(self, project: Project, uri: str | AnyUrl) -> ReadResourceResult:
+        runtime = self._open_runtime(project)
+        if runtime is None:
+            raise ProjectTerminalNotAvailableError(f"Terminal is not enabled for project: {project.name}")
+        try:
+            return runtime.read_resource(uri)
+        except RuntimeError as exc:
+            raise ProjectTerminalNotAvailableError(
+                f"Terminal is closing or closed for project: {project.name}"
+            ) from exc
+
+    def subscribe_resource_updates(self, listener: TerminalResourceUpdateListener) -> Callable[[], None]:
+        """Subscribe to project-identified events from every managed Runtime."""
+
+        with self._lock:
+            self._resource_update_listeners.add(listener)
+        active = True
+
+        def unsubscribe() -> None:
+            nonlocal active
+            with self._lock:
+                if not active:
+                    return
+                active = False
+                self._resource_update_listeners.discard(listener)
+
+        return unsubscribe
+
+    def is_resource_update_current(self, update: ResourceUpdate) -> bool:
+        with self._lock:
+            entry = self._entries.get(update.project.id)
+            return (
+                entry is not None
+                and entry.state is ProjectTerminalState.OPEN
+                and entry.runtime is not None
+                and entry.resource_generation is update.source_id
+            )
 
     async def start(
         self,
@@ -347,8 +408,30 @@ class ProjectTerminalRuntimeManager:
                 entry.state = ProjectTerminalState.FAILED
                 entry.failure = str(exc)
             raise
+        resource_generation = object()
+        try:
+            resource_unsubscribe = runtime.subscribe_resource_updates(
+                lambda uri: self._publish_resource_update(entry, resource_generation, uri)
+            )
+        except BaseException as exc:
+            cleanup_error: BaseException | None = None
+            with anyio.CancelScope(shield=True):
+                try:
+                    await runtime.aclose()
+                except BaseException as error:
+                    cleanup_error = error
+            with self._lock:
+                entry.runtime = runtime if cleanup_error is not None else None
+                entry.resource_generation = None
+                entry.state = ProjectTerminalState.FAILED
+                entry.failure = str(exc)
+            if cleanup_error is not None:
+                raise ProjectError("Terminal Resource subscription and Runtime cleanup both failed") from cleanup_error
+            raise
         with self._lock:
             entry.runtime = runtime
+            entry.resource_unsubscribe = resource_unsubscribe
+            entry.resource_generation = resource_generation
             entry.state = ProjectTerminalState.OPEN
             shutdown_started = self._shutdown_started
         if shutdown_started:
@@ -364,9 +447,19 @@ class ProjectTerminalRuntimeManager:
                 entry.state = ProjectTerminalState.CLOSED
                 entry.failure = None
                 entry.configuration = None
+                entry.resource_unsubscribe = None
+                entry.resource_generation = None
                 return TerminalTransitionResult(changed, ProjectTerminalState.CLOSED, None)
+            resource_unsubscribe = entry.resource_unsubscribe
+            entry.resource_unsubscribe = None
+            entry.resource_generation = None
             entry.state = ProjectTerminalState.CLOSING
             entry.failure = None
+        if resource_unsubscribe is not None:
+            try:
+                resource_unsubscribe()
+            except Exception:
+                _LOGGER.exception("Terminal Resource listener cleanup failed for project %s", entry.project.name)
         try:
             await runtime.aclose()
         except BaseException as exc:
@@ -379,3 +472,19 @@ class ProjectTerminalRuntimeManager:
             entry.state = ProjectTerminalState.CLOSED
             entry.configuration = None
         return TerminalTransitionResult(True, ProjectTerminalState.CLOSED, None)
+
+    def _publish_resource_update(self, entry: _ProjectTerminalEntry, generation: object, uri: AnyUrl) -> None:
+        with self._lock:
+            if (
+                entry.state is not ProjectTerminalState.OPEN
+                or entry.runtime is None
+                or entry.resource_generation is not generation
+            ):
+                return
+            listeners = tuple(self._resource_update_listeners)
+            update = ResourceUpdate(entry.project, generation, uri)
+        for listener in listeners:
+            try:
+                listener(update)
+            except Exception:
+                _LOGGER.exception("Terminal Resource update listener failed for project %s", entry.project.name)

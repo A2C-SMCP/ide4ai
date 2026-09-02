@@ -599,7 +599,7 @@ requires-dist = [
     { name = "simple-parsing", specifier = ">=0.1.5" },
     { name = "sse-starlette", specifier = ">=2.0.0" },
     { name = "starlette", specifier = ">=0.27.0" },
-    { name = "tfbash-mcp", specifier = "==0.2.0" },
+    { name = "tfbash-mcp", specifier = "==0.2.1" },
     { name = "uvicorn", specifier = ">=0.23.0" },
 ]
 
@@ -1639,7 +1639,7 @@ wheels = [
 
 [[package]]
 name = "tfbash-mcp"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1649,9 +1649,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "pywinpty", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/db/b7/848e53e33ee5d8a865da7ee68a4414f4a098f80673a24901d6990485773e/tfbash_mcp-0.2.0.tar.gz", hash = "sha256:1f9d27cb1a623fbe76d8c394cc300a61bbdc9cb26d1fa32f44fdda40a3a55d17", size = 105922, upload-time = "2026-08-31T05:28:27.05Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/08/f8d3525ee0847268fbacb96ed258cf1f2b94aba68bd38d53b66a83750121/tfbash_mcp-0.2.1.tar.gz", hash = "sha256:d4a023a372abde9a94bb93cc12ce8f56e4d533e8ee501676bd68e1750975c7f4", size = 107339, upload-time = "2026-09-02T07:50:55.734Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/44/8adab329737267e2350465046b24e8f1036c775f42c2a91cdc1f43479e9d/tfbash_mcp-0.2.0-py3-none-any.whl", hash = "sha256:bc1dd4043139c9c3f43bc0591d179cc978f4e9804f40dc3beb080cbb8f83d372", size = 123242, upload-time = "2026-08-31T05:28:25.657Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/67/c0a38ae6aa01ac0e73b09b2936343729de3839d0df7061cbd7947a00b1b4/tfbash_mcp-0.2.1-py3-none-any.whl", hash = "sha256:807615f18fd09257a9b589fe251b901864dbbf3398ef4eb877f2394c5ecda273", size = 125200, upload-time = "2026-09-02T07:50:54.517Z" },
 ]
 
 [[package]]

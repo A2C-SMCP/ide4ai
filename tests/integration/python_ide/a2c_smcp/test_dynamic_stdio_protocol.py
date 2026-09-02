@@ -12,6 +12,10 @@ import mcp.types as types
 import pytest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.shared.exceptions import McpError
+from pydantic import AnyUrl
+
+SHELL_OVERVIEW_URI = "window://io.github.a2c-smcp.tfbash/shell-overview"
 
 
 @pytest.mark.asyncio
@@ -45,6 +49,7 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
             assert initialized.capabilities.tools.listChanged is True
             assert initialized.capabilities.resources is not None
             assert initialized.capabilities.resources.listChanged is True
+            assert initialized.capabilities.resources.subscribe is True
 
             initial_tools = await client.list_tools()
             assert [tool.name for tool in initial_tools.tools] == [
@@ -107,7 +112,10 @@ async def test_stdio_catalog_changes_and_stale_tool_error(tmp_path) -> None:
                     "close_timeout_ms": 5_000,
                 },
             }
-            assert notifications == ["notifications/tools/list_changed"]
+            assert notifications == [
+                "notifications/tools/list_changed",
+                "notifications/resources/list_changed",
+            ]
             notifications.clear()
 
             enabled_names = {tool.name for tool in (await client.list_tools()).tools}
@@ -315,7 +323,10 @@ async def test_stdio_terminal_close_force_kills_running_shell_after_grace_period
 
             assert closed.isError is False
             assert close_elapsed < 3
-            assert notifications == ["notifications/tools/list_changed"]
+            assert notifications == [
+                "notifications/tools/list_changed",
+                "notifications/resources/list_changed",
+            ]
             tool_names = {tool.name for tool in (await client.list_tools()).tools}
             assert "terminal_start" in tool_names
             assert "terminal_close" not in tool_names
@@ -329,3 +340,108 @@ async def test_stdio_terminal_close_force_kills_running_shell_after_grace_period
                 await anyio.sleep(0.05)
             else:
                 pytest.fail(f"terminal_close left shell process {shell_pid} running")
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(40)
+async def test_stdio_shell_overview_resource_follows_terminal_and_streams_updates(tmp_path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    notifications: list[str] = []
+    updated_uris: list[str] = []
+    resource_updated = anyio.Event()
+
+    async def handle_message(message: Any) -> None:
+        if not isinstance(message, types.ServerNotification):
+            return
+        notifications.append(message.root.method)
+        if isinstance(message.root, types.ResourceUpdatedNotification):
+            updated_uris.append(str(message.root.params.uri))
+            resource_updated.set()
+
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "ide4ai.a2c_smcp.cli"],
+        cwd=os.getcwd(),
+        env={
+            **os.environ,
+            "TRANSPORT": "stdio",
+            "PROJECT_REGISTRY_PATH": str(tmp_path / "projects.json"),
+        },
+    )
+
+    async with stdio_client(parameters) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream, message_handler=handle_message) as client:
+            initialized = await client.initialize()
+            assert initialized.capabilities.resources is not None
+            assert initialized.capabilities.resources.subscribe is True
+            await client.call_tool("project_create", {"name": "overview", "root_dir": str(project_root)})
+            initial_resources = await client.list_resources()
+            assert all(str(resource.uri) != SHELL_OVERVIEW_URI for resource in initial_resources.resources)
+
+            notifications.clear()
+            started = await client.call_tool("terminal_start", {})
+            assert started.isError is False
+            assert notifications == [
+                "notifications/tools/list_changed",
+                "notifications/resources/list_changed",
+            ]
+            resources = await client.list_resources()
+            overview = next(resource for resource in resources.resources if str(resource.uri) == SHELL_OVERVIEW_URI)
+            assert overview.name == "Shell Overview"
+            assert overview.description == "Current Shell states and recent execution output."
+            assert overview.mimeType == "text/markdown"
+            assert overview.annotations is not None
+            assert overview.annotations.priority == 0.8
+            assert overview.annotations.audience == ["assistant"]
+            assert overview.meta == {"fullscreen": False}
+
+            await client.subscribe_resource(overview.uri)
+            notifications.clear()
+            opened = await client.call_tool("shell_open", {})
+            assert opened.isError is False
+            assert opened.structuredContent is not None
+            with anyio.fail_after(3):
+                await resource_updated.wait()
+            assert updated_uris == [SHELL_OVERVIEW_URI]
+
+            rendered = await client.read_resource(overview.uri)
+            assert len(rendered.contents) == 1
+            assert isinstance(rendered.contents[0], types.TextResourceContents)
+            assert rendered.contents[0].mimeType == "text/markdown"
+            assert opened.structuredContent["shell_id"] in rendered.contents[0].text
+            assert str(project_root) in rendered.contents[0].text
+            with pytest.raises(McpError, match="Unknown Resource URI"):
+                await client.read_resource(AnyUrl(f"{SHELL_OVERVIEW_URI}?unexpected=true"))
+
+            await client.unsubscribe_resource(overview.uri)
+            notifications.clear()
+            updated_uris.clear()
+            resource_updated = anyio.Event()
+            executed = await client.call_tool(
+                "shell_exec",
+                {"shell_id": opened.structuredContent["shell_id"], "command": "printf updated"},
+            )
+            assert executed.isError is False
+            with anyio.move_on_after(0.4) as no_update:
+                await resource_updated.wait()
+            assert no_update.cancel_called is True
+            assert updated_uris == []
+
+            await client.subscribe_resource(overview.uri)
+            notifications.clear()
+            resource_updated = anyio.Event()
+            closed = await client.call_tool("terminal_close", {})
+            assert closed.isError is False
+            assert notifications == [
+                "notifications/tools/list_changed",
+                "notifications/resources/list_changed",
+            ]
+            remaining = await client.list_resources()
+            assert all(str(resource.uri) != SHELL_OVERVIEW_URI for resource in remaining.resources)
+            with anyio.move_on_after(0.4) as no_late_update:
+                await resource_updated.wait()
+            assert no_late_update.cancel_called is True
+            with pytest.raises(McpError):
+                await client.read_resource(overview.uri)
+            await client.unsubscribe_resource(overview.uri)

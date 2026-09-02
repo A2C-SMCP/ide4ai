@@ -6,6 +6,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -14,6 +15,14 @@ from ide4ai.a2c_smcp.projects.models import Project, ProjectLspConfig
 from ide4ai.a2c_smcp.projects.registry import ProjectRegistry
 from ide4ai.a2c_smcp.projects.runtime import IDEFactory, ProjectRuntime
 from ide4ai.ide import IDE
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectSelectionSnapshot:
+    """One atomic view of the selected project and its monotonic generation."""
+
+    project: Project | None
+    generation: int
 
 
 class ProjectHost:
@@ -25,13 +34,19 @@ class ProjectHost:
         self._runtimes: dict[UUID, ProjectRuntime] = {}
         self._deleting_project_ids: set[UUID] = set()
         self._closed = False
+        self._selection_generation = 0
         self._lock = threading.RLock()
 
     @property
     def current_project(self) -> Project | None:
+        return self.selection_snapshot().project
+
+    def selection_snapshot(self) -> ProjectSelectionSnapshot:
+        """Return selection and generation atomically for stale-event detection."""
+
         with self._lock:
             self._ensure_open()
-            return self.registry.current()
+            return ProjectSelectionSnapshot(self.registry.current(), self._selection_generation)
 
     def list_projects(self) -> tuple[Project, ...]:
         with self._lock:
@@ -53,12 +68,18 @@ class ProjectHost:
     ) -> Project:
         with self._lock:
             self._ensure_open()
-            return self.registry.create(name=name, root_dir=root_dir, lsp=lsp)
+            previous_id = self._current_project_id_unlocked()
+            project = self.registry.create(name=name, root_dir=root_dir, lsp=lsp)
+            self._advance_selection_if_changed(previous_id)
+            return project
 
     def switch_project(self, identifier: str | UUID) -> Project:
         with self._lock:
             self._ensure_open()
-            return self.registry.select(identifier)
+            previous_id = self._current_project_id_unlocked()
+            project = self.registry.select(identifier)
+            self._advance_selection_if_changed(previous_id)
+            return project
 
     def unload_current(self, *, force: bool = False) -> bool:
         with self._lock:
@@ -108,11 +129,13 @@ class ProjectHost:
             self._ensure_open()
             if project.id not in self._deleting_project_ids:
                 raise ProjectError(f"Project deletion was not prepared: {project.name}")
+            previous_id = self._current_project_id_unlocked()
             try:
                 deleted = self.registry.delete(project.id)
             except BaseException:
                 self._deleting_project_ids.discard(project.id)
                 raise
+            self._advance_selection_if_changed(previous_id)
             self._runtimes.pop(project.id, None)
             self._deleting_project_ids.discard(project.id)
             return deleted
@@ -173,6 +196,14 @@ class ProjectHost:
 
     def _current_project_unlocked(self) -> Project | None:
         return self.registry.current()
+
+    def _current_project_id_unlocked(self) -> UUID | None:
+        project = self._current_project_unlocked()
+        return None if project is None else project.id
+
+    def _advance_selection_if_changed(self, previous_id: UUID | None) -> None:
+        if self._current_project_id_unlocked() != previous_id:
+            self._selection_generation += 1
 
     def _require_current_unlocked(self) -> Project:
         self._ensure_open()

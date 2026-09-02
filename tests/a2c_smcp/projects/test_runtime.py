@@ -168,7 +168,9 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
     host = ProjectHost(registry, factory)
 
     assert host.current_project == first
+    assert host.selection_snapshot().generation == 0
     assert host.switch_project(first.id) == first
+    assert host.selection_snapshot().generation == 0
     assert factory.instances == []
 
     with host.lease_current() as (leased_project, leased_ide):
@@ -176,6 +178,7 @@ def test_project_host_selection_switch_and_call_snapshot(tmp_path: Path) -> None
         assert leased_ide.project_name == "first"  # type: ignore[attr-defined]
         host.switch_project(second.name)
         assert host.current_project == second
+        assert host.selection_snapshot().generation == 1
         assert leased_project == first
 
     with host.lease_current() as (leased_project, _):
@@ -193,13 +196,16 @@ def test_project_host_keeps_exactly_one_selection_and_manages_delete(tmp_path: P
 
     first = host.create_project(name="first", root_dir=first_root)
     assert host.current_project == first
+    assert host.selection_snapshot().generation == 1
     second = host.create_project(name="second", root_dir=second_root)
     assert host.current_project == first
+    assert host.selection_snapshot().generation == 1
     with host.lease_current():
         pass
     assert host.delete_project(first.id) == first
     assert factory.instances[0].closed is True
     assert host.current_project == second
+    assert host.selection_snapshot().generation == 2
 
 
 def test_project_host_refuses_busy_delete_without_force(tmp_path: Path) -> None:

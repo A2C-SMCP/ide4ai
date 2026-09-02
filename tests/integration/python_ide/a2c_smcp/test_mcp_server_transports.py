@@ -107,6 +107,9 @@ async def test_sync_close_rejects_terminal_factory_in_progress(tmp_path, monkeyp
             def __init__(self) -> None:
                 self.closed = False
 
+            def subscribe_resource_updates(self, listener):
+                return lambda: None
+
             async def aclose(self) -> None:
                 self.closed = True
 

@@ -138,6 +138,8 @@ Runtime 关闭时仅展示 `terminal_start`。它接收可选的 `cwd`、`startu
 
 `terminal_close` 会原子停止接受新的 Shell 调用，并关闭当前项目全部 Shell 和受管进程：先等待进程在 `shutdown_grace_ms` 内退出，超时后强制回收，整个清理受 `close_timeout_ms` 约束，不需要额外 `force` 参数。启动和关闭工具都是幂等的目标状态操作，不会像 toggle 一样因重复调用而反转状态；关闭失败时保留 Runtime，只允许再次调用 `terminal_close` 完成清理。
 
+Terminal Runtime 打开后还会原样暴露 TFBash 0.2.1 的 `window://io.github.a2c-smcp.tfbash/shell-overview` Markdown Resource；它展示当前 Shell、cwd、Execution 状态及最近输出。该 Resource 的出现和消失跟随 `terminal_start` / `terminal_close`，目录变化通过 `notifications/resources/list_changed` 通知；客户端订阅后，Shell 或输出变化通过事件驱动的 `notifications/resources/updated` 实时刷新，不使用轮询。项目切换后固定 URI 始终指向当前项目已打开的 Terminal Runtime。
+
 - **LSP 模式与服务覆盖**：在 `project_create` 的 `lsp` 参数中配置；运行中的状态查询和显式重载由 MCP `Lsp` 工具提供。
 
 ## 📚 核心概念（使用者）

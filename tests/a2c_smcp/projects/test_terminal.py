@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
 import anyio
 import pytest
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import CallToolResult, ReadResourceResult, Resource, TextContent, TextResourceContents, Tool
+from pydantic import AnyUrl
 
 from ide4ai.a2c_smcp.projects import (
     Project,
@@ -16,6 +17,7 @@ from ide4ai.a2c_smcp.projects import (
     ProjectTerminalState,
     TerminalStartOptions,
 )
+from ide4ai.a2c_smcp.resource_events import ResourceUpdate
 
 
 @dataclass
@@ -25,6 +27,7 @@ class FakeTerminalRuntime:
     closed: bool = False
     calls: list[tuple[str, Mapping[str, object]]] = field(default_factory=list)
     close_calls: int = 0
+    resource_listeners: set[Callable[[AnyUrl], None]] = field(default_factory=set)
 
     def list_tools(self) -> tuple[Tool, ...]:
         if self.closed:
@@ -35,6 +38,30 @@ class FakeTerminalRuntime:
                 inputSchema={"type": "object", "additionalProperties": False},
             ),
         )
+
+    def list_resources(self) -> tuple[Resource, ...]:
+        if self.closed:
+            raise RuntimeError("closed")
+        return (Resource(uri=AnyUrl("window://fake/shell-overview"), name="Shell Overview"),)
+
+    def read_resource(self, uri: str | AnyUrl) -> ReadResourceResult:
+        if self.closed:
+            raise RuntimeError("closed")
+        return ReadResourceResult(
+            contents=[TextResourceContents(uri=AnyUrl(uri), mimeType="text/markdown", text=self.project_name)]
+        )
+
+    def subscribe_resource_updates(self, listener: Callable[[AnyUrl], None]) -> Callable[[], None]:
+        self.resource_listeners.add(listener)
+
+        def unsubscribe() -> None:
+            self.resource_listeners.discard(listener)
+
+        return unsubscribe
+
+    def emit_resource_update(self) -> None:
+        for listener in tuple(self.resource_listeners):
+            listener(AnyUrl("window://fake/shell-overview"))
 
     async def call_tool(
         self,
@@ -96,6 +123,49 @@ async def test_terminal_runtime_is_project_scoped_and_idempotent(tmp_path: Path)
     assert (await manager.close(first)).changed is False
     assert created[0].close_calls == 1
     assert manager.state(first) is ProjectTerminalState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_terminal_resources_delegate_reads_and_project_identified_updates(tmp_path: Path) -> None:
+    runtimes: list[FakeTerminalRuntime] = []
+
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
+        runtime = FakeTerminalRuntime(record.name)
+        runtimes.append(runtime)
+        return runtime
+
+    manager = ProjectTerminalRuntimeManager(factory)
+    record = project("one", tmp_path)
+    updates: list[ResourceUpdate] = []
+    unsubscribe = manager.subscribe_resource_updates(updates.append)
+
+    assert manager.list_resources(record) == ()
+    await manager.start(record, TerminalStartOptions())
+    resources = manager.list_resources(record)
+    assert [str(resource.uri) for resource in resources] == ["window://fake/shell-overview"]
+    rendered = manager.read_resource(record, resources[0].uri)
+    assert isinstance(rendered.contents[0], TextResourceContents)
+    assert rendered.contents[0].text == "one"
+
+    runtimes[0].emit_resource_update()
+    assert [(update.project, str(update.uri)) for update in updates] == [(record, "window://fake/shell-overview")]
+    first_update = updates[0]
+    assert manager.is_resource_update_current(first_update) is True
+    await manager.close(record)
+    assert runtimes[0].resource_listeners == set()
+    assert manager.is_resource_update_current(first_update) is False
+    assert manager.list_resources(record) == ()
+
+    await manager.start(record, TerminalStartOptions())
+    runtimes[1].emit_resource_update()
+    assert len(updates) == 2
+    assert updates[1].source_id is not first_update.source_id
+    assert manager.is_resource_update_current(first_update) is False
+    assert manager.is_resource_update_current(updates[1]) is True
+    await manager.close(record)
+
+    unsubscribe()
+    unsubscribe()
 
 
 @pytest.mark.asyncio

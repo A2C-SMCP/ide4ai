@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 import anyio
@@ -9,7 +10,15 @@ import pytest
 from confz import DataSource
 from mcp import ClientSession
 from mcp.shared.memory import create_client_server_memory_streams
-from mcp.types import CallToolResult, Resource, ServerNotification, TextContent, Tool
+from mcp.types import (
+    CallToolResult,
+    ReadResourceResult,
+    Resource,
+    ServerNotification,
+    TextContent,
+    TextResourceContents,
+    Tool,
+)
 from pydantic import AnyUrl
 
 from ide4ai.a2c_smcp.catalog import (
@@ -31,9 +40,12 @@ from ide4ai.a2c_smcp.providers import (
     IDEToolProvider,
     ProjectToolProvider,
     TerminalToolProvider,
+    TFBashResourceProvider,
     TFBashToolProvider,
     WindowResourceProvider,
 )
+from ide4ai.a2c_smcp.resource_events import ResourceUpdate
+from ide4ai.a2c_smcp.resource_updates import ResourceUpdateHub
 from ide4ai.a2c_smcp.server import BaseMCPServer
 from ide4ai.a2c_smcp.tools.base import BaseTool
 from ide4ai.ide import IDE
@@ -97,6 +109,7 @@ class _FakeEmbeddedRuntime:
         self.project_name = project_name
         self.closed = False
         self.close_failures = close_failures
+        self.resource_listeners: set[Callable[[AnyUrl], None]] = set()
 
     def list_tools(self) -> tuple[Tool, ...]:
         if self.closed:
@@ -110,6 +123,32 @@ class _FakeEmbeddedRuntime:
             )
             for name in self.TOOL_NAMES
         )
+
+    def list_resources(self) -> tuple[Resource, ...]:
+        if self.closed:
+            raise RuntimeError("closed")
+        return (
+            Resource(
+                uri=AnyUrl("window://io.github.a2c-smcp.tfbash/shell-overview"),
+                name="Shell Overview",
+                mimeType="text/markdown",
+            ),
+        )
+
+    def read_resource(self, uri: str | AnyUrl) -> ReadResourceResult:
+        if self.closed:
+            raise RuntimeError("closed")
+        return ReadResourceResult(
+            contents=[TextResourceContents(uri=AnyUrl(uri), mimeType="text/markdown", text=self.project_name)]
+        )
+
+    def subscribe_resource_updates(self, listener: Callable[[AnyUrl], None]) -> Callable[[], None]:
+        self.resource_listeners.add(listener)
+
+        def unsubscribe() -> None:
+            self.resource_listeners.discard(listener)
+
+        return unsubscribe
 
     async def call_tool(self, name: str, arguments=None) -> CallToolResult:
         if self.closed:
@@ -221,8 +260,10 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     terminal_provider = TerminalToolProvider(host, manager)
     tfbash_provider = TFBashToolProvider(host, manager)
     catalog = DynamicToolCatalog((terminal_provider, tfbash_provider))
+    resource_catalog = DynamicResourceCatalog((TFBashResourceProvider(host, manager),))
 
     assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["terminal_start"]
+    assert resource_catalog.bindings(host.current_project) == ()
     terminal = catalog.find(host.current_project, "terminal_start")
     assert terminal is not None
     assert set(terminal.definition.inputSchema["properties"]) == {
@@ -241,6 +282,7 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     assert "does not create a Shell" in terminal.definition.description
     enabled = await terminal.invoke({})
     assert enabled.changes.tools is True
+    assert enabled.changes.resources is True
     assert enabled.result["terminal"] == {
         "enabled": True,
         "state": "open",
@@ -267,6 +309,11 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
         "shell_write",
         "terminal_close",
     ]
+    overview = resource_catalog.bindings(host.current_project)
+    assert len(overview) == 1
+    assert str(overview[0].definition.uri) == "window://io.github.a2c-smcp.tfbash/shell-overview"
+    rendered = await overview[0].read(str(overview[0].definition.uri))
+    assert rendered[0].content == "one"
     shell_list = catalog.find(host.current_project, "shell_list")
     assert shell_list is not None
     assert shell_list.definition.outputSchema == {"type": "object"}
@@ -281,8 +328,10 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     assert "Gracefully close" in terminal.definition.description
     disabled = await terminal.invoke({})
     assert disabled.changes.tools is True
+    assert disabled.changes.resources is True
     assert runtimes[0].closed is True
     assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["terminal_start"]
+    assert resource_catalog.bindings(host.current_project) == ()
 
 
 @pytest.mark.asyncio
@@ -436,6 +485,7 @@ async def test_terminal_close_failure_reports_error_and_invalidates_tools(tmp_pa
     assert failed.result.structuredContent is not None
     assert failed.result.structuredContent["error"]["code"] == "TERMINAL_CLOSE_FAILED"
     assert failed.changes.tools is True
+    assert failed.changes.resources is True
     assert catalog.find(project, "shell_list") is None
     terminal = catalog.find(project, "terminal_close")
     assert terminal is not None
@@ -858,6 +908,94 @@ def test_duplicate_resource_base_uris_are_rejected() -> None:
 
     with pytest.raises(ValueError, match="Duplicate MCP resource base URI: window://same-project"):
         catalog.bindings(None)
+
+
+@pytest.mark.asyncio
+async def test_resource_update_hub_filters_old_projects_and_unsubscribed_sessions(tmp_path) -> None:
+    host, _ = _host(tmp_path)
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = host.create_project(name="first", root_dir=first_root)
+    second = host.create_project(name="second", root_dir=second_root)
+    host.switch_project(first.id)
+    source_listeners = []
+    valid_sources: set[object] = set()
+
+    def subscribe_source(listener):
+        source_listeners.append(listener)
+        return lambda: source_listeners.remove(listener)
+
+    hub = ResourceUpdateHub(host, subscribe_source, lambda update: update.source_id in valid_sources)
+    uri = AnyUrl("window://io.github.a2c-smcp.tfbash/shell-overview")
+    first_generation = object()
+    second_generation = object()
+    valid_sources.add(first_generation)
+
+    class Session:
+        def __init__(self) -> None:
+            self.updated: list[str] = []
+            self.received = anyio.Event()
+
+        async def send_resource_updated(self, updated_uri: AnyUrl) -> None:
+            self.updated.append(str(updated_uri))
+            self.received.set()
+
+    session = Session()
+    hub.connect()
+    hub.subscribe(session, uri)
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(hub.run)
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, first_generation, uri))
+        with anyio.fail_after(2):
+            await session.received.wait()
+        assert session.updated == [str(uri)]
+
+        session.received = anyio.Event()
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, first_generation, uri))
+        valid_sources.remove(first_generation)
+        valid_sources.add(second_generation)
+        with anyio.move_on_after(0.2) as closed_generation_suppressed:
+            await session.received.wait()
+        assert closed_generation_suppressed.cancel_called is True
+
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, second_generation, uri))
+        with anyio.fail_after(2):
+            await session.received.wait()
+        assert session.updated == [str(uri), str(uri)]
+
+        host.switch_project(second.id)
+        session.received = anyio.Event()
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, second_generation, uri))
+        with anyio.move_on_after(0.2) as old_project_suppressed:
+            await session.received.wait()
+        assert old_project_suppressed.cancel_called is True
+
+        host.switch_project(first.id)
+        session.received = anyio.Event()
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, second_generation, uri))
+        host.switch_project(second.id)
+        host.switch_project(first.id)
+        with anyio.move_on_after(0.2) as switched_away_and_back:
+            await session.received.wait()
+        assert switched_away_and_back.cancel_called is True
+
+        session.received = anyio.Event()
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, second_generation, uri))
+        with anyio.fail_after(2):
+            await session.received.wait()
+        assert session.updated == [str(uri), str(uri), str(uri)]
+
+        hub.unsubscribe(session, uri)
+        session.received = anyio.Event()
+        await anyio.to_thread.run_sync(source_listeners[0], ResourceUpdate(first, second_generation, uri))
+        with anyio.move_on_after(0.2) as unsubscribed:
+            await session.received.wait()
+        assert unsubscribed.cancel_called is True
+        hub.stop()
+
+    assert source_listeners == []
 
 
 @pytest.mark.asyncio

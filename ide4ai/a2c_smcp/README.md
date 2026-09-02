@@ -64,7 +64,7 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ## 已实现工具 | Implemented Tools
 
-### Terminal 与 TFBash 0.2 | Terminal and TFBash 0.2
+### Terminal 与 TFBash 0.2.1 | Terminal and TFBash 0.2.1
 
 选择项目后，MCP 目录使用状态驱动的 `terminal_start` / `terminal_close` 代替旧 `Bash` 和 toggle 型 `Terminal`。关闭状态下执行 `terminal_start` 会为当前项目创建进程内 `EmbeddedShellRuntime`；成功后动态暴露 TFBash 原生的七个工具：
 
@@ -76,7 +76,9 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 - `shell_list`
 - `shell_close`
 
-工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.0`。`terminal_start` 支持可选 cwd、Shell、默认启动命令、环境覆盖和 deadline；项目不可变的 `root_dir` 始终作为 `workspace_root`，且是默认 cwd。它只创建 Runtime，不隐式创建 Shell。开启后只展示 `terminal_close`；该工具、`project_unload`、`project_delete` 和 Server 关闭复用同一有界优雅清理路径，先 terminate、等待 grace period、再 kill 剩余受管进程。生命周期工具按目标状态幂等，工具列表变化通过 MCP 事件通知，不使用轮询。
+工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.1`。`terminal_start` 支持可选 cwd、Shell、默认启动命令、环境覆盖和 deadline；项目不可变的 `root_dir` 始终作为 `workspace_root`，且是默认 cwd。它只创建 Runtime，不隐式创建 Shell。开启后只展示 `terminal_close`；该工具、`project_unload`、`project_delete` 和 Server 关闭复用同一有界优雅清理路径，先 terminate、等待 grace period、再 kill 剩余受管进程。生命周期工具按目标状态幂等，工具列表变化通过 MCP 事件通知，不使用轮询。
+
+Runtime 为 open 时还会通过 TFBash 公开的 embedded Resource API 原样暴露 `window://io.github.a2c-smcp.tfbash/shell-overview`。Resource 定义、Markdown 内容、URI 校验和更新事件均由 TFBash 拥有；ide4ai 只负责当前项目绑定及同步生产者线程到 MCP session 的事件桥。Terminal 开关触发 `resources/list_changed`，已订阅客户端在 Shell/Execution/输出变化时收到 `resources/updated`；关闭或切换项目后不会转发旧 Runtime 的迟到事件。
 
 The legacy `BashTool` import remains available for direct Python compatibility, but the project-aware MCP server no longer registers it.
 
@@ -419,7 +421,7 @@ pytest tests/a2c_smcp/tools
 - [x] 基础架构搭建 | Basic architecture setup
 - [x] Bash 工具实现 | Bash tool implementation
 - [ ] 其他工具实现 | Other tools implementation
-- [ ] Resource 支持 | Resource support
+- [x] Resource 支持 | Resource support
 - [ ] 完整的测试覆盖 | Complete test coverage
 - [ ] 性能优化 | Performance optimization
 - [ ] 文档完善 | Documentation improvement

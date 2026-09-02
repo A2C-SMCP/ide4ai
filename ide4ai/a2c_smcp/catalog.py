@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import CallToolResult, Resource, Tool
 
-from ide4ai.a2c_smcp.projects import Project
+from ide4ai.a2c_smcp.projects.models import Project
+from ide4ai.a2c_smcp.resource_events import ResourceUpdate
 
 
 class ToolBindingNotAvailableError(RuntimeError):
@@ -33,7 +36,8 @@ class ToolCallOutcome:
 
 
 ToolInvoker = Callable[[dict[str, Any]], Awaitable[ToolCallOutcome]]
-ResourceReader = Callable[[str], Awaitable[str]]
+ResourceReader = Callable[[str], Awaitable[tuple[ReadResourceContents, ...]]]
+ResourceUpdateListener = Callable[[ResourceUpdate], None]
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,15 @@ class ResourceProvider(Protocol):
     """Composable source for resources visible in one project-state snapshot."""
 
     def bindings(self, current_project: Project | None) -> Iterable[ResourceBinding]: ...
+
+
+@runtime_checkable
+class ResourceUpdateProvider(Protocol):
+    """Optional event source for dynamic Resource content changes."""
+
+    def subscribe_updates(self, listener: ResourceUpdateListener) -> Callable[[], None]: ...
+
+    def is_update_current(self, update: ResourceUpdate) -> bool: ...
 
 
 class DynamicToolCatalog:
@@ -98,6 +111,39 @@ class DynamicResourceCatalog:
             if _resource_base_key(str(binding.definition.uri)) == requested_base:
                 return binding
         return None
+
+    def subscribe_updates(self, listener: ResourceUpdateListener) -> Callable[[], None]:
+        """Subscribe to every provider that publishes Resource content changes."""
+
+        unsubscribers: list[Callable[[], None]] = []
+        try:
+            for provider in self._providers:
+                if isinstance(provider, ResourceUpdateProvider):
+                    unsubscribers.append(provider.subscribe_updates(listener))
+        except BaseException:
+            for unsubscribe in reversed(unsubscribers):
+                unsubscribe()
+            raise
+        lock = threading.Lock()
+        active = True
+
+        def unsubscribe_all() -> None:
+            nonlocal active
+            with lock:
+                if not active:
+                    return
+                active = False
+            for unsubscribe in reversed(unsubscribers):
+                unsubscribe()
+
+        return unsubscribe_all
+
+    def is_update_current(self, update: ResourceUpdate) -> bool:
+        return any(
+            provider.is_update_current(update)
+            for provider in self._providers
+            if isinstance(provider, ResourceUpdateProvider)
+        )
 
 
 def _resource_base_key(uri: str) -> str:

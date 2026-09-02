@@ -21,6 +21,7 @@ from ide4ai.a2c_smcp.providers import (
     IDEToolProvider,
     ProjectToolProvider,
     TerminalToolProvider,
+    TFBashResourceProvider,
     TFBashToolProvider,
     WindowResourceProvider,
 )
@@ -85,7 +86,10 @@ class IDEMCPServer(BaseMCPServer):
                 TFBashToolProvider(host, self.project_terminal_manager),
                 IDEToolProvider(host, self._IDE_TOOL_TYPES),
             ),
-            resource_providers=(WindowResourceProvider(host),),
+            resource_providers=(
+                WindowResourceProvider(host),
+                TFBashResourceProvider(host, self.project_terminal_manager),
+            ),
         )
 
     async def _close_async_resources(self) -> None:

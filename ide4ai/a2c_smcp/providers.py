@@ -17,12 +17,14 @@ from ide4ai.a2c_smcp.catalog import (
     ToolInvoker,
 )
 from ide4ai.a2c_smcp.projects import (
+    MAX_TERMINAL_CLOSE_DEADLINE_MS,
     Project,
     ProjectHost,
     ProjectLspConfig,
     ProjectNotFoundError,
     ProjectTerminalNotAvailableError,
     ProjectTerminalRuntimeManager,
+    TerminalStartOptions,
 )
 from ide4ai.a2c_smcp.resources import WindowResource
 from ide4ai.a2c_smcp.tools.base import BaseTool
@@ -52,7 +54,32 @@ class _ProjectUnloadInput(BaseModel):
     force: bool = Field(default=False, description="Release resources even when the project has active calls")
 
 
-class _TerminalActionInput(BaseModel):
+class _TerminalStartInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cwd: str | None = Field(
+        default=None,
+        description="Initial cwd within the current project; defaults to the project's immutable root_dir",
+    )
+    startup_command: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Default initialization command applied by each later shell_open",
+    )
+    shell: str | None = Field(default=None, min_length=1, description="Optional absolute shell executable")
+    environment: dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment overrides merged onto the server environment; values are never returned",
+    )
+    command_timeout_ms: int = Field(default=120_000, ge=1, le=86_400_000)
+    shutdown_grace_ms: int = Field(default=3_000, ge=1, le=MAX_TERMINAL_CLOSE_DEADLINE_MS)
+    close_timeout_ms: int = Field(default=5_000, ge=1, le=MAX_TERMINAL_CLOSE_DEADLINE_MS)
+
+    def to_options(self) -> TerminalStartOptions:
+        return TerminalStartOptions(**self.model_dump())
+
+
+class _TerminalCloseInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
@@ -171,6 +198,8 @@ class ProjectToolProvider:
             project = self._host.commit_delete(project)
         except Exception as exc:
             self._host.cancel_delete(project)
+            if self._terminal_manager is not None:
+                self._terminal_manager.cancel_remove(project)
             return self._delete_commit_failure(project, error=exc)
         return ToolCallOutcome(
             {"project": _project_output(project)},
@@ -182,7 +211,7 @@ class ProjectToolProvider:
         unloaded = self._host.unload_project(project, force=data.force)
         if self._terminal_manager is not None:
             try:
-                await self._terminal_manager.set_enabled(project, enabled=False)
+                await self._terminal_manager.close(project)
             except Exception as exc:
                 return self._terminal_cleanup_failure(project, operation="unload", error=exc)
         return ToolCallOutcome(
@@ -239,7 +268,7 @@ class ProjectToolProvider:
 
 
 class TerminalToolProvider:
-    """Expose the project-level switch that owns the embedded TFBash runtime."""
+    """Expose one state-specific lifecycle action for the embedded TFBash runtime."""
 
     def __init__(self, host: ProjectHost, terminal_manager: ProjectTerminalRuntimeManager) -> None:
         self._host = host
@@ -249,17 +278,23 @@ class TerminalToolProvider:
         if current_project is None:
             return ()
         captured_project = current_project
-        target_enabled = not self._terminal_manager.requires_disable(captured_project)
+        must_close = self._terminal_manager.requires_close(captured_project)
+        tool_name = "terminal_close" if must_close else "terminal_start"
+        input_model: type[BaseModel] = _TerminalCloseInput if must_close else _TerminalStartInput
 
         async def invoke(arguments: dict[str, Any]) -> ToolCallOutcome:
-            _TerminalActionInput.model_validate(arguments)
             try:
                 project = self._host.registry.find(captured_project.id)
             except ProjectNotFoundError as exc:
                 raise ToolBindingNotAvailableError(str(exc)) from exc
             was_available = bool(self._terminal_manager.list_tools(project))
             try:
-                await self._terminal_manager.set_enabled(project, enabled=target_enabled)
+                if must_close:
+                    _TerminalCloseInput.model_validate(arguments)
+                    transition = await self._terminal_manager.close(project)
+                else:
+                    data = _TerminalStartInput.model_validate(arguments)
+                    transition = await self._terminal_manager.start(project, data.to_options())
             except Exception as exc:
                 is_available = bool(self._terminal_manager.list_tools(project))
                 state = self._terminal_manager.state(project).value
@@ -269,8 +304,9 @@ class TerminalToolProvider:
                         structuredContent={
                             "success": False,
                             "error": {
-                                "code": "TERMINAL_STATE_CHANGE_FAILED",
+                                "code": "TERMINAL_CLOSE_FAILED" if must_close else "TERMINAL_START_FAILED",
                                 "message": str(exc),
+                                "operation": tool_name,
                                 "project_name": project.name,
                                 "state": state,
                             },
@@ -284,25 +320,30 @@ class TerminalToolProvider:
                     "project": _project_output(project),
                     "terminal": {
                         "enabled": bool(self._terminal_manager.list_tools(project)),
-                        "state": self._terminal_manager.state(project).value,
+                        "state": transition.state.value,
                         "root_dir": project.root_dir,
+                        "configuration": (
+                            transition.configuration.public_summary() if transition.configuration is not None else None
+                        ),
                     },
                 },
-                CatalogChanges(tools=was_available != bool(self._terminal_manager.list_tools(project))),
+                CatalogChanges(
+                    tools=transition.changed or was_available != bool(self._terminal_manager.list_tools(project))
+                ),
             )
 
         return (
             ToolBinding(
                 Tool(
-                    name="Terminal",
+                    name=tool_name,
                     description=(
-                        "Terminal is disabled. Execute to enable the current project's embedded "
-                        "TFBash 0.2 runtime and expose the seven shell_* tools."
-                        if target_enabled
-                        else "Terminal is enabled. Execute to close all current-project shell sessions "
-                        "and remove the seven shell_* tools."
+                        "Start the current project's embedded TFBash runtime. The workspace root is inherited "
+                        "from the immutable project; this does not create a Shell."
+                        if not must_close
+                        else "Gracefully close the current project's TFBash runtime and all of its Shells; "
+                        "remaining managed processes are force-killed after the configured grace period."
                     ),
-                    inputSchema=_TerminalActionInput.model_json_schema(),
+                    inputSchema=input_model.model_json_schema(),
                 ),
                 invoke,
             ),

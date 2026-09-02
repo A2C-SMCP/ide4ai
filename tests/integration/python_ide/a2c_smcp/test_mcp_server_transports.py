@@ -54,7 +54,7 @@ def test_persisted_project_restores_without_loading_ide(tmp_path) -> None:
             names = {
                 binding.definition.name for binding in server.tool_catalog.bindings(server.project_host.current_project)
             }
-            assert {"Terminal", "Glob", "Lsp", "project_unload"} <= names
+            assert {"terminal_start", "Glob", "Lsp", "project_unload"} <= names
             assert "Bash" not in names
         finally:
             server.close()
@@ -70,7 +70,7 @@ async def test_async_server_close_releases_enabled_terminal_runtime(tmp_path) ->
         server = IDEMCPServer(MCPServerConfig())
         project = server.project_host.current_project
         assert project is not None
-        terminal = server.tool_catalog.find(project, "Terminal")
+        terminal = server.tool_catalog.find(project, "terminal_start")
         assert terminal is not None
         await terminal.invoke({})
         shell_open = server.tool_catalog.find(project, "shell_open")
@@ -112,14 +112,14 @@ async def test_sync_close_rejects_terminal_factory_in_progress(tmp_path, monkeyp
 
         runtime = BlockingRuntime()
 
-        async def factory(captured):
+        async def factory(captured, options):
             assert captured == project
             factory_entered.set()
             await release_factory.wait()
             return runtime
 
         monkeypatch.setattr(server.project_terminal_manager, "_runtime_factory", factory)
-        terminal = server.tool_catalog.find(project, "Terminal")
+        terminal = server.tool_catalog.find(project, "terminal_start")
         assert terminal is not None
         enable_results = []
 

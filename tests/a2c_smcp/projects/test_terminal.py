@@ -14,6 +14,7 @@ from ide4ai.a2c_smcp.projects import (
     ProjectTerminalNotAvailableError,
     ProjectTerminalRuntimeManager,
     ProjectTerminalState,
+    TerminalStartOptions,
 )
 
 
@@ -65,7 +66,8 @@ def project(name: str, root: Path) -> Project:
 async def test_terminal_runtime_is_project_scoped_and_idempotent(tmp_path: Path) -> None:
     created: list[FakeTerminalRuntime] = []
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
+        assert options.cwd == str(Path(record.root_dir))
         runtime = FakeTerminalRuntime(record.name)
         created.append(runtime)
         return runtime
@@ -80,8 +82,8 @@ async def test_terminal_runtime_is_project_scoped_and_idempotent(tmp_path: Path)
 
     assert manager.state(first) is ProjectTerminalState.CLOSED
     assert manager.list_tools(first) == ()
-    assert await manager.set_enabled(first, enabled=True) is True
-    assert await manager.set_enabled(first, enabled=True) is False
+    assert (await manager.start(first, TerminalStartOptions())).changed is True
+    assert (await manager.start(first, TerminalStartOptions())).changed is False
     assert [tool.name for tool in manager.list_tools(first)] == ["shell_list"]
     assert manager.list_tools(second) == ()
 
@@ -90,10 +92,86 @@ async def test_terminal_runtime_is_project_scoped_and_idempotent(tmp_path: Path)
     with pytest.raises(ProjectTerminalNotAvailableError):
         await manager.call_tool(second, "shell_list", {})
 
-    assert await manager.set_enabled(first, enabled=False) is True
-    assert await manager.set_enabled(first, enabled=False) is False
+    assert (await manager.close(first)).changed is True
+    assert (await manager.close(first)).changed is False
     assert created[0].close_calls == 1
     assert manager.state(first) is ProjectTerminalState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_start_resolves_project_configuration_and_stale_start_keeps_original(tmp_path: Path) -> None:
+    subdirectory = tmp_path / "subdirectory"
+    subdirectory.mkdir()
+    captured: list[TerminalStartOptions] = []
+
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
+        captured.append(options)
+        return FakeTerminalRuntime(record.name)
+
+    manager = ProjectTerminalRuntimeManager(factory)
+    record = project("one", tmp_path)
+    requested = TerminalStartOptions(
+        cwd=str(subdirectory),
+        startup_command="export READY=1",
+        shell="/bin/bash",
+        environment={"FEATURE_FLAG": "enabled"},
+        command_timeout_ms=9_000,
+        shutdown_grace_ms=500,
+        close_timeout_ms=1_500,
+    )
+
+    started = await manager.start(record, requested)
+    stale = await manager.start(record, TerminalStartOptions(startup_command="export DIFFERENT=1"))
+
+    assert started.changed is True
+    assert started.configuration is not None
+    assert started.configuration.cwd == str(subdirectory.resolve())
+    assert started.configuration.public_summary() == {
+        "cwd": str(subdirectory.resolve()),
+        "shell": "/bin/bash",
+        "startup_command_configured": True,
+        "environment_override_count": 1,
+        "command_timeout_ms": 9_000,
+        "shutdown_grace_ms": 500,
+        "close_timeout_ms": 1_500,
+    }
+    assert stale.changed is False
+    assert stale.configuration == started.configuration
+    assert captured == [started.configuration]
+    await manager.close(record)
+
+
+@pytest.mark.asyncio
+async def test_start_rejects_cwd_outside_project_before_runtime_creation(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    created = False
+
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
+        nonlocal created
+        created = True
+        return FakeTerminalRuntime(record.name)
+
+    manager = ProjectTerminalRuntimeManager(factory)
+
+    with pytest.raises(ValueError, match="within the current project root"):
+        await manager.start(project("one", root), TerminalStartOptions(cwd=str(outside)))
+
+    assert created is False
+
+
+@pytest.mark.parametrize(
+    "arguments, message",
+    [
+        ({"shutdown_grace_ms": 60_001}, "shutdown_grace_ms must be between 1 and 60000"),
+        ({"close_timeout_ms": 60_001}, "close_timeout_ms must be between 1 and 60000"),
+    ],
+)
+def test_start_options_reject_unbounded_close_deadlines(arguments: dict[str, int], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        TerminalStartOptions(**arguments)
 
 
 @pytest.mark.asyncio
@@ -101,7 +179,7 @@ async def test_concurrent_enable_creates_one_runtime(tmp_path: Path) -> None:
     entered = 0
     release = anyio.Event()
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         nonlocal entered
         entered += 1
         await release.wait()
@@ -111,7 +189,7 @@ async def test_concurrent_enable_creates_one_runtime(tmp_path: Path) -> None:
     record = project("one", tmp_path)
 
     async def enable() -> bool:
-        return await manager.set_enabled(record, enabled=True)
+        return (await manager.start(record, TerminalStartOptions())).changed
 
     outcomes: list[bool] = []
 
@@ -133,21 +211,21 @@ async def test_concurrent_enable_creates_one_runtime(tmp_path: Path) -> None:
 async def test_failed_close_is_retryable_and_blocks_reopen(tmp_path: Path) -> None:
     runtime = FakeTerminalRuntime("one", close_failures=1)
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         return runtime
 
     manager = ProjectTerminalRuntimeManager(factory)
     record = project("one", tmp_path)
-    await manager.set_enabled(record, enabled=True)
+    await manager.start(record, TerminalStartOptions())
 
     with pytest.raises(RuntimeError, match="cleanup failed"):
-        await manager.set_enabled(record, enabled=False)
+        await manager.close(record)
     assert manager.state(record) is ProjectTerminalState.FAILED
     assert manager.list_tools(record) == ()
     with pytest.raises(RuntimeError, match="cleanup must succeed"):
-        await manager.set_enabled(record, enabled=True)
+        await manager.start(record, TerminalStartOptions())
 
-    assert await manager.set_enabled(record, enabled=False) is False
+    assert (await manager.close(record)).changed is True
     assert runtime.close_calls == 2
     assert manager.state(record) is ProjectTerminalState.CLOSED
 
@@ -156,7 +234,7 @@ async def test_failed_close_is_retryable_and_blocks_reopen(tmp_path: Path) -> No
 async def test_failed_initialization_exposes_no_tools_and_can_retry(tmp_path: Path) -> None:
     attempts = 0
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -167,12 +245,12 @@ async def test_failed_initialization_exposes_no_tools_and_can_retry(tmp_path: Pa
     record = project("one", tmp_path)
 
     with pytest.raises(RuntimeError, match="shell probe failed"):
-        await manager.set_enabled(record, enabled=True)
+        await manager.start(record, TerminalStartOptions())
     assert manager.state(record) is ProjectTerminalState.FAILED
     assert manager.failure(record) == "shell probe failed"
     assert manager.list_tools(record) == ()
 
-    assert await manager.set_enabled(record, enabled=True) is True
+    assert (await manager.start(record, TerminalStartOptions())).changed is True
     assert manager.state(record) is ProjectTerminalState.OPEN
     assert [tool.name for tool in manager.list_tools(record)] == ["shell_list"]
     await manager.aclose_all()
@@ -190,14 +268,14 @@ async def test_remove_retires_entry_so_waiting_enable_cannot_reopen(tmp_path: Pa
             await release_close.wait()
             await super().aclose()
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         runtime = BlockingCloseRuntime(record.name)
         created.append(runtime)
         return runtime
 
     manager = ProjectTerminalRuntimeManager(factory)
     record = project("one", tmp_path)
-    await manager.set_enabled(record, enabled=True)
+    await manager.start(record, TerminalStartOptions())
     enable_error: Exception | None = None
 
     async def remove() -> None:
@@ -206,7 +284,7 @@ async def test_remove_retires_entry_so_waiting_enable_cannot_reopen(tmp_path: Pa
     async def reopen() -> None:
         nonlocal enable_error
         try:
-            await manager.set_enabled(record, enabled=True)
+            await manager.start(record, TerminalStartOptions())
         except Exception as exc:
             enable_error = exc
 
@@ -237,7 +315,7 @@ async def test_shutdown_tombstone_prevents_waiting_or_new_project_enable(tmp_pat
             await release_close.wait()
             await super().aclose()
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         runtime = BlockingCloseRuntime(record.name)
         created.append(runtime)
         return runtime
@@ -245,7 +323,7 @@ async def test_shutdown_tombstone_prevents_waiting_or_new_project_enable(tmp_pat
     manager = ProjectTerminalRuntimeManager(factory)
     first = project("first", tmp_path)
     second = project("second", tmp_path)
-    await manager.set_enabled(first, enabled=True)
+    await manager.start(first, TerminalStartOptions())
     waiting_error: Exception | None = None
 
     async def shutdown() -> None:
@@ -254,7 +332,7 @@ async def test_shutdown_tombstone_prevents_waiting_or_new_project_enable(tmp_pat
     async def reopen() -> None:
         nonlocal waiting_error
         try:
-            await manager.set_enabled(first, enabled=True)
+            await manager.start(first, TerminalStartOptions())
         except Exception as exc:
             waiting_error = exc
 
@@ -264,7 +342,7 @@ async def test_shutdown_tombstone_prevents_waiting_or_new_project_enable(tmp_pat
         tasks.start_soon(reopen)
         await anyio.sleep(0)
         with pytest.raises(ProjectTerminalNotAvailableError, match="shutdown"):
-            await manager.set_enabled(second, enabled=True)
+            await manager.start(second, TerminalStartOptions())
         release_close.set()
 
     assert isinstance(waiting_error, ProjectTerminalNotAvailableError)
@@ -277,7 +355,7 @@ async def test_shutdown_tombstone_prevents_waiting_or_new_project_enable(tmp_pat
 async def test_cancelled_scope_still_closes_all_project_runtimes(tmp_path: Path) -> None:
     created: list[FakeTerminalRuntime] = []
 
-    async def factory(record: Project) -> FakeTerminalRuntime:
+    async def factory(record: Project, options: TerminalStartOptions) -> FakeTerminalRuntime:
         runtime = FakeTerminalRuntime(record.name)
         created.append(runtime)
         return runtime
@@ -285,8 +363,8 @@ async def test_cancelled_scope_still_closes_all_project_runtimes(tmp_path: Path)
     manager = ProjectTerminalRuntimeManager(factory)
     first = project("first", tmp_path)
     second = project("second", tmp_path)
-    await manager.set_enabled(first, enabled=True)
-    await manager.set_enabled(second, enabled=True)
+    await manager.start(first, TerminalStartOptions())
+    await manager.start(second, TerminalStartOptions())
 
     with anyio.CancelScope() as scope:
         scope.cancel()

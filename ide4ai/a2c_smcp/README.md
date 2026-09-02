@@ -66,7 +66,7 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 
 ### Terminal 与 TFBash 0.2 | Terminal and TFBash 0.2
 
-选择项目后，MCP 目录使用无参数、状态驱动的 `Terminal` 代替旧 `Bash`。关闭状态下执行 `Terminal` 会为当前项目创建进程内 `EmbeddedShellRuntime`；成功后动态暴露 TFBash 原生的七个工具：
+选择项目后，MCP 目录使用状态驱动的 `terminal_start` / `terminal_close` 代替旧 `Bash` 和 toggle 型 `Terminal`。关闭状态下执行 `terminal_start` 会为当前项目创建进程内 `EmbeddedShellRuntime`；成功后动态暴露 TFBash 原生的七个工具：
 
 - `shell_open`
 - `shell_exec`
@@ -76,7 +76,7 @@ Uses Pydantic models to define input/output schemas for all tools, ensuring type
 - `shell_list`
 - `shell_close`
 
-工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.0`。开启状态下再次执行 `Terminal`、调用 `project_unload`、`project_delete` 或关闭 Server，都会关闭对应 Runtime。`Terminal` 描述会随状态只指向下一步可执行动作（开启或关闭），因此 UI 不再展示容易误解的 `enabled` 复选框。每个项目拥有独立 Runtime，其 `workspace_root` 与默认 cwd 均为项目 `root_dir`。工具列表变化通过 MCP 事件通知，不使用轮询。
+工具定义、输入输出协议、错误包和 A2C tags 均直接来自 `tfbash-mcp==0.2.0`。`terminal_start` 支持可选 cwd、Shell、默认启动命令、环境覆盖和 deadline；项目不可变的 `root_dir` 始终作为 `workspace_root`，且是默认 cwd。它只创建 Runtime，不隐式创建 Shell。开启后只展示 `terminal_close`；该工具、`project_unload`、`project_delete` 和 Server 关闭复用同一有界优雅清理路径，先 terminate、等待 grace period、再 kill 剩余受管进程。生命周期工具按目标状态幂等，工具列表变化通过 MCP 事件通知，不使用轮询。
 
 The legacy `BashTool` import remains available for direct Python compatibility, but the project-aware MCP server no longer registers it.
 

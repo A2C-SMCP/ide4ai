@@ -132,9 +132,11 @@ uvx --from ide4ai==<version> ide4ai-mcp
 uvx --from ide4ai ide4ai-mcp --cmd-white-list "pytest,rg" --cmd-timeout 20
 ```
 
-启动后，没有注册项目时客户端只会看到项目管理工具。只要存在项目，Server 就会持久化并恢复唯一的当前项目；首次创建项目或迁移旧元数据时按名称排序选择第一个项目，可调用 `project_switch` 切换。选择项目后会出现常规 IDE 工具、`Terminal` 开关和 `window://` 资源，但不会默认启动 Shell Runtime。`project_list` 在集合顶层返回唯一的 `current_project` 项目名，项目数组内不重复携带 `current` 标记。
+启动后，没有注册项目时客户端只会看到项目管理工具。只要存在项目，Server 就会持久化并恢复唯一的当前项目；首次创建项目或迁移旧元数据时按名称排序选择第一个项目，可调用 `project_switch` 切换。选择项目后会出现常规 IDE 工具、状态驱动的 Terminal 生命周期工具和 `window://` 资源，但不会默认启动 Shell Runtime。`project_list` 在集合顶层返回唯一的 `current_project` 项目名，项目数组内不重复携带 `current` 标记。
 
-关闭状态下调用无参数的 `Terminal`，服务器会为当前项目创建独立的 TFBash 0.2 嵌入式运行时，并通过 `notifications/tools/list_changed` 动态暴露 `shell_open`、`shell_exec`、`shell_read`、`shell_write`、`shell_signal`、`shell_list` 和 `shell_close`。开启状态下再次调用 `Terminal`，会关闭该项目全部 Shell 和受管进程，然后移除这七个工具。`Terminal` 的描述会随状态明确显示下一次操作是开启还是关闭，不再要求提交布尔参数。每个项目的 `workspace_root` 和默认 cwd 都取项目的规范化 `root_dir`。
+Runtime 关闭时仅展示 `terminal_start`。它接收可选的 `cwd`、`startup_command`、`shell`、环境覆盖和 deadline 配置；`workspace_root` 始终继承当前项目不可变的 `root_dir`，默认 cwd 也为该目录。启动成功后，`terminal_start` 被替换为 `terminal_close`，并通过 `notifications/tools/list_changed` 动态暴露 `shell_open`、`shell_exec`、`shell_read`、`shell_write`、`shell_signal`、`shell_list` 和 `shell_close`。`terminal_start` 只创建 Runtime，实际 Shell 仍由 `shell_open` 创建，`startup_command` 是每个新 Shell 的默认初始化命令。
+
+`terminal_close` 会原子停止接受新的 Shell 调用，并关闭当前项目全部 Shell 和受管进程：先等待进程在 `shutdown_grace_ms` 内退出，超时后强制回收，整个清理受 `close_timeout_ms` 约束，不需要额外 `force` 参数。启动和关闭工具都是幂等的目标状态操作，不会像 toggle 一样因重复调用而反转状态；关闭失败时保留 Runtime，只允许再次调用 `terminal_close` 完成清理。
 
 - **LSP 模式与服务覆盖**：在 `project_create` 的 `lsp` 参数中配置；运行中的状态查询和显式重载由 MCP `Lsp` 工具提供。
 

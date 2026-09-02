@@ -303,12 +303,12 @@ CONFIG = {
         server, tmpdir = temp_server
 
         # 验证多个工具已注册
-        assert "Terminal" in _tools(server)
+        assert "terminal_start" in _tools(server)
         assert "Glob" in _tools(server)
         assert "Grep" in _tools(server)
 
         # 验证每个工具都可以正常工作
-        assert _tools(server)["Terminal"].name == "Terminal"
+        assert _tools(server)["terminal_start"].name == "terminal_start"
         assert _tools(server)["Glob"].name == "Glob"
         assert _tools(server)["Grep"].name == "Grep"
 

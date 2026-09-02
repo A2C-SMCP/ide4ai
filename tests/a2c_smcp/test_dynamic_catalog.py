@@ -212,7 +212,7 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     host.create_project(name="one", root_dir=tmp_path)
     runtimes: list[_FakeEmbeddedRuntime] = []
 
-    async def factory(project):
+    async def factory(project, options):
         runtime = _FakeEmbeddedRuntime(project.name)
         runtimes.append(runtime)
         return runtime
@@ -222,23 +222,38 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     tfbash_provider = TFBashToolProvider(host, manager)
     catalog = DynamicToolCatalog((terminal_provider, tfbash_provider))
 
-    assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["Terminal"]
-    terminal = catalog.find(host.current_project, "Terminal")
+    assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["terminal_start"]
+    terminal = catalog.find(host.current_project, "terminal_start")
     assert terminal is not None
-    assert terminal.definition.inputSchema == {
-        "additionalProperties": False,
-        "properties": {},
-        "title": "_TerminalActionInput",
-        "type": "object",
+    assert set(terminal.definition.inputSchema["properties"]) == {
+        "cwd",
+        "startup_command",
+        "shell",
+        "environment",
+        "command_timeout_ms",
+        "shutdown_grace_ms",
+        "close_timeout_ms",
     }
+    assert "root_dir" not in terminal.definition.inputSchema["properties"]
+    assert terminal.definition.inputSchema["properties"]["shutdown_grace_ms"]["maximum"] == 60_000
+    assert terminal.definition.inputSchema["properties"]["close_timeout_ms"]["maximum"] == 60_000
     assert terminal.definition.description is not None
-    assert "disabled" in terminal.definition.description
+    assert "does not create a Shell" in terminal.definition.description
     enabled = await terminal.invoke({})
     assert enabled.changes.tools is True
     assert enabled.result["terminal"] == {
         "enabled": True,
         "state": "open",
         "root_dir": str(tmp_path.resolve()),
+        "configuration": {
+            "cwd": str(tmp_path.resolve()),
+            "shell": None,
+            "startup_command_configured": False,
+            "environment_override_count": 0,
+            "command_timeout_ms": 120_000,
+            "shutdown_grace_ms": 3_000,
+            "close_timeout_ms": 5_000,
+        },
     }
 
     bindings = catalog.bindings(host.current_project)
@@ -250,7 +265,7 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
         "shell_read",
         "shell_signal",
         "shell_write",
-        "Terminal",
+        "terminal_close",
     ]
     shell_list = catalog.find(host.current_project, "shell_list")
     assert shell_list is not None
@@ -260,14 +275,67 @@ async def test_terminal_switch_exposes_exact_tfbash_tools_and_preserves_contract
     assert isinstance(called.result, CallToolResult)
     assert called.result.structuredContent == {"project": "one", "tool": "shell_list"}
 
-    terminal = catalog.find(host.current_project, "Terminal")
+    terminal = catalog.find(host.current_project, "terminal_close")
     assert terminal is not None
     assert terminal.definition.description is not None
-    assert "enabled" in terminal.definition.description
+    assert "Gracefully close" in terminal.definition.description
     disabled = await terminal.invoke({})
     assert disabled.changes.tools is True
     assert runtimes[0].closed is True
-    assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["Terminal"]
+    assert [binding.definition.name for binding in catalog.bindings(host.current_project)] == ["terminal_start"]
+
+
+@pytest.mark.asyncio
+async def test_terminal_catalog_exposes_close_during_opening_and_closing(tmp_path) -> None:
+    host, _ = _host(tmp_path)
+    project = host.create_project(name="one", root_dir=tmp_path)
+    open_entered = anyio.Event()
+    release_open = anyio.Event()
+    close_entered = anyio.Event()
+    release_close = anyio.Event()
+
+    class BlockingRuntime(_FakeEmbeddedRuntime):
+        async def aclose(self) -> None:
+            close_entered.set()
+            await release_close.wait()
+            await super().aclose()
+
+    async def factory(captured, options):
+        assert captured == project
+        open_entered.set()
+        await release_open.wait()
+        return BlockingRuntime(captured.name)
+
+    manager = ProjectTerminalRuntimeManager(factory)
+    catalog = DynamicToolCatalog((TerminalToolProvider(host, manager), TFBashToolProvider(host, manager)))
+    start = catalog.find(project, "terminal_start")
+    assert start is not None
+
+    async def invoke_start() -> None:
+        await start.invoke({})
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(invoke_start)
+        await open_entered.wait()
+        assert manager.state(project).value == "opening"
+        assert [binding.definition.name for binding in catalog.bindings(project)] == ["terminal_close"]
+        release_open.set()
+
+    close = catalog.find(project, "terminal_close")
+    assert close is not None
+
+    async def invoke_close() -> None:
+        await close.invoke({})
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(invoke_close)
+        await close_entered.wait()
+        assert manager.state(project).value == "closing"
+        assert [binding.definition.name for binding in catalog.bindings(project)] == ["terminal_close"]
+        assert catalog.find(project, "shell_list") is None
+        release_close.set()
+
+    assert [binding.definition.name for binding in catalog.bindings(project)] == ["terminal_start"]
 
 
 @pytest.mark.asyncio
@@ -280,7 +348,7 @@ async def test_terminal_runtime_follows_project_selection_and_unload(tmp_path) -
     first = host.create_project(name="first", root_dir=first_root)
     runtimes: dict[str, _FakeEmbeddedRuntime] = {}
 
-    async def factory(project):
+    async def factory(project, options):
         runtime = _FakeEmbeddedRuntime(project.name)
         runtimes[project.name] = runtime
         return runtime
@@ -291,7 +359,7 @@ async def test_terminal_runtime_follows_project_selection_and_unload(tmp_path) -
     tfbash_provider = TFBashToolProvider(host, manager)
     catalog = DynamicToolCatalog((project_provider, terminal_provider, tfbash_provider))
 
-    terminal = catalog.find(first, "Terminal")
+    terminal = catalog.find(first, "terminal_start")
     assert terminal is not None
     await terminal.invoke({})
     assert catalog.find(first, "shell_list") is not None
@@ -316,7 +384,7 @@ async def test_busy_project_unload_keeps_terminal_open_and_catalog_unchanged(tmp
     project = host.create_project(name="one", root_dir=tmp_path)
     runtime = _FakeEmbeddedRuntime(project.name)
 
-    async def factory(captured):
+    async def factory(captured, options):
         assert captured == project
         return runtime
 
@@ -328,7 +396,7 @@ async def test_busy_project_unload_keeps_terminal_open_and_catalog_unchanged(tmp
             TFBashToolProvider(host, manager),
         )
     )
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_start")
     unload = catalog.find(project, "project_unload")
     assert terminal is not None
     assert unload is not None
@@ -349,27 +417,27 @@ async def test_terminal_close_failure_reports_error_and_invalidates_tools(tmp_pa
     project = host.create_project(name="one", root_dir=tmp_path)
     runtime = _FakeEmbeddedRuntime(project.name, close_failures=1)
 
-    async def factory(captured):
+    async def factory(captured, options):
         assert captured == project
         return runtime
 
     manager = ProjectTerminalRuntimeManager(factory)
     catalog = DynamicToolCatalog((TerminalToolProvider(host, manager), TFBashToolProvider(host, manager)))
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_start")
     assert terminal is not None
     await terminal.invoke({})
 
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_close")
     assert terminal is not None
     failed = await terminal.invoke({})
 
     assert isinstance(failed.result, CallToolResult)
     assert failed.result.isError is True
     assert failed.result.structuredContent is not None
-    assert failed.result.structuredContent["error"]["code"] == "TERMINAL_STATE_CHANGE_FAILED"
+    assert failed.result.structuredContent["error"]["code"] == "TERMINAL_CLOSE_FAILED"
     assert failed.changes.tools is True
     assert catalog.find(project, "shell_list") is None
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_close")
     assert terminal is not None
     retried = await terminal.invoke({})
     assert isinstance(retried.result, dict)
@@ -382,7 +450,7 @@ async def test_unload_cleanup_failure_notifies_real_mcp_client(tmp_path) -> None
     project = host.create_project(name="one", root_dir=tmp_path)
     runtime = _FakeEmbeddedRuntime(project.name, close_failures=1)
 
-    async def factory(captured):
+    async def factory(captured, options):
         assert captured == project
         return runtime
 
@@ -414,7 +482,7 @@ async def test_unload_cleanup_failure_notifies_real_mcp_client(tmp_path) -> None
             )
             async with ClientSession(*client_streams, message_handler=handle_message) as client:
                 await client.initialize()
-                assert (await client.call_tool("Terminal", {})).isError is False
+                assert (await client.call_tool("terminal_start", {})).isError is False
                 notifications.clear()
 
                 failed = await client.call_tool("project_unload", {})
@@ -432,10 +500,10 @@ async def test_unload_cleanup_failure_notifies_real_mcp_client(tmp_path) -> None
                     "project_list",
                     "project_switch",
                     "project_unload",
-                    "Terminal",
+                    "terminal_close",
                 ]
             task_group.cancel_scope.cancel()
-    await manager.set_enabled(project, enabled=False)
+    await manager.close(project)
     server.close()
 
 
@@ -445,7 +513,7 @@ async def test_project_delete_closes_and_forgets_terminal_runtime(tmp_path) -> N
     project = host.create_project(name="one", root_dir=tmp_path)
     runtime = _FakeEmbeddedRuntime(project.name)
 
-    async def factory(captured):
+    async def factory(captured, options):
         assert captured == project
         return runtime
 
@@ -457,7 +525,7 @@ async def test_project_delete_closes_and_forgets_terminal_runtime(tmp_path) -> N
             TFBashToolProvider(host, manager),
         )
     )
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_start")
     assert terminal is not None
     await terminal.invoke({})
 
@@ -477,7 +545,7 @@ async def test_project_delete_cleanup_failure_keeps_project_retryable(tmp_path) 
     project = host.create_project(name="one", root_dir=tmp_path)
     runtime = _FakeEmbeddedRuntime(project.name, close_failures=1)
 
-    async def factory(captured):
+    async def factory(captured, options):
         assert captured == project
         return runtime
 
@@ -489,7 +557,7 @@ async def test_project_delete_cleanup_failure_keeps_project_retryable(tmp_path) 
             TFBashToolProvider(host, manager),
         )
     )
-    terminal = catalog.find(project, "Terminal")
+    terminal = catalog.find(project, "terminal_start")
     delete = catalog.find(project, "project_delete")
     assert terminal is not None
     assert delete is not None
@@ -513,6 +581,17 @@ async def test_project_delete_cleanup_failure_keeps_project_retryable(tmp_path) 
     assert manager.has_live_runtimes is True
     assert catalog.find(project, "shell_list") is None
 
+    close = catalog.find(project, "terminal_close")
+    assert close is not None
+    closed = await close.invoke({})
+    assert isinstance(closed.result, dict)
+
+    start = catalog.find(project, "terminal_start")
+    assert start is not None
+    restarted = await start.invoke({})
+    assert isinstance(restarted.result, dict)
+    assert restarted.result["terminal"]["state"] == "open"
+
     retried = await delete.invoke({"name": project.name})
 
     assert isinstance(retried.result, dict)
@@ -520,6 +599,58 @@ async def test_project_delete_cleanup_failure_keeps_project_retryable(tmp_path) 
     assert host.registry.list() == ()
     assert runtime.closed is True
     assert manager.has_live_runtimes is False
+
+
+@pytest.mark.asyncio
+async def test_project_delete_commit_failure_restores_terminal_start(tmp_path, monkeypatch) -> None:
+    host, _ = _host(tmp_path)
+    project = host.create_project(name="one", root_dir=tmp_path)
+    runtimes: list[_FakeEmbeddedRuntime] = []
+
+    async def factory(captured, options):
+        assert captured == project
+        runtime = _FakeEmbeddedRuntime(project.name)
+        runtimes.append(runtime)
+        return runtime
+
+    manager = ProjectTerminalRuntimeManager(factory)
+    catalog = DynamicToolCatalog(
+        (
+            ProjectToolProvider(host, manager),
+            TerminalToolProvider(host, manager),
+            TFBashToolProvider(host, manager),
+        )
+    )
+    start = catalog.find(project, "terminal_start")
+    delete = catalog.find(project, "project_delete")
+    assert start is not None
+    assert delete is not None
+    await start.invoke({})
+
+    original_commit = host.commit_delete
+
+    def fail_commit(captured):
+        raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(host, "commit_delete", fail_commit)
+    failed = await delete.invoke({"name": project.name})
+
+    assert isinstance(failed.result, CallToolResult)
+    assert failed.result.isError is True
+    assert host.registry.find(project.id) == project
+    restored_start = catalog.find(project, "terminal_start")
+    assert restored_start is not None
+    restarted = await restored_start.invoke({})
+    assert isinstance(restarted.result, dict)
+    assert restarted.result["terminal"]["state"] == "open"
+    assert len(runtimes) == 2
+
+    monkeypatch.setattr(host, "commit_delete", original_commit)
+    delete = catalog.find(project, "project_delete")
+    assert delete is not None
+    deleted = await delete.invoke({"name": project.name})
+    assert isinstance(deleted.result, dict)
+    assert host.registry.list() == ()
 
 
 def test_multiple_registered_projects_auto_select_first_project(tmp_path) -> None:

@@ -1,0 +1,7 @@
+interface:
+  display_name: "ide4ai UAT"
+  short_description: "用 Inspector 与 Playwright 验收 ide4ai MCP"
+  default_prompt: "Use $ide4ai-uat to run the ide4ai MCP smoke UAT through Inspector with Playwright."
+
+policy:
+  allow_implicit_invocation: true

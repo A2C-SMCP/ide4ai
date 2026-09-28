@@ -1,16 +1,7 @@
-"""
-命令 Tokenizer & 顶层解析器 | Command tokenizer & top-level parser
+"""Bash syntax-tree adapter for the existing terminal policy AST.
 
-提供：
-1. `tokenize(s)` —— 返回保留 operator 的 token 序列（`&&/||/;/|/&`）；
-2. `parse_command_line(s)` —— 返回 `SegmentNode`：`ParsedCommand` /
-   `CompoundCommand` / `PipelineCommand`，env_prefix 已剥离。
-
-Epic A 使用 `shlex`（POSIX 模式）作为主力分词器；operator 先用正则占位切分，
-然后每段交给 shlex。这不能 100% 覆盖 `bash` 完整语法，但足够本 Epic 的目标
-（AS-20 repro `ls -la /home`、`cd / && rm x`、`a | b` 等常见场景）。
-
-Epic D 若引入 `tree-sitter-bash` 可替换本层核心算法，但对外 API 保持兼容。
+The parser retains quoting, statement boundaries, redirects and substitutions.
+Syntax errors fail closed; no fallback treats unparsed shell text as one command.
 """
 
 from __future__ import annotations
@@ -18,6 +9,9 @@ from __future__ import annotations
 import re
 import shlex
 from typing import Final
+
+import tree_sitter_bash
+from tree_sitter import Language, Node, Parser
 
 from ide4ai.environment.terminal.parser.command_ast import (
     CompoundCommand,
@@ -28,77 +22,68 @@ from ide4ai.environment.terminal.parser.command_ast import (
 from ide4ai.environment.terminal.parser.env_prefix import extract_env_prefix
 from ide4ai.environment.terminal.parser.wrapper_peel import peel_wrappers
 
-__all__ = [
-    "parse_command_line",
-    "tokenize",
-]
+__all__ = ["parse_command_line", "tokenize"]
+_LANGUAGE = Language(tree_sitter_bash.language())
 
 
-# Compound 操作符（优先级：`;` < `&&` = `||`）。Epic A 不区分短路语义，按出现顺序保留。
-_COMPOUND_OPS: Final[tuple[str, ...]] = ("&&", "||", ";")
-# 管道操作符
-_PIPE_OP: Final[str] = "|"
+def _syntax(command: str) -> Node:
+    root = Parser(_LANGUAGE).parse(command.encode("utf-8")).root_node
+    if root.has_error:
+        raise ValueError("Failed to tokenize Bash command: invalid or unsupported syntax")
+    return root
 
 
-# 识别 shell operator 的 regex。需要避开引号中的 operator——shlex 会把引号内容保留为单一 token，
-# 所以我们先用 shlex 的 `posix=True, punctuation_chars=True` 模式直接分词。
-# 参考：https://docs.python.org/3/library/shlex.html#shlex.shlex.punctuation_chars
+def _text(node: Node) -> str:
+    return (node.text or b"").decode("utf-8")
+
+
+def _word(node: Node) -> str:
+    text = _text(node)
+    if node.type == "raw_string":
+        return text[1:-1]
+
+    # Shell removes escaped physical newlines before word splitting, except
+    # inside single quotes. Apply that rule to syntax leaves, preserving quotes.
+    def continuation(child: Node) -> str:
+        if child.type == "raw_string":
+            return _text(child)
+        if not child.children:
+            return _text(child).replace("\\\n", "")
+        source = _text(child)
+        encoded = source.encode()
+        result = b""
+        start = child.start_byte
+        for part in child.children:
+            result += encoded[start - child.start_byte : part.start_byte - child.start_byte].replace(b"\\\n", b"")
+            result += continuation(part).encode()
+            start = part.end_byte
+        result += encoded[start - child.start_byte :].replace(b"\\\n", b"")
+        return result.decode()
+
+    text = continuation(node)
+    try:
+        words = shlex.split(text, comments=False, posix=True)
+    except ValueError as exc:
+        raise ValueError("Failed to tokenize Bash word") from exc
+    return " ".join(words)
 
 
 def tokenize(command_line: str) -> list[str]:
-    """
-    分词，保留 operator token（`&&/||/;/|/&`）。
+    """Compatibility token view; policy parsing uses the syntax tree directly."""
+    root = _syntax(command_line)
+    words: list[str] = []
 
-    使用 `shlex` 的 `punctuation_chars=True` 模式——能识别引号与转义，同时把
-    `&&` / `||` 等视作独立 token。
+    def visit(node: Node) -> None:
+        if node.type in {"word", "number", "string", "raw_string", "concatenation", "variable_assignment"}:
+            words.append(_word(node))
+        elif node.type not in {"comment", "heredoc_body", "heredoc_start", "heredoc_end"}:
+            if not node.children and _text(node) in {"&&", "||", ";", "|", "&"}:
+                words.append(_text(node))
+            for child in node.children:
+                visit(child)
 
-    Args:
-        command_line: 原始 shell 命令行
-
-    Returns:
-        token 列表（含 operator）；空输入返回 []
-
-    Raises:
-        ValueError: 引号不平衡等 shlex 无法解析的情况
-
-    Examples:
-        >>> tokenize("ls -la")
-        ['ls', '-la']
-        >>> tokenize("cd / && ls")
-        ['cd', '/', '&&', 'ls']
-        >>> tokenize("a | b | c")
-        ['a', '|', 'b', '|', 'c']
-        >>> tokenize("echo \\"a;b\\" ; c")
-        ['echo', 'a;b', ';', 'c']
-    """
-    if not command_line or not command_line.strip():
-        return []
-    lexer = shlex.shlex(command_line, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    try:
-        tokens = list(lexer)
-    except ValueError as e:  # 引号不平衡等 | Unbalanced quotes etc.
-        raise ValueError(f"Failed to tokenize command: {command_line!r} ({e})") from e
-    return tokens
-
-
-def _split_by_operators(tokens: list[str], operators: tuple[str, ...]) -> tuple[list[list[str]], list[str]]:
-    """
-    根据给定 operator 集合把 token 序列切片。
-
-    Returns:
-        (segments, ops) —— segments[i] / ops[i] / segments[i+1] / ops[i+1] / ...
-        空段会被保留（由上层过滤）。
-    """
-    segments: list[list[str]] = [[]]
-    ops: list[str] = []
-    for t in tokens:
-        if t in operators:
-            ops.append(t)
-            segments.append([])
-        else:
-            segments[-1].append(t)
-    return segments, ops
+    visit(root)
+    return words
 
 
 def _parse_leaf(tokens: list[str], raw: str) -> ParsedCommand:
@@ -147,58 +132,81 @@ def _looks_like_subcommand(tok: str) -> bool:
     return len(tok) >= _MIN_SUBCOMMAND_LEN and bool(_SUBCOMMAND_RE.match(tok))
 
 
+def _combine(nodes: list[SegmentNode], operators: list[str] | None = None) -> SegmentNode:
+    if not nodes:
+        return ParsedCommand(command_name="", raw="")
+    if len(nodes) == 1:
+        return nodes[0]
+    return CompoundCommand(segments=nodes, operators=operators or [";"] * (len(nodes) - 1))
+
+
+def _nested_commands(node: Node) -> list[SegmentNode]:
+    result: list[SegmentNode] = []
+    if node.type == "heredoc_redirect":
+        delimiter = next(child for child in node.named_children if child.type == "heredoc_start")
+        body = next((child for child in node.named_children if child.type == "heredoc_body"), None)
+        quoted = any(character in _text(delimiter) for character in "\\\"'")
+        # tree-sitter-bash 0.25 does not represent backtick substitutions in
+        # heredoc bodies. Reject unmodeled execution rather than treating it as data.
+        if not quoted and body is not None and re.search(r"(?<!\\)(?:\\\\)*`", _text(body)):
+            raise ValueError("Backtick expansion in an unquoted heredoc cannot be checked")
+    for child in node.named_children:
+        if child.type in {"command_substitution", "process_substitution"}:
+            result.append(_adapt(child))
+        else:
+            result.extend(_nested_commands(child))
+    return result
+
+
+def _adapt(node: Node) -> SegmentNode:
+    if node.type == "comment":
+        return _combine([])
+    if node.type == "command":
+        name = node.child_by_field_name("name")
+        if name is None or any(
+            child.type not in {"word", "raw_string", "string", "concatenation", "string_content"}
+            for child in _descendants(name)
+        ):
+            raise ValueError("Dynamic command names cannot be checked by the command filter")
+        tokens = [_word(child) for child in node.named_children if child.type == "variable_assignment"]
+        tokens.append(_word(name))
+        tokens.extend(_word(child) for child in node.children_by_field_name("argument"))
+        return _combine([_parse_leaf(tokens, _text(node)), *_nested_commands(node)])
+    if node.type == "variable_assignment":
+        return _combine([_parse_leaf([_word(node)], _text(node)), *_nested_commands(node)])
+    if node.type == "redirected_statement":
+        body = node.child_by_field_name("body")
+        nodes = [_adapt(body)] if body is not None else []
+        for child in node.named_children:
+            if child != body:
+                nodes.extend(_nested_commands(child))
+        return _combine(nodes)
+    if node.type in {
+        "program",
+        "list",
+        "pipeline",
+        "subshell",
+        "compound_statement",
+        "command_substitution",
+        "process_substitution",
+    }:
+        nodes = [_adapt(child) for child in node.named_children if child.type != "comment"]
+        if node.type == "pipeline" and len(nodes) > 1:
+            return PipelineCommand(stages=nodes)
+        operators = [_text(child) for child in node.children if _text(child) in {"&&", "||", ";", "&"}]
+        return _combine(nodes, operators if len(operators) == len(nodes) - 1 else None)
+    raise ValueError(f"Unsupported Bash syntax for command filtering: {node.type}")
+
+
+def _descendants(node: Node) -> list[Node]:
+    return [child for item in node.named_children for child in [item, *_descendants(item)]]
+
+
 def parse_command_line(command_line: str) -> SegmentNode:
+    """Return policy nodes for every executable command, including substitutions.
+
+    Heredoc bodies remain data; executable substitutions in unquoted bodies are
+    checked. Unsupported control flow and malformed trees are rejected, never
+    silently flattened. This compatibility filter is not a shell sandbox.
     """
-    解析 shell 命令行为顶层 AST 节点。
-
-    返回值可能是：
-    - `ParsedCommand` —— 单条命令（含 env prefix、subcommand、args）
-    - `PipelineCommand` —— 纯管道（`a | b`）
-    - `CompoundCommand` —— 含 `&&/||/;` 的复合；管道段会作为内部 `PipelineCommand`
-
-    空输入返回 `ParsedCommand(command_name="", raw="")`（`is_empty=True`）。
-
-    Args:
-        command_line: 原始 shell 命令行
-
-    Returns:
-        顶层 AST 节点
-
-    Raises:
-        ValueError: 分词失败（如引号不平衡）
-    """
-    tokens = tokenize(command_line)
-    if not tokens:
-        return ParsedCommand(command_name="", raw=command_line)
-
-    # 先按 compound ops 切；剩下是纯 pipeline 或叶子
-    compound_segs, compound_ops = _split_by_operators(tokens, _COMPOUND_OPS)
-    # 过滤空段（如开头有 `;` 会产生空段）
-    filtered_segs: list[list[str]] = []
-    filtered_ops: list[str] = []
-    for idx, seg in enumerate(compound_segs):
-        if seg:
-            filtered_segs.append(seg)
-            # 前一个 op 保留（除第 0 段外）
-            if idx > 0 and idx - 1 < len(compound_ops):
-                filtered_ops.append(compound_ops[idx - 1])
-    if not filtered_segs:
-        return ParsedCommand(command_name="", raw=command_line)
-
-    segment_nodes: list[SegmentNode] = [_parse_segment(seg, command_line) for seg in filtered_segs]
-
-    if len(segment_nodes) == 1:
-        return segment_nodes[0]
-    return CompoundCommand(segments=segment_nodes, operators=filtered_ops)
-
-
-def _parse_segment(tokens: list[str], raw: str) -> SegmentNode:
-    """
-    解析单个 compound 段：可能是 pipeline 或单条命令。
-    """
-    pipe_segs, _ = _split_by_operators(tokens, (_PIPE_OP,))
-    pipe_segs = [s for s in pipe_segs if s]
-    if len(pipe_segs) == 1:
-        return _parse_leaf(pipe_segs[0], raw)
-    stages: list[SegmentNode] = [_parse_leaf(s, raw) for s in pipe_segs]
-    return PipelineCommand(stages=stages)
+    return _adapt(_syntax(command_line))

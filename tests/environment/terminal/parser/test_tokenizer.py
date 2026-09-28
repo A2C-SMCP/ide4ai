@@ -183,10 +183,9 @@ class TestParseCommandLineCompound:
         assert isinstance(leaf_seg, ParsedCommand)
         assert leaf_seg.command_name == "c"
 
-    def test_leading_operator_ignored(self) -> None:
-        p = parse_command_line("; echo a")
-        assert isinstance(p, ParsedCommand)
-        assert p.command_name == "echo"
+    def test_invalid_leading_operator_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Failed to tokenize"):
+            parse_command_line("; echo a")
 
     def test_or_operator(self) -> None:
         p = parse_command_line("make test || echo failed")

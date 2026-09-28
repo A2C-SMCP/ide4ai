@@ -277,3 +277,17 @@ cmd_filter = CommandFilterConfig.from_white_list([
     "echo", "ls", "pwd", "cat",
 ])
 ```
+
+## Bash parsing boundary
+
+The compatibility filter now uses a Bash syntax tree. Every command in a multiline
+script, pipeline, background list, or command/process substitution is checked.
+Quoted operators and heredoc bodies remain data; substitutions in unquoted heredocs
+are executable. Parse errors and unsupported executable syntax fail closed, including
+unquoted heredoc backtick expansions that the pinned grammar cannot represent.
+Quoted heredoc delimiters preserve literal backticks. Unsupported control-flow syntax
+and multiple heredocs may be rejected rather than interpreted permissively.
+
+This deprecated name-based filter is not an operating-system sandbox: allowing an
+interpreter or commands such as `eval` gives that command its normal capabilities.
+The MCP Terminal uses TFBash and does not expose this legacy filter as a security boundary.

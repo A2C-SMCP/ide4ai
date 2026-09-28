@@ -29,14 +29,21 @@ class BaseTool(ABC):
     All MCP tools should inherit from this class and implement the execute method
     """
 
-    def __init__(self, ide: IDE) -> None:
+    def __init__(self, ide: IDE | None = None) -> None:
         """
         初始化工具 | Initialize tool
 
         Args:
-            ide: IDE 实例 | IDE instance
+            ide: 请求绑定的 IDE；目录发现时可为空 | Request-bound IDE; optional during catalog discovery
         """
-        self.ide = ide
+        self._ide = ide
+
+    @property
+    def ide(self) -> IDE:
+        """Return the request-bound IDE, rejecting execution of metadata-only tools."""
+        if self._ide is None:
+            raise RuntimeError("Tool is not bound to a project IDE")
+        return self._ide
 
     @property
     @abstractmethod

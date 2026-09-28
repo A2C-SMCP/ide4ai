@@ -21,7 +21,7 @@ from ide4ai.ide import IDE
 from ide4ai.ides import IDEInstance, IDESingleton
 from ide4ai.schema import IDEAction, IDEObs, LanguageId
 
-__version__ = "0.1.0rc0"
+__version__ = "0.1.0rc1"
 
 __all__ = [
     "IDE",
